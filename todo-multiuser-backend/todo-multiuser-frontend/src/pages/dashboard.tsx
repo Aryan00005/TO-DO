@@ -1,22 +1,34 @@
-import React, { useState, useEffect } from "react";
-import axios from "../api/axios";
-import {
-  Layout, Sidebar, NavItem, Main, TopBar, DashboardTitle,
-  TaskCard, TaskTitle, TaskDesc, Status, TaskActions,
-  Button, Form, Input, Select, ProfileBox, Label
-} from "../components/StyledComponents";
-import { FaUser, FaTasks, FaPlus, FaSignOutAlt, FaBell, FaStar, FaChartBar, FaCalendarAlt, FaColumns, FaCalendar } from "react-icons/fa";
-import AvatarEdit from "react-avatar-edit";
 import {
   DragDropContext,
-  Droppable,
   Draggable,
-  type DropResult,
+  Droppable,
   type DraggableProvided,
   type DraggableStateSnapshot,
   type DroppableProvided,
-  type DroppableStateSnapshot
+  type DroppableStateSnapshot,
+  type DropResult
 } from "@hello-pangea/dnd";
+import React, { useEffect, useState } from "react";
+import AvatarEdit from "react-avatar-edit";
+import { FaBell, FaCalendar, FaCalendarAlt, FaChartBar, FaColumns, FaPlus, FaSignOutAlt, FaStar, FaTasks, FaUser } from "react-icons/fa";
+import axios from "../api/axios";
+import {
+  Button,
+  DashboardTitle,
+  Form, Input,
+  Label,
+  Layout,
+  Main,
+  NavItem,
+  ProfileBox,
+  Select,
+  Sidebar,
+  Status, TaskActions,
+  TaskCard,
+  TaskDesc,
+  TaskTitle,
+  TopBar
+} from "../components/StyledComponents";
 
 // Types
 interface User {
@@ -82,6 +94,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
   const [assignedTasks, setAssignedTasks] = useState<Task[]>([]);
 
+  
   // Avatar
   const [avatar, setAvatar] = useState<string | null>(user?.avatarUrl || "");
   const [showAvatarEditor, setShowAvatarEditor] = useState(false);
@@ -205,18 +218,28 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   };
 
   // Star rating display for priority
-  const renderStars = (value: number, onClick?: (v: number) => void) => (
-    <span>
-      {[1, 2, 3, 4, 5].map(star => (
-        <FaStar
-          key={star}
-          color={star <= value ? "#FFD700" : "#ccc"}
-          style={{ cursor: onClick ? "pointer" : "default", marginRight: 2 }}
-          onClick={onClick ? () => onClick(star) : undefined}
-        />
-      ))}
-    </span>
-  );
+
+  // priority colors for star
+  const priorityColors = [
+  "#22c55e", // 1 - green
+  "#a3e635", // 2 - lime
+  "#fde047", // 3 - yellow
+  "#fbbf24", // 4 - orange
+  "#ef4444"  // 5 - red
+];
+
+const renderStars = (value: number, onClick?: (v: number) => void) => (
+  <span>
+    {[1, 2, 3, 4, 5].map(star => (
+      <FaStar
+        key={star}
+        color={star <= value ? priorityColors[value - 1] : "#e5e7eb"}
+        style={{ cursor: onClick ? "pointer" : "default", marginRight: 2, transition: "color 0.2s" }}
+        onClick={onClick ? () => onClick(star) : undefined}
+      />
+    ))}
+  </span>
+);
 
   // --- Analytics ---
   const totalTasks = tasks.length;

@@ -5,7 +5,7 @@ const Task = require('../models/task');
 const User = require('../models/user');
 const Notification = require('../models/notification');
 const auth = require('../middleware/auth');
-const { canAssignTask, ROLES } = require('../utils/roleUtils'); 
+const { canAssignTask, ROLES } = require('../utils/roleUtils');
 
 // Create a task (now supports dueDate)
 router.post('/', auth, async (req, res) => {
