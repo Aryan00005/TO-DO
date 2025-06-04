@@ -726,78 +726,87 @@ else if (nav === "kanban") {
       </Form>
     );
   } else if (nav === "list") {
-    content = (
-      <div>
-        {tasks.length === 0 && <div>No tasks assigned to you yet.</div>}
-        {tasks.map(task => (
-          <TaskCard key={task._id} style={{
-            background: isOverdue(task) ? "#fff0f0" : "#fff",
-            border: isOverdue(task) ? "2px solid #ef4444" : "1.5px solid #dbeafe",
-            borderRadius: 10,
-            marginBottom: 12,
-            boxShadow: "0 1px 4px #c7d2fe22"
-          }}>
-            <TaskTitle>
-              {task.title}
-              <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
-            </TaskTitle>
-            <TaskDesc>{task.description}</TaskDesc>
-            {task.dueDate && (
-              <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
-                <FaCalendar style={{ marginRight: 4 }} />
-                Due: {new Date(task.dueDate).toLocaleDateString()}
-              </div>
-            )}
-            {isOverdue(task) && (
-              <div style={{ color: "#ef4444", fontWeight: 700, marginBottom: 4 }}>
-                Overdue!
-              </div>
-            )}
-            <Status $status={task.status}>
-              Status: {task.status}
-            </Status>
-            {task.completionRemark && (
-              <div>
-                <b>Remark:</b> {task.completionRemark}
-              </div>
-            )}
-            <TaskActions>
-              {task.status !== "Done" && (
-                completingTaskId === task._id ? (
-                  <div>
-                    <Input
-                      value={remarkInput}
-                      onChange={e => setRemarkInput(e.target.value)}
-                      placeholder="Completion remark (optional)"
-                    />
-                    <Button
-                      style={{ background: "#16a34a" }}
-                      onClick={() => handleStatus(task._id, "Done", remarkInput)}
-                    >
-                      Submit Remark & Complete
-                    </Button>
-                    <Button
-                      style={{ background: "#b5179e", marginLeft: 8 }}
-                      onClick={() => { setCompletingTaskId(null); setRemarkInput(""); }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                ) : (
+  content = (
+    <div>
+      {tasks.length === 0 && <div>No tasks assigned to you yet.</div>}
+      {tasks.map(task => (
+        <TaskCard key={task._id} style={{
+          background: isOverdue(task) ? "#fff0f0" : "#fff",
+          border: isOverdue(task) ? "2px solid #ef4444" : "1.5px solid #dbeafe",
+          borderRadius: 10,
+          marginBottom: 12,
+          boxShadow: "0 1px 4px #c7d2fe22"
+        }}>
+          <TaskTitle>
+            {task.title}
+            <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
+          </TaskTitle>
+          <TaskDesc>{task.description}</TaskDesc>
+          {/* --- NEW: Show assigner's name --- */}
+          {task.assignedBy && (
+            <div style={{ color: "#64748b", fontSize: 13, marginBottom: 4 }}>
+              Assigned by: <strong>
+                {task.assignedBy.name || task.assignedBy.username || "Unknown"}
+              </strong>
+            </div>
+          )}
+          {/* --- END NEW --- */}
+          {task.dueDate && (
+            <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
+              <FaCalendar style={{ marginRight: 4 }} />
+              Due: {new Date(task.dueDate).toLocaleDateString()}
+            </div>
+          )}
+          {isOverdue(task) && (
+            <div style={{ color: "#ef4444", fontWeight: 700, marginBottom: 4 }}>
+              Overdue!
+            </div>
+          )}
+          <Status $status={task.status}>
+            Status: {task.status}
+          </Status>
+          {task.completionRemark && (
+            <div>
+              <b>Remark:</b> {task.completionRemark}
+            </div>
+          )}
+          <TaskActions>
+            {task.status !== "Done" && (
+              completingTaskId === task._id ? (
+                <div>
+                  <Input
+                    value={remarkInput}
+                    onChange={e => setRemarkInput(e.target.value)}
+                    placeholder="Completion remark (optional)"
+                  />
                   <Button
                     style={{ background: "#16a34a" }}
-                    onClick={() => setCompletingTaskId(task._id)}
+                    onClick={() => handleStatus(task._id, "Done", remarkInput)}
                   >
-                    Mark Completed
+                    Submit Remark & Complete
                   </Button>
-                )
-              )}
-            </TaskActions>
-          </TaskCard>
-        ))}
-      </div>
-    );
-  }
+                  <Button
+                    style={{ background: "#b5179e", marginLeft: 8 }}
+                    onClick={() => { setCompletingTaskId(null); setRemarkInput(""); }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  style={{ background: "#16a34a" }}
+                  onClick={() => setCompletingTaskId(task._id)}
+                >
+                  Mark Completed
+                </Button>
+              )
+            )}
+          </TaskActions>
+        </TaskCard>
+      ))}
+    </div>
+  );
+}
 
   // Notification bell and dropdown
   const unreadCount = notifications.filter(n => !n.isRead).length;
