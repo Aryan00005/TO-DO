@@ -50,7 +50,6 @@ interface Task {
   completionRemark?: string;
 }
 
-
 interface Notification {
   _id: string;
   message: string;
@@ -94,13 +93,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
   const [assignedTasks, setAssignedTasks] = useState<Task[]>([]);
 
-  
   // Avatar
   const [avatar, setAvatar] = useState<string | null>(user?.avatarUrl || "");
   const [showAvatarEditor, setShowAvatarEditor] = useState(false);
 
-  // For calendar
-  const [selectedDate, setSelectedDate] = useState<string>("");
+  // --- Calendar Dates ---
+  const today = new Date();
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const calendarDates = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  // For calendar: initialize selectedDate as today's date string (day number)
+  const [selectedDate, setSelectedDate] = useState<string>(today.getDate().toString());
 
   // Prevent rendering until user is loaded
   if (!user || !user._id) {
@@ -122,12 +125,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   }, [user._id]);
 
   useEffect(() => {
-  if (nav === "assignedtasks") {
-    axios.get(`/tasks/assignedBy/${user._id}`)
-      .then(res => setAssignedTasks(res.data))
-      .catch(err => console.error("Error fetching assigned tasks:", err));
-  }
-}, [nav, user._id]);
+    if (nav === "assignedtasks") {
+      axios.get(`/tasks/assignedBy/${user._id}`)
+        .then(res => setAssignedTasks(res.data))
+        .catch(err => console.error("Error fetching assigned tasks:", err));
+    }
+  }, [nav, user._id]);
 
   // Fetch notifications for this user
   useEffect(() => {
@@ -148,7 +151,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           description,
           assignedTo,
           priority,
-          dueDate, // <-- Send due date
+          dueDate,
         },
         {
           headers: {
@@ -161,7 +164,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       setAssignedTo("");
       setPriority(3);
       setDueDate("");
-     // Refresh tasks
+      // Refresh tasks
       const [assignedToRes, assignedByRes] = await Promise.all([
         axios.get(`/tasks/assignedTo/${user._id}`, { headers: { Authorization: `Bearer ${token}` } }),
         axios.get(`/tasks/assignedBy/${user._id}`, { headers: { Authorization: `Bearer ${token}` } })
@@ -204,7 +207,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           n._id === notificationId ? { ...n, isRead: true } : n
         )
       );
-    } catch (err) {}
+    } catch (err) { }
   };
 
   // Logout handler
@@ -217,29 +220,27 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
   };
 
-  // Star rating display for priority
-
   // priority colors for star
   const priorityColors = [
-  "#22c55e", // 1 - green
-  "#a3e635", // 2 - lime
-  "#fde047", // 3 - yellow
-  "#fbbf24", // 4 - orange
-  "#ef4444"  // 5 - red
-];
+    "#22c55e", // 1 - green
+    "#a3e635", // 2 - lime
+    "#fde047", // 3 - yellow
+    "#fbbf24", // 4 - orange
+    "#ef4444"  // 5 - red
+  ];
 
-const renderStars = (value: number, onClick?: (v: number) => void) => (
-  <span>
-    {[1, 2, 3, 4, 5].map(star => (
-      <FaStar
-        key={star}
-        color={star <= value ? priorityColors[value - 1] : "#e5e7eb"}
-        style={{ cursor: onClick ? "pointer" : "default", marginRight: 2, transition: "color 0.2s" }}
-        onClick={onClick ? () => onClick(star) : undefined}
-      />
-    ))}
-  </span>
-);
+  const renderStars = (value: number, onClick?: (v: number) => void) => (
+    <span>
+      {[1, 2, 3, 4, 5].map(star => (
+        <FaStar
+          key={star}
+          color={star <= value ? priorityColors[value - 1] : "#e5e7eb"}
+          style={{ cursor: onClick ? "pointer" : "default", marginRight: 2, transition: "color 0.2s" }}
+          onClick={onClick ? () => onClick(star) : undefined}
+        />
+      ))}
+    </span>
+  );
 
   // --- Analytics ---
   const totalTasks = tasks.length;
@@ -279,11 +280,6 @@ const renderStars = (value: number, onClick?: (v: number) => void) => (
     await handleStatus(movedTask._id, destCol, movedTask.completionRemark || "");
   };
 
-  // --- Calendar Dates ---
-  const today = new Date();
-  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-  const calendarDates = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-
   // --- Profile Avatar Upload ---
   const handleAvatarSave = (img: string | null) => {
     setAvatar(img);
@@ -299,21 +295,20 @@ const renderStars = (value: number, onClick?: (v: number) => void) => (
   };
 
   // Handler for deleting a task (only assignee can see the button)
-const handleDeleteTask = async (taskId: string) => {
-  if (!window.confirm("Are you sure you want to delete this task?")) return;
-  try {
-    const token = sessionStorage.getItem("jwt-token");
-    await axios.delete(`/tasks/${taskId}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    setTasks(tasks => tasks.filter(task => task._id !== taskId));
-  } catch (err: any) {
-    alert("Failed to delete task: " + (err.response?.data?.message || err.message));
-  }
-};
-
+  const handleDeleteTask = async (taskId: string) => {
+    if (!window.confirm("Are you sure you want to delete this task?")) return;
+    try {
+      const token = sessionStorage.getItem("jwt-token");
+      await axios.delete(`/tasks/${taskId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      setTasks(tasks => tasks.filter(task => task._id !== taskId));
+    } catch (err: any) {
+      alert("Failed to delete task: " + (err.response?.data?.message || err.message));
+    }
+  };
 
   // --- Main Content Tabs ---
   let content = null;
@@ -397,7 +392,8 @@ const handleDeleteTask = async (taskId: string) => {
         </div>
       </div>
     );
-  } else if (nav === "kanban") {
+  }
+else if (nav === "kanban") {
   content = (
     <DragDropContext onDragEnd={onDragEnd}>
       <div style={{ display: "flex", gap: 24, alignItems: "flex-start", overflowX: "auto" }}>
@@ -447,6 +443,15 @@ const handleDeleteTask = async (taskId: string) => {
                             <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
                           </TaskTitle>
                           <TaskDesc style={{ color: "#475569", marginBottom: 8 }}>{task.description}</TaskDesc>
+                          {/* --- NEW: Show assigner's name --- */}
+                          {task.assignedBy && (
+                            <div style={{ color: "#64748b", fontSize: 13, marginBottom: 4 }}>
+                              Assigned by: <strong>
+                                {task.assignedBy.name || task.assignedBy.username || "Unknown"}
+                              </strong>
+                            </div>
+                          )}
+                          {/* --- END NEW --- */}
                           {task.dueDate && (
                             <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
                               <FaCalendar style={{ marginRight: 4 }} />
@@ -500,77 +505,101 @@ const handleDeleteTask = async (taskId: string) => {
       </div>
     </DragDropContext>
   );
-}
-else if (nav === "assignedtasks") {
-  content = (
-    <div style={{ background: "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 900, margin: "0 auto" }}>
-      <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18 }}>
-        <FaUser style={{ marginRight: 8 }} /> Tasks You Assigned
-      </div>
-      {assignedTasks.length === 0 && (
-        <div style={{ color: "#64748b" }}>You haven't assigned any tasks yet.</div>
-      )}
-      {assignedTasks.map(task => (
-        <TaskCard key={task._id} style={{
-          background: isOverdue(task) ? "#fff0f0" : "#fff",
-          border: isOverdue(task) ? "2px solid #ef4444" : "1.5px solid #dbeafe",
-          borderRadius: 10,
-          marginBottom: 12,
-          boxShadow: "0 1px 4px #c7d2fe22"
-        }}>
-           <TaskTitle>
-      {task.title}
-      <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
-    </TaskTitle>
-    <TaskDesc>{task.description}</TaskDesc>
-    <div>
-      <b>Assignee:</b> {
-        typeof task.assignedTo === "object"
-          ? task.assignedTo.name
-          : users.find(u => u._id === task.assignedTo)?.name || "Unknown"
-      }
-    </div>
-    {task.dueDate && (
-      <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
-        <FaCalendar style={{ marginRight: 4 }} />
-        Due: {new Date(task.dueDate).toLocaleDateString()}
-      </div>
-    )}
-    {isOverdue(task) && (
-      <div style={{ color: "#ef4444", fontWeight: 700, marginBottom: 4 }}>
-        Overdue!
-      </div>
-    )}
-    <Status $status={task.status}>
-      Status: {task.status}
-    </Status>
-    {task.completionRemark && (
-      <div>
-        <b>Remark:</b> {task.completionRemark}
-      </div>
-    )}
-    {/* Add Delete Button Here */}
-    <button
-      style={{
-        marginTop: '8px',
-        color: 'white',
-        background: 'red',
-        border: 'none',
-        padding: '4px 8px',
-        borderRadius: '4px',
-        cursor: 'pointer'
-      }}
-      onClick={() => handleDeleteTask(task._id)}
-    >
-      Delete Task
-    </button>
-  </TaskCard>
-))}
-    </div>
-  );
-}
 
- else if (nav === "calendar") {
+  } else if (nav === "assignedtasks") {
+    // Kanban columns for assigned tasks
+    const assignedKanbanColumns = ["Not Started", "Working on it", "Stuck", "Done"];
+    const assignedKanbanTasks: Record<string, Task[]> = {
+      "Not Started": [],
+      "Working on it": [],
+      "Stuck": [],
+      "Done": [],
+    };
+    assignedTasks.forEach(task => {
+      assignedKanbanTasks[task.status] = assignedKanbanTasks[task.status] || [];
+      assignedKanbanTasks[task.status].push(task);
+    });
+
+    content = (
+      <div style={{ background: "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 1200, margin: "0 auto" }}>
+        <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18 }}>
+          <FaUser style={{ marginRight: 8 }} /> Tasks You Assigned
+        </div>
+        <div style={{ display: "flex", gap: 24, alignItems: "flex-start", overflowX: "auto" }}>
+          {assignedKanbanColumns.map(col => (
+            <div
+              key={col}
+              style={{
+                minWidth: 260,
+                background: "#f9fafb",
+                borderRadius: 12,
+                padding: 16,
+                boxShadow: "0 2px 12px #c7d2fe22",
+                minHeight: 200
+              }}
+            >
+              <div style={{ fontWeight: 700, color: statusColors[col], marginBottom: 12, fontSize: 18 }}>
+                {col}
+              </div>
+              {assignedKanbanTasks[col].length === 0 && (
+                <div style={{ color: "#64748b", fontSize: 14 }}>No tasks</div>
+              )}
+              {assignedKanbanTasks[col].map(task => (
+                <TaskCard key={task._id} style={{
+                  background: isOverdue(task) ? "#fff0f0" : "#fff",
+                  border: isOverdue(task) ? "2px solid #ef4444" : "1.5px solid #dbeafe",
+                  borderRadius: 10,
+                  marginBottom: 12,
+                  boxShadow: "0 1px 4px #c7d2fe22",
+                  position: "relative"
+                }}>
+                  <TaskTitle>
+                    {task.title}
+                    <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
+                  </TaskTitle>
+                  <TaskDesc>{task.description}</TaskDesc>
+                  <div>
+                    <b>Assigned To:</b> {
+                      typeof task.assignedTo === "object"
+                        ? task.assignedTo.name
+                        : users.find(u => u._id === task.assignedTo)?.name || "Unknown"
+                    }
+                  </div>
+                  {task.dueDate && (
+                    <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
+                      <FaCalendar style={{ marginRight: 4 }} />
+                      Due: {new Date(task.dueDate).toLocaleDateString()}
+                    </div>
+                  )}
+                  {isOverdue(task) && (
+                    <div style={{ color: "#ef4444", fontWeight: 700, marginBottom: 4 }}>
+                      Overdue!
+                    </div>
+                  )}
+                  <Status $status={task.status} style={{
+                    fontWeight: 600,
+                    background: statusColors[task.status] + "22",
+                    color: statusColors[task.status],
+                    borderRadius: 8,
+                    padding: "2px 10px",
+                    display: "inline-block",
+                    marginBottom: 8
+                  }}>
+                    {task.status}
+                  </Status>
+                  {task.completionRemark && (
+                    <div>
+                      <b>Remark:</b> {task.completionRemark}
+                    </div>
+                  )}
+                </TaskCard>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  } else if (nav === "calendar") {
     content = (
       <div style={{ background: "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 700, margin: "0 auto" }}>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18 }}>
@@ -820,13 +849,13 @@ else if (nav === "assignedtasks") {
         </NavItem>
 
         <NavItem $active={nav === "assignedtasks"} onClick={() => setNav("assignedtasks")} style={{ color: nav === "assignedtasks" ? "#2563eb" : "#22223b" }}>
-        <FaUser /> Tasks Assigned
+          <FaUser /> Tasks Assigned
         </NavItem>
 
         <NavItem $active={nav === "calendar"} onClick={() => setNav("calendar")} style={{ color: nav === "calendar" ? "#2563eb" : "#22223b" }}>
           <FaCalendarAlt /> Calendar
         </NavItem>
- 
+
         <NavItem $active={nav === "analytics"} onClick={() => setNav("analytics")} style={{ color: nav === "analytics" ? "#2563eb" : "#22223b" }}>
           <FaChartBar /> Analytics
         </NavItem>
@@ -846,7 +875,7 @@ else if (nav === "assignedtasks") {
           justifyContent: "space-between"
         }}>
           <DashboardTitle style={{ color: "#2563eb", fontWeight: 800, letterSpacing: 1, fontSize: 26 }}>
-             RLA TMS
+            RLA TMS
           </DashboardTitle>
           <div style={{ position: "relative" }}>
             <FaBell

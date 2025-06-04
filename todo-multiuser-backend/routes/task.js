@@ -160,6 +160,11 @@ router.delete('/:taskId', auth, async (req, res) => {
       return res.status(403).json({ message: 'Only the assigner can delete this task.' });
     }
 
+    // Find tasks and populate assigner's name
+    const tasks = await Task.find(/* ... */)
+      .populate('assignedBy', 'name username');
+
+
     await Task.findByIdAndDelete(req.params.taskId);
     res.json({ message: 'Task deleted' });
   } catch (err) {

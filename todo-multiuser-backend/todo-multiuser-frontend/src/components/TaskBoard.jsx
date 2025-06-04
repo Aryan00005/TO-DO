@@ -1,7 +1,6 @@
-import React from 'react';
 import TaskItem from './TaskItem';
 
-export default function TaskBoard({ tasks, onStatusChange, onDeleteTask, currentUser }) {
+export default function TaskBoard({ tasks, onStatusChange, onDeleteTask, currentUser, users }) {
   // Helper to get the assignee's ID as a string
   const getAssigneeId = (task) => {
     if (!task) return '';
@@ -48,6 +47,7 @@ export default function TaskBoard({ tasks, onStatusChange, onDeleteTask, current
                 canEdit={canEdit}
                 canDelete={canDelete}
                 onDelete={onDeleteTask}
+                users={users} // Pass users here!
               />
             );
           })}
