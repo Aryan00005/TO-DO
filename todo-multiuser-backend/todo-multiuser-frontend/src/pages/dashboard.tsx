@@ -48,6 +48,7 @@ interface Task {
   priority: number;
   dueDate?: string;
   completionRemark?: string;
+  company?: string;
 }
 
 interface Notification {
@@ -83,6 +84,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [title, setTitle] = useState("");
+  const [company, setCompany] = useState("");
   const [description, setDescription] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
   const [priority, setPriority] = useState(3);
@@ -104,6 +106,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   // For calendar: initialize selectedDate as today's date string (day number)
   const [selectedDate, setSelectedDate] = useState<string>(today.getDate().toString());
+
+  // --- Filter/Sort State ---
+  const [kanbanSort, setKanbanSort] = useState<"none" | "priority" | "date">("none");
+  const [assignedSort, setAssignedSort] = useState<"none" | "priority" | "date">("none");
+
+  // --- Edit Task State ---
+  const [editTask, setEditTask] = useState<Task | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editCompany, setEditCompany] = useState("");
+  const [editAssignedTo, setEditAssignedTo] = useState("");
+  const [editPriority, setEditPriority] = useState(3);
+  const [editDueDate, setEditDueDate] = useState("");
 
   // Prevent rendering until user is loaded
   if (!user || !user._id) {
@@ -152,6 +168,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           assignedTo,
           priority,
           dueDate,
+          company,
         },
         {
           headers: {
@@ -164,6 +181,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       setAssignedTo("");
       setPriority(3);
       setDueDate("");
+      setCompany("");
       // Refresh tasks
       const [assignedToRes, assignedByRes] = await Promise.all([
         axios.get(`/tasks/assignedTo/${user._id}`, { headers: { Authorization: `Bearer ${token}` } }),
@@ -260,6 +278,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     kanbanTasks[task.status] = kanbanTasks[task.status] || [];
     kanbanTasks[task.status].push(task);
   });
+
+  // --- Sorting Helper ---
+  const sortTasks = (tasks: Task[], sortBy: "none" | "priority" | "date") => {
+    if (sortBy === "priority") {
+      return [...tasks].sort((a, b) => b.priority - a.priority);
+    }
+    if (sortBy === "date") {
+      return [...tasks].sort((a, b) => {
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      });
+    }
+    return tasks;
+  };
 
   // --- Drag and Drop for Kanban ---
   const onDragEnd = async (result: DropResult) => {
@@ -392,120 +425,142 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
       </div>
     );
-  }
-else if (nav === "kanban") {
-  content = (
-    <DragDropContext onDragEnd={onDragEnd}>
-      <div style={{ display: "flex", gap: 24, alignItems: "flex-start", overflowX: "auto" }}>
-        {kanbanColumns.map(col => (
-          <Droppable droppableId={col} key={col}>
-            {(provided: DroppableProvided, snapshot: DroppableStateSnapshot) => (
-              <div
-                ref={provided.innerRef}
-                {...provided.droppableProps}
-                style={{
-                  minWidth: 260,
-                  background: "#f9fafb",
-                  borderRadius: 12,
-                  padding: 16,
-                  boxShadow: "0 2px 12px #c7d2fe22",
-                  minHeight: 200
-                }}
-              >
-                <div style={{ fontWeight: 700, color: statusColors[col], marginBottom: 12, fontSize: 18 }}>
-                  {col}
-                </div>
-                {kanbanTasks[col].length === 0 && (
-                  <div style={{ color: "#64748b", fontSize: 14 }}>No tasks</div>
-                )}
-                {kanbanTasks[col].map((task, idx) => {
-                  // Only the assignee can delete the task
-                  const isAssignee = task.assignedTo === user._id;
-                  return (
-                    <Draggable draggableId={task._id} index={idx} key={task._id}>
-                      {(provided: DraggableProvided, snapshot: DraggableStateSnapshot) => (
-                        <TaskCard
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          {...provided.dragHandleProps}
-                          style={{
-                            background: isOverdue(task) ? "#fff0f0" : "#fff",
-                            border: isOverdue(task) ? "2px solid #ef4444" : "1.5px solid #dbeafe",
-                            borderRadius: 10,
-                            marginBottom: 12,
-                            boxShadow: "0 1px 4px #c7d2fe22",
-                            position: "relative",
-                            ...provided.draggableProps.style
-                          }}
-                        >
-                          <TaskTitle style={{ fontWeight: 600, fontSize: 16, color: "#22223b" }}>
-                            {task.title}
-                            <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
-                          </TaskTitle>
-                          <TaskDesc style={{ color: "#475569", marginBottom: 8 }}>{task.description}</TaskDesc>
-                          {/* --- NEW: Show assigner's name --- */}
-                          {task.assignedBy && (
-                            <div style={{ color: "#64748b", fontSize: 13, marginBottom: 4 }}>
-                              Assigned by: <strong>
-                                {task.assignedBy.name || task.assignedBy.username || "Unknown"}
-                              </strong>
-                            </div>
-                          )}
-                          {/* --- END NEW --- */}
-                          {task.dueDate && (
-                            <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
-                              <FaCalendar style={{ marginRight: 4 }} />
-                              Due: {new Date(task.dueDate).toLocaleDateString()}
-                            </div>
-                          )}
-                          {isOverdue(task) && (
-                            <div style={{ color: "#ef4444", fontWeight: 700, marginBottom: 4 }}>
-                              Overdue!
-                            </div>
-                          )}
-                          <Status $status={task.status} style={{
-                            fontWeight: 600,
-                            background: statusColors[task.status] + "22",
-                            color: statusColors[task.status],
-                            borderRadius: 8,
-                            padding: "2px 10px",
-                            display: "inline-block",
-                            marginBottom: 8
-                          }}>
-                            {task.status}
-                          </Status>
-                          {/* Delete button for assignee only */}
-                          {isAssignee && (
-                            <Button
+  } else if (nav === "kanban") {
+    content = (
+      <div>
+        {/* FILTER BUTTONS FOR KANBAN */}
+        <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+          <span style={{ fontWeight: 600 }}>Sort by:</span>
+          <Button
+            type="button"
+            style={{ background: kanbanSort === "none" ? "#2563eb" : "#e5e7eb", color: kanbanSort === "none" ? "#fff" : "#222" }}
+            onClick={() => setKanbanSort("none")}
+          >None</Button>
+          <Button
+            type="button"
+            style={{ background: kanbanSort === "priority" ? "#2563eb" : "#e5e7eb", color: kanbanSort === "priority" ? "#fff" : "#222" }}
+            onClick={() => setKanbanSort("priority")}
+          >Priority</Button>
+          <Button
+            type="button"
+            style={{ background: kanbanSort === "date" ? "#2563eb" : "#e5e7eb", color: kanbanSort === "date" ? "#fff" : "#222" }}
+            onClick={() => setKanbanSort("date")}
+          >Due Date</Button>
+        </div>
+        {/* KANBAN BOARD */}
+        <DragDropContext onDragEnd={onDragEnd}>
+          <div style={{ display: "flex", gap: 24, alignItems: "flex-start", overflowX: "auto" }}>
+            {kanbanColumns.map(col => (
+              <Droppable droppableId={col} key={col}>
+                {(provided: DroppableProvided, _snapshot: DroppableStateSnapshot) => (
+                  <div
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    style={{
+                      minWidth: 260,
+                      background: "#f9fafb",
+                      borderRadius: 12,
+                      padding: 16,
+                      boxShadow: "0 2px 12px #c7d2fe22",
+                      minHeight: 200
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, color: statusColors[col], marginBottom: 12, fontSize: 18 }}>
+                      {col}
+                    </div>
+                    {kanbanTasks[col].length === 0 && (
+                      <div style={{ color: "#64748b", fontSize: 14 }}>No tasks</div>
+                    )}
+                    {sortTasks(kanbanTasks[col], kanbanSort).map((task, idx) => {
+                      const isAssignee = task.assignedTo === user._id;
+                      return (
+                        <Draggable draggableId={task._id} index={idx} key={task._id}>
+                          {(provided: DraggableProvided, _snapshot: DraggableStateSnapshot) => (
+                            <TaskCard
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
                               style={{
-                                background: "#ef4444",
-                                color: "#fff",
-                                marginTop: 8,
-                                padding: "4px 12px",
-                                borderRadius: 6,
-                                border: "none",
-                                cursor: "pointer",
-                                float: "right"
+                                background: isOverdue(task) ? "#fff0f0" : "#fff",
+                                border: isOverdue(task) ? "2px solid #ef4444" : "1.5px solid #dbeafe",
+                                borderRadius: 10,
+                                marginBottom: 12,
+                                boxShadow: "0 1px 4px #c7d2fe22",
+                                position: "relative",
+                                ...provided.draggableProps.style
                               }}
-                              onClick={() => handleDeleteTask(task._id)}
                             >
-                              Delete
-                            </Button>
+                              <TaskTitle style={{ fontWeight: 600, fontSize: 16, color: "#22223b" }}>
+                                {task.title}
+                                <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
+                              </TaskTitle>
+                              <TaskDesc style={{ color: "#475569", marginBottom: 8 }}>{task.description}</TaskDesc>
+                              {task.company && (
+                                <div style={{ fontSize: 14, color: "#555", marginBottom: 3 }}>
+                                  <b>Company:</b> {task.company}
+                                </div>
+                              )}
+                              {task.assignedBy && (
+                                <div style={{ color: "#64748b", fontSize: 13, marginBottom: 4 }}>
+                                  <b>Assigned By:</b>{" "}
+                                  {typeof task.assignedBy === "object" && task.assignedBy !== null
+                                    ? task.assignedBy.name
+                                    : users.find(u => u._id === task.assignedBy)?.name || "Unknown"}
+                                </div>
+                              )}
+                              {task.dueDate && (
+                                <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
+                                  <FaCalendar style={{ marginRight: 4 }} />
+                                  Due: {new Date(task.dueDate).toLocaleDateString()}
+                                </div>
+                              )}
+                              {isOverdue(task) && (
+                                <div style={{ color: "#ef4444", fontWeight: 700, marginBottom: 4 }}>
+                                  Overdue!
+                                </div>
+                              )}
+                              <Status $status={task.status} style={{
+                                fontWeight: 600,
+                                background: statusColors[task.status] + "22",
+                                color: statusColors[task.status],
+                                borderRadius: 8,
+                                padding: "2px 10px",
+                                display: "inline-block",
+                                marginBottom: 8
+                              }}>
+                                {task.status}
+                              </Status>
+                              {isAssignee && (
+                                <Button
+                                  style={{
+                                    background: "#ef4444",
+                                    color: "#fff",
+                                    marginTop: 8,
+                                    padding: "4px 12px",
+                                    borderRadius: 6,
+                                    border: "none",
+                                    cursor: "pointer",
+                                    float: "right"
+                                  }}
+                                  onClick={() => handleDeleteTask(task._id)}
+                                >
+                                  Delete
+                                </Button>
+                              )}
+                            </TaskCard>
                           )}
-                        </TaskCard>
-                      )}
-                    </Draggable>
-                  );
-                })}
-                {provided.placeholder}
-              </div>
-            )}
-          </Droppable>
-        ))}
+                        </Draggable>
+                      );
+                    })}
+                    {provided.placeholder}
+                  </div>
+                )}
+              </Droppable>
+            ))}
+          </div>
+        </DragDropContext>
       </div>
-    </DragDropContext>
-  );
-
+    );
   } else if (nav === "assignedtasks") {
     // Kanban columns for assigned tasks
     const assignedKanbanColumns = ["Not Started", "Working on it", "Stuck", "Done"];
@@ -524,6 +579,25 @@ else if (nav === "kanban") {
       <div style={{ background: "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18 }}>
           <FaUser style={{ marginRight: 8 }} /> Tasks You Assigned
+        </div>
+        {/* FILTER BUTTONS FOR ASSIGNED TASKS */}
+        <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+          <span style={{ fontWeight: 600 }}>Sort by:</span>
+          <Button
+            type="button"
+            style={{ background: assignedSort === "none" ? "#2563eb" : "#e5e7eb", color: assignedSort === "none" ? "#fff" : "#222" }}
+            onClick={() => setAssignedSort("none")}
+          >None</Button>
+          <Button
+            type="button"
+            style={{ background: assignedSort === "priority" ? "#2563eb" : "#e5e7eb", color: assignedSort === "priority" ? "#fff" : "#222" }}
+            onClick={() => setAssignedSort("priority")}
+          >Priority</Button>
+          <Button
+            type="button"
+            style={{ background: assignedSort === "date" ? "#2563eb" : "#e5e7eb", color: assignedSort === "date" ? "#fff" : "#222" }}
+            onClick={() => setAssignedSort("date")}
+          >Due Date</Button>
         </div>
         <div style={{ display: "flex", gap: 24, alignItems: "flex-start", overflowX: "auto" }}>
           {assignedKanbanColumns.map(col => (
@@ -544,7 +618,7 @@ else if (nav === "kanban") {
               {assignedKanbanTasks[col].length === 0 && (
                 <div style={{ color: "#64748b", fontSize: 14 }}>No tasks</div>
               )}
-              {assignedKanbanTasks[col].map(task => (
+              {sortTasks(assignedKanbanTasks[col], assignedSort).map(task => (
                 <TaskCard key={task._id} style={{
                   background: isOverdue(task) ? "#fff0f0" : "#fff",
                   border: isOverdue(task) ? "2px solid #ef4444" : "1.5px solid #dbeafe",
@@ -553,11 +627,42 @@ else if (nav === "kanban") {
                   boxShadow: "0 1px 4px #c7d2fe22",
                   position: "relative"
                 }}>
+                  {/* --- EDIT BUTTON --- */}
+                  <Button
+                    style={{
+                      background: "#2563eb",
+                      color: "#fff",
+                      position: "absolute",
+                      top: 8,
+                      right: 8,
+                      padding: "2px 10px",
+                      borderRadius: 6,
+                      fontSize: 13,
+                      zIndex: 2
+                    }}
+                    onClick={() => {
+                      setEditTask(task);
+                      setEditTitle(task.title);
+                      setEditDescription(task.description);
+                      setEditCompany(task.company || "");
+                      setEditAssignedTo(typeof task.assignedTo === "object" ? task.assignedTo._id : task.assignedTo);
+                      setEditPriority(task.priority);
+                      setEditDueDate(task.dueDate ? task.dueDate.slice(0, 10) : "");
+                      setShowEditModal(true);
+                    }}
+                  >
+                    Edit
+                  </Button>
                   <TaskTitle>
                     {task.title}
                     <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
                   </TaskTitle>
                   <TaskDesc>{task.description}</TaskDesc>
+                  {task.company && (
+                    <div style={{ fontSize: 14, color: "#555", marginBottom: 3 }}>
+                      <b>Company:</b> {task.company}
+                    </div>
+                  )}
                   <div>
                     <b>Assigned To:</b> {
                       typeof task.assignedTo === "object"
@@ -643,6 +748,11 @@ else if (nav === "kanban") {
                 <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
               </TaskTitle>
               <TaskDesc style={{ color: "#475569", marginBottom: 8 }}>{task.description}</TaskDesc>
+              {task.company && (
+                <div style={{ fontSize: 14, color: "#555", marginBottom: 3 }}>
+                  <b>Company:</b> {task.company}
+                </div>
+              )}
               {task.dueDate && (
                 <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
                   <FaCalendar style={{ marginRight: 4 }} />
@@ -694,6 +804,15 @@ else if (nav === "kanban") {
           placeholder="Task Title"
           required
         />
+        <Label>
+          Company:
+          <Input
+            type="text"
+            value={company}
+            onChange={e => setCompany(e.target.value)}
+            placeholder="Company Name"
+          />
+        </Label>
         <Label style={{ color: "#22223b" }}>Description</Label>
         <Input
           value={description}
@@ -726,87 +845,148 @@ else if (nav === "kanban") {
       </Form>
     );
   } else if (nav === "list") {
-  content = (
-    <div>
-      {tasks.length === 0 && <div>No tasks assigned to you yet.</div>}
-      {tasks.map(task => (
-        <TaskCard key={task._id} style={{
-          background: isOverdue(task) ? "#fff0f0" : "#fff",
-          border: isOverdue(task) ? "2px solid #ef4444" : "1.5px solid #dbeafe",
-          borderRadius: 10,
-          marginBottom: 12,
-          boxShadow: "0 1px 4px #c7d2fe22"
-        }}>
-          <TaskTitle>
-            {task.title}
-            <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
-          </TaskTitle>
-          <TaskDesc>{task.description}</TaskDesc>
-          {/* --- NEW: Show assigner's name --- */}
-          {task.assignedBy && (
-            <div style={{ color: "#64748b", fontSize: 13, marginBottom: 4 }}>
-              Assigned by: <strong>
-                {task.assignedBy.name || task.assignedBy.username || "Unknown"}
-              </strong>
-            </div>
-          )}
-          {/* --- END NEW --- */}
-          {task.dueDate && (
-            <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
-              <FaCalendar style={{ marginRight: 4 }} />
-              Due: {new Date(task.dueDate).toLocaleDateString()}
-            </div>
-          )}
-          {isOverdue(task) && (
-            <div style={{ color: "#ef4444", fontWeight: 700, marginBottom: 4 }}>
-              Overdue!
-            </div>
-          )}
-          <Status $status={task.status}>
-            Status: {task.status}
-          </Status>
-          {task.completionRemark && (
-            <div>
-              <b>Remark:</b> {task.completionRemark}
-            </div>
-          )}
-          <TaskActions>
-            {task.status !== "Done" && (
-              completingTaskId === task._id ? (
-                <div>
-                  <Input
-                    value={remarkInput}
-                    onChange={e => setRemarkInput(e.target.value)}
-                    placeholder="Completion remark (optional)"
-                  />
+    content = (
+      <div>
+        {tasks.length === 0 && <div>No tasks assigned to you yet.</div>}
+        {tasks.map(task => (
+          <TaskCard key={task._id} style={{
+            background: isOverdue(task) ? "#fff0f0" : "#fff",
+            border: isOverdue(task) ? "2px solid #ef4444" : "1.5px solid #dbeafe",
+            borderRadius: 10,
+            marginBottom: 12,
+            boxShadow: "0 1px 4px #c7d2fe22"
+          }}>
+            <TaskTitle>
+              {task.title}
+              <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
+            </TaskTitle>
+            <TaskDesc>{task.description}</TaskDesc>
+            {task.company && (
+              <div style={{ fontSize: 14, color: "#555", marginBottom: 3 }}>
+                <b>Company:</b> {task.company}
+              </div>
+            )}
+            {task.assignedBy && (
+              <div style={{ color: "#64748b", fontSize: 13, marginBottom: 4 }}>
+                <b>Assignee:</b>{" "}
+                {typeof task.assignedTo === "object" && task.assignedTo !== null
+                  ? task.assignedTo.name
+                  : users.find(u => u._id === task.assignedTo)?.name || "Unknown"}
+              </div>
+            )}
+            {task.dueDate && (
+              <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
+                <FaCalendar style={{ marginRight: 4 }} />
+                Due: {new Date(task.dueDate).toLocaleDateString()}
+              </div>
+            )}
+            {isOverdue(task) && (
+              <div style={{ color: "#ef4444", fontWeight: 700, marginBottom: 4 }}>
+                Overdue!
+              </div>
+            )}
+            <Status $status={task.status}>
+              Status: {task.status}
+            </Status>
+            {task.completionRemark && (
+              <div>
+                <b>Remark:</b> {task.completionRemark}
+              </div>
+            )}
+            <TaskActions>
+              {task.status !== "Done" && (
+                completingTaskId === task._id ? (
+                  <div>
+                    <Input
+                      value={remarkInput}
+                      onChange={e => setRemarkInput(e.target.value)}
+                      placeholder="Completion remark (optional)"
+                    />
+                    <Button
+                      style={{ background: "#16a34a" }}
+                      onClick={() => handleStatus(task._id, "Done", remarkInput)}
+                    >
+                      Submit Remark & Complete
+                    </Button>
+                    <Button
+                      style={{ background: "#b5179e", marginLeft: 8 }}
+                      onClick={() => { setCompletingTaskId(null); setRemarkInput(""); }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
                   <Button
                     style={{ background: "#16a34a" }}
-                    onClick={() => handleStatus(task._id, "Done", remarkInput)}
+                    onClick={() => setCompletingTaskId(task._id)}
                   >
-                    Submit Remark & Complete
+                    Mark Completed
                   </Button>
-                  <Button
-                    style={{ background: "#b5179e", marginLeft: 8 }}
-                    onClick={() => { setCompletingTaskId(null); setRemarkInput(""); }}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  style={{ background: "#16a34a" }}
-                  onClick={() => setCompletingTaskId(task._id)}
-                >
-                  Mark Completed
-                </Button>
-              )
-            )}
-          </TaskActions>
-        </TaskCard>
-      ))}
+                )
+              )}
+            </TaskActions>
+          </TaskCard>
+        ))}
+      </div>
+    );
+  }
+
+  // --- EDIT MODAL ---
+  const editModal = showEditModal && (
+    <div style={{
+      position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh",
+      background: "#0008", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center"
+    }}>
+      <div style={{ background: "#fff", padding: 32, borderRadius: 16, minWidth: 320, boxShadow: "0 4px 24px #0004" }}>
+        <h3 style={{ marginBottom: 16, color: "#2563eb" }}>Edit Task</h3>
+        <form onSubmit={async e => {
+          e.preventDefault();
+          if (!editTask) return;
+          try {
+            const token = sessionStorage.getItem("jwt-token");
+            await axios.patch(`/tasks/${editTask._id}`, {
+              title: editTitle,
+              description: editDescription,
+              company: editCompany,
+              assignedTo: editAssignedTo,
+              priority: editPriority,
+              dueDate: editDueDate
+            }, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            // Refresh assigned tasks
+            const res = await axios.get(`/tasks/assignedBy/${user._id}`);
+            setAssignedTasks(res.data);
+            setShowEditModal(false);
+          } catch (err: any) {
+            alert("Failed to update task: " + (err.response?.data?.message || err.message));
+          }
+        }}>
+          <Label>Title</Label>
+          <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} required />
+          <Label>Description</Label>
+          <Input value={editDescription} onChange={e => setEditDescription(e.target.value)} required />
+          <Label>Company</Label>
+          <Input value={editCompany} onChange={e => setEditCompany(e.target.value)} />
+          <Label>Assign To</Label>
+          <Select value={editAssignedTo} onChange={e => setEditAssignedTo(e.target.value)} required>
+            <option value="">Select user...</option>
+            {users.map(u => (
+              <option key={u._id} value={u._id}>{u.name}</option>
+            ))}
+          </Select>
+          <Label>Priority</Label>
+          <div style={{ marginBottom: 8 }}>{renderStars(editPriority, setEditPriority)}</div>
+          <Label>Due Date</Label>
+          <Input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)} />
+          <div style={{ marginTop: 16, display: "flex", gap: 12 }}>
+            <Button type="submit" style={{ background: "#2563eb" }}>Save</Button>
+            <Button type="button" style={{ background: "#b5179e" }} onClick={() => setShowEditModal(false)}>Cancel</Button>
+          </div>
+        </form>
+      </div>
     </div>
   );
-}
 
   // Notification bell and dropdown
   const unreadCount = notifications.filter(n => !n.isRead).length;
@@ -956,6 +1136,7 @@ else if (nav === "kanban") {
             )}
           </div>
         </TopBar>
+        {editModal}
         {content}
       </Main>
     </Layout>

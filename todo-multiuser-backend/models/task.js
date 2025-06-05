@@ -12,7 +12,8 @@ const taskSchema = new mongoose.Schema({
   },
   priority: { type: Number, min: 1, max: 5, default: 3 },
   completionRemark: { type: String, default: "" },
-  dueDate: { type: Date }, 
+  dueDate: { type: Date },
+  company: { type: String }, // <-- Add this line
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
