@@ -29,6 +29,8 @@ import {
   TaskTitle,
   TopBar
 } from "../components/StyledComponents";
+import SuperAdminView from '../components/SuperAdminView';
+
 
 // Types
 interface User {
@@ -36,6 +38,7 @@ interface User {
   name: string;
   email: string;
   avatarUrl?: string;
+  role?: string; // Added role here for superadmin logic
 }
 
 interface Task {
@@ -95,6 +98,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
   const [assignedTasks, setAssignedTasks] = useState<Task[]>([]);
 
+
   // Avatar
   const [avatar, setAvatar] = useState<string | null>(user?.avatarUrl || "");
   const [showAvatarEditor, setShowAvatarEditor] = useState(false);
@@ -121,7 +125,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [editPriority, setEditPriority] = useState(3);
   const [editDueDate, setEditDueDate] = useState("");
 
-  // Prevent rendering until user is loaded
+  // Prevent rendering until user is loader
   if (!user || !user._id) {
     return <div>Loading user...</div>;
   }
@@ -809,7 +813,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           <Input
             type="text"
             value={company}
-            onChange={e => setCompany(e.target.value)}
+            onChange={(e: { target: { value: React.SetStateAction<string>; }; }) => setCompany(e.target.value)}
             placeholder="Company Name"
           />
         </Label>
@@ -837,7 +841,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         <Input
           type="date"
           value={dueDate}
-          onChange={e => setDueDate(e.target.value)}
+          onChange={(e: { target: { value: React.SetStateAction<string>; }; }) => setDueDate(e.target.value)}
           required
           style={{ maxWidth: 220 }}
         />
@@ -899,7 +903,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   <div>
                     <Input
                       value={remarkInput}
-                      onChange={e => setRemarkInput(e.target.value)}
+                      onChange={(e: { target: { value: React.SetStateAction<string>; }; }) => setRemarkInput(e.target.value)}
                       placeholder="Completion remark (optional)"
                     />
                     <Button
@@ -963,13 +967,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           }
         }}>
           <Label>Title</Label>
-          <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} required />
+          <Input value={editTitle} onChange={(e: { target: { value: React.SetStateAction<string>; }; }) => setEditTitle(e.target.value)} required />
           <Label>Description</Label>
-          <Input value={editDescription} onChange={e => setEditDescription(e.target.value)} required />
+          <Input value={editDescription} onChange={(e: { target: { value: React.SetStateAction<string>; }; }) => setEditDescription(e.target.value)} required />
           <Label>Company</Label>
-          <Input value={editCompany} onChange={e => setEditCompany(e.target.value)} />
+          <Input value={editCompany} onChange={(e: { target: { value: React.SetStateAction<string>; }; }) => setEditCompany(e.target.value)} />
           <Label>Assign To</Label>
-          <Select value={editAssignedTo} onChange={e => setEditAssignedTo(e.target.value)} required>
+          <Select value={editAssignedTo} onChange={(e: { target: { value: React.SetStateAction<string>; }; }) => setEditAssignedTo(e.target.value)} required>
             <option value="">Select user...</option>
             {users.map(u => (
               <option key={u._id} value={u._id}>{u.name}</option>
@@ -978,7 +982,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           <Label>Priority</Label>
           <div style={{ marginBottom: 8 }}>{renderStars(editPriority, setEditPriority)}</div>
           <Label>Due Date</Label>
-          <Input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)} />
+          <Input type="date" value={editDueDate} onChange={(e: { target: { value: React.SetStateAction<string>; }; }) => setEditDueDate(e.target.value)} />
           <div style={{ marginTop: 16, display: "flex", gap: 12 }}>
             <Button type="submit" style={{ background: "#2563eb" }}>Save</Button>
             <Button type="button" style={{ background: "#b5179e" }} onClick={() => setShowEditModal(false)}>Cancel</Button>
@@ -1137,6 +1141,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           </div>
         </TopBar>
         {editModal}
+        {content}
+        {/* SUPERADMIN VIEW: only visible to superadmin */}
+        {user?.role === 'superadmin' && <SuperAdminView />}
+
+        {/* Dashboard Content */}
         {content}
       </Main>
     </Layout>

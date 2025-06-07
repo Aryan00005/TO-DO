@@ -13,6 +13,9 @@ mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('MongoDB connected'))
     .catch(err => console.error('MongoDB connection error:', err));
 
+const superadminRoutes = require('./routes/superadmin');
+app.use('/api/superadmin', superadminRoutes);
+
 // Import and use auth routes
 const authRoutes = require('./routes/auth');
 app.use('/api/auth', authRoutes);

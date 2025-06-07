@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import axios from "../api/axios.ts";
+import axios from "../api/axios";
 import { useNavigate, Link } from "react-router-dom";
 import styled from "styled-components";
 import { FaUserCircle } from "react-icons/fa";
