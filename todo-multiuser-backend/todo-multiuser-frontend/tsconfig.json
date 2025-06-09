@@ -1,5 +1,19 @@
 {
-  "files": [],
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["DOM", "DOM.Iterable", "ES2020"],
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "jsx": "react-jsx",                // Enable React 17+ JSX transform
+    "strict": true,                    // Enable all strict type-checking options
+    "esModuleInterop": true,           // Allow default imports from CommonJS
+    "skipLibCheck": true,              // Skip type checking of declaration files
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,         // Allow importing .json files
+    "isolatedModules": true,           // Required for Vite/React
+    "noEmit": true                     // Don't emit output (let Vite handle it)
+  },
+  "include": ["src"],                  // Include your source files
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
