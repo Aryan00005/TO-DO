@@ -39,6 +39,7 @@ interface User {
 }
 
 interface Task {
+  stuckReason: string;
   _id: string;
   title: string;
   description: string;
@@ -296,22 +297,33 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   // --- Drag and Drop for Kanban ---
   const onDragEnd = async (result: DropResult) => {
-    if (!result.destination) return;
-    const sourceCol = result.source.droppableId;
-    const destCol = result.destination.droppableId;
-    if (sourceCol === destCol && result.source.index === result.destination.index) return;
+  if (!result.destination) return;
+  const sourceCol = result.source.droppableId;
+  const destCol = result.destination.droppableId;
 
-    const sourceTasks = Array.from(kanbanTasks[sourceCol]);
-    const [movedTask] = sourceTasks.splice(result.source.index, 1);
+  const sourceTasks = Array.from(kanbanTasks[sourceCol]);
+  const [movedTask] = sourceTasks.splice(result.source.index, 1);
 
-    // Move to new column/status
-    movedTask.status = destCol;
-    kanbanTasks[sourceCol] = sourceTasks;
-    kanbanTasks[destCol] = [...kanbanTasks[destCol], movedTask];
+  movedTask.status = destCol;
 
-    // Update backend
-    await handleStatus(movedTask._id, destCol, movedTask.completionRemark || "");
-  };
+  if (destCol === 'Stuck') {
+    const reason = prompt('Why is this task stuck?');
+    if (reason === null) return; // user cancelled
+    movedTask.stuckReason = reason;
+  }
+
+  // Update backend
+  await axios.patch(`/tasks/${movedTask._id}/status`, {
+    status: destCol,
+    stuckReason: movedTask.stuckReason
+  });
+
+  // Update local state
+  kanbanTasks[sourceCol] = sourceTasks;
+  kanbanTasks[destCol] = [...kanbanTasks[destCol], movedTask];
+  setTasks(Object.values(kanbanTasks).flat());
+};
+
 
   // --- Profile Avatar Upload ---
   const handleAvatarSave = (img: string | null) => {
@@ -495,7 +507,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                 <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
                               </TaskTitle>
                               <TaskDesc style={{ color: "#475569", marginBottom: 8 }}>{task.description}</TaskDesc>
-                              {task.company && (
+                              {task.status === 'Stuck' && task.stuckReason && (
+                              <div style={{ color: '#ef4444', marginTop: 8 }}>
+                                <b>Reason for stuck:</b> {task.stuckReason}
+                                  </div>
+                             )} {task.company && (
                                 <div style={{ fontSize: 14, color: "#555", marginBottom: 3 }}>
                                   <b>Company:</b> {task.company}
                                 </div>
@@ -530,23 +546,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                               }}>
                                 {task.status}
                               </Status>
-                              {isAssignee && (
-                                <Button
-                                  style={{
-                                    background: "#ef4444",
-                                    color: "#fff",
-                                    marginTop: 8,
-                                    padding: "4px 12px",
-                                    borderRadius: 6,
-                                    border: "none",
-                                    cursor: "pointer",
-                                    float: "right"
-                                  }}
-                                  onClick={() => handleDeleteTask(task._id)}
-                                >
-                                  Delete
-                                </Button>
-                              )}
+             
                             </TaskCard>
                           )}
                         </Draggable>
@@ -627,6 +627,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   boxShadow: "0 1px 4px #c7d2fe22",
                   position: "relative"
                 }}>
+                  
                   {/* --- EDIT BUTTON --- */}
                   <Button
                     style={{
@@ -653,6 +654,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   >
                     Edit
                   </Button>
+
                   <TaskTitle>
                     {task.title}
                     <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
@@ -662,6 +664,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     <div style={{ fontSize: 14, color: "#555", marginBottom: 3 }}>
                       <b>Company:</b> {task.company}
                     </div>
+                  )}
+                  {task.status === 'Stuck' && task.stuckReason && (
+                  <div>
+                     <b>Reason for stuck:</b> {task.stuckReason}
+                  </div>
                   )}
                   <div>
                     <b>Assigned To:</b> {
@@ -692,6 +699,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   }}>
                     {task.status}
                   </Status>
+
+                    <Button
+                        style={{
+                        background: "#ef4444",
+                        color: "#fff",
+                        marginTop: 8,
+                        padding: "4px 12px",
+                        borderRadius: 6,
+                        border: "none",
+                        cursor: "pointer",
+                        float: "right"
+                              }}
+                          onClick={() => handleDeleteTask(task._id)}
+                                >
+                        Delete
+                      </Button>
+
                   {task.completionRemark && (
                     <div>
                       <b>Remark:</b> {task.completionRemark}

@@ -15,7 +15,9 @@ const taskSchema = new mongoose.Schema({
   dueDate: { type: Date },
   company: { type: String }, // <-- Add this line
   createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  updatedAt: { type: Date, default: Date.now },
+  stuckReason: { type: String, default: '' }
+
 });
 
 module.exports = mongoose.model('Task', taskSchema);
