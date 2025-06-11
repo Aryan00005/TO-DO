@@ -40,5 +40,5 @@ app.use((err, req, res, next) => {
   res.status(500).send('Something broke!');
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5500;
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));

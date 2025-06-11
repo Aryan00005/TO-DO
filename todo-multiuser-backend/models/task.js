@@ -27,7 +27,9 @@ const taskSchema = new mongoose.Schema({
   dueDate: { type: Date },
   company: { type: String },
   createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  updatedAt: { type: Date, default: Date.now },
+  stuckReason: { type: String, default: '' }
+
 });
 
 // Fix OverwriteModelError by reusing model if it exists

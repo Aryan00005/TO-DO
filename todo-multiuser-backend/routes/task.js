@@ -95,7 +95,6 @@ for (const userId of trimmedAssignedTo) {
       dueDate: dueDateObj,
       company
     });
-
     await task.save();
     res.status(201).json({ message: 'Task created and assigned!', task });
   } catch (err) {
@@ -136,8 +135,8 @@ router.get('/assignedBy/:userId', auth, async (req, res) => {
   }
 });
 
-// Update task status (only assignee can update, supports completion remark)
-router.patch('/:taskId/status', auth, async (req, res) => {
+// Edit task (for assigner)
+router.patch('/:taskId', auth, async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.taskId)) {
       return res.status(400).json({ message: 'Invalid task ID format' });

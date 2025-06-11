@@ -38,6 +38,7 @@ interface User {
   role?: string;
 }
 interface Task {
+  stuckReason: string;
   _id: string;
   title: string;
   description: string;
@@ -557,7 +558,11 @@ const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
                                 <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
                               </TaskTitle>
                               <TaskDesc style={{ color: "#475569", marginBottom: 8 }}>{task.description}</TaskDesc>
-                              {task.company && (
+                              {task.status === 'Stuck' && task.stuckReason && (
+                              <div style={{ color: '#ef4444', marginTop: 8 }}>
+                                <b>Reason for stuck:</b> {task.stuckReason}
+                                  </div>
+                             )} {task.company && (
                                 <div style={{ fontSize: 14, color: "#555", marginBottom: 3 }}>
                                   <b>Company:</b> {task.company}
                                 </div>
@@ -592,23 +597,7 @@ const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
                               }}>
                                 {task.status}
                               </Status>
-                              {isAssignee && (
-                                <Button
-                                  style={{
-                                    background: "#ef4444",
-                                    color: "#fff",
-                                    marginTop: 8,
-                                    padding: "4px 12px",
-                                    borderRadius: 6,
-                                    border: "none",
-                                    cursor: "pointer",
-                                    float: "right"
-                                  }}
-                                  onClick={() => handleDeleteTask(task._id)}
-                                >
-                                  Delete
-                                </Button>
-                              )}
+             
                             </TaskCard>
                           )}
                         </Draggable>
@@ -690,6 +679,7 @@ const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
                   boxShadow: "0 1px 4px #c7d2fe22",
                   position: "relative"
                 }}>
+                  
                   {/* --- EDIT BUTTON --- */}
                   <Button
                     style={{
@@ -720,6 +710,7 @@ const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
                   >
                     Edit
                   </Button>
+
                   <TaskTitle>
                     {task.title}
                     <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
@@ -729,6 +720,11 @@ const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
                     <div style={{ fontSize: 14, color: "#555", marginBottom: 3 }}>
                       <b>Company:</b> {task.company}
                     </div>
+                  )}
+                  {task.status === 'Stuck' && task.stuckReason && (
+                  <div>
+                     <b>Reason for stuck:</b> {task.stuckReason}
+                  </div>
                   )}
                   <div>
                     <b>Assigned To:</b> {
@@ -759,6 +755,23 @@ const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
                   }}>
                     {task.status}
                   </Status>
+
+                    <Button
+                        style={{
+                        background: "#ef4444",
+                        color: "#fff",
+                        marginTop: 8,
+                        padding: "4px 12px",
+                        borderRadius: 6,
+                        border: "none",
+                        cursor: "pointer",
+                        float: "right"
+                              }}
+                          onClick={() => handleDeleteTask(task._id)}
+                                >
+                        Delete
+                      </Button>
+
                   {task.completionRemark && (
                     <div>
                       <b>Remark:</b> {task.completionRemark}
