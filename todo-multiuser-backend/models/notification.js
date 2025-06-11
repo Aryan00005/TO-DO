@@ -7,4 +7,5 @@ const notificationSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-module.exports = mongoose.model('Notification', notificationSchema);
+// Prevent OverwriteModelError in dev/hot reload
+module.exports = mongoose.models.Notification || mongoose.model('Notification', notificationSchema);

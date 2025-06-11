@@ -1,11 +1,12 @@
-import express from 'express';
-import Task from '../models/Task'; // Adjust path as needed
-import User from '../models/user';
+const express = require('express');
+const Task = require('../models/task.js'); // Use lowercase
+const User = require('../models/user.js');
+
 const router = express.Router();
 
 // Middleware to check if user is superadmin
-const isSuperadmin = (req: any, res: any, next: any) => {
-  if (req.user?.role !== 'superadmin') {
+const isSuperadmin = (req, res, next) => {
+  if (!req.user || req.user.role !== 'superadmin') {
     return res.status(403).json({ error: 'Access denied' });
   }
   next();
@@ -22,4 +23,4 @@ router.get('/users-tasks', isSuperadmin, async (req, res) => {
   }
 });
 
-export default router;
+module.exports = router;

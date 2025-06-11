@@ -1,12 +1,27 @@
 const express = require('express');
 const router = express.Router();
-const Notification = require('../models/notification');
+const Notification = require('../models/notification.js');
+const User = require('../models/user.js');
 const auth = require('../middleware/auth');
 
-// Get notifications for a user (sorted newest first)
+// Get notifications for a user (sorted newest first, show name in message if possible)
 router.get('/:userId', auth, async (req, res) => {
   try {
-    const notifications = await Notification.find({ user: req.params.userId }).sort({ createdAt: -1 });
+    let notifications = await Notification.find({ user: req.params.userId }).sort({ createdAt: -1 });
+
+    // Replace userId with username in the message, if present
+    notifications = await Promise.all(notifications.map(async (notif) => {
+      // If message contains a user ID, try to replace with the user's name
+      const userIdMatch = notif.message.match(/assigned to ([a-f\d]{24}) has been completed/i);
+      if (userIdMatch) {
+        const user = await User.findById(userIdMatch[1]);
+        if (user) {
+          notif.message = notif.message.replace(userIdMatch[1], user.name || user.userId);
+        }
+      }
+      return notif;
+    }));
+
     res.json(notifications);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -30,12 +45,7 @@ router.patch('/:notificationId/read', auth, async (req, res) => {
   }
 });
 
-// (Optional) Mark ALL notifications as read for a user now I need 3 more changes in the software,
-//  while seeing the notifications "Task assignes to 'hgvvcxjs1231d' has been completed", instead 
-// of name or username the user id shows in like I showed in the "" now and tehn the tasks in the my 
-// tasks section show in an order of when they are assigned, but they should be arrange according to priority, 
-// there shows that lastly I need to deploy this software, so 
-
+// Mark ALL notifications as read for a user
 router.patch('/all/:userId/read', auth, async (req, res) => {
   try {
     await Notification.updateMany({ user: req.params.userId, isRead: false }, { isRead: true });

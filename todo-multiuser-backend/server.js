@@ -13,19 +13,20 @@ mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('MongoDB connected'))
     .catch(err => console.error('MongoDB connection error:', err));
 
-const superadminRoutes = require('./routes/superadmin');
+// Import and use superadmin routes
+const superadminRoutes = require('./routes/superadmin.js');
 app.use('/api/superadmin', superadminRoutes);
 
 // Import and use auth routes
-const authRoutes = require('./routes/auth');
+const authRoutes = require('./routes/auth.js');
 app.use('/api/auth', authRoutes);
 
 // Import and use task routes
-const taskRoutes = require('./routes/task');
+const taskRoutes = require('./routes/task.js');
 app.use('/api/tasks', taskRoutes);
 
 // Import and use notification routes
-const notificationRoutes = require('./routes/notification');
+const notificationRoutes = require('./routes/notification.js');
 app.use('/api/notifications', notificationRoutes);
 
 // 404 handler (should be after all real routes)
@@ -41,4 +42,3 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
-

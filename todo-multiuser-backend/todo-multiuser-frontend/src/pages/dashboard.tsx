@@ -3,14 +3,13 @@ import {
   Draggable,
   Droppable,
   type DraggableProvided,
-  type DraggableStateSnapshot,
   type DroppableProvided,
-  type DroppableStateSnapshot,
   type DropResult
 } from "@hello-pangea/dnd";
 import React, { useEffect, useState } from "react";
 import AvatarEdit from "react-avatar-edit";
 import { FaBell, FaCalendar, FaCalendarAlt, FaChartBar, FaColumns, FaPlus, FaSignOutAlt, FaStar, FaTasks, FaUser } from "react-icons/fa";
+import Select from "react-select";
 import axios from "../api/axios";
 import {
   Button,
@@ -21,7 +20,6 @@ import {
   Main,
   NavItem,
   ProfileBox,
-  Select,
   Sidebar,
   Status, TaskActions,
   TaskCard,
@@ -31,16 +29,14 @@ import {
 } from "../components/StyledComponents";
 import SuperAdminView from '../components/SuperAdminView';
 
-
 // Types
 interface User {
   _id: string;
   name: string;
   email: string;
   avatarUrl?: string;
-  role?: string; // Added role here for superadmin logic
+  role?: string;
 }
-
 interface Task {
   _id: string;
   title: string;
@@ -53,20 +49,22 @@ interface Task {
   completionRemark?: string;
   company?: string;
 }
-
+type KanbanTasksType = {
+  [columnId: string]: Task[];
+};
 interface Notification {
   _id: string;
   message: string;
   isRead: boolean;
   createdAt: string;
 }
-
 interface DashboardProps {
   user: User | null
   onLogout: () => void;
 }
 
-// Helper: status colors
+
+
 const statusColors: Record<string, string> = {
   "Not Started": "#64748b",
   "Working on it": "#fbbf24",
@@ -74,7 +72,6 @@ const statusColors: Record<string, string> = {
   "Done": "#22c55e",
 };
 
-// Default logo SVG (replace with your own if you want)
 const defaultLogo = (
   <svg width="60" height="60" viewBox="0 0 60 60">
     <circle cx="30" cy="30" r="28" fill="#2563eb" />
@@ -89,7 +86,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [title, setTitle] = useState("");
   const [company, setCompany] = useState("");
   const [description, setDescription] = useState("");
-  const [assignedTo, setAssignedTo] = useState("");
+  const [assignedTo, setAssignedTo] = useState<string[]>([]);
   const [priority, setPriority] = useState(3);
   const [dueDate, setDueDate] = useState("");
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -97,47 +94,41 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [remarkInput, setRemarkInput] = useState("");
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
   const [assignedTasks, setAssignedTasks] = useState<Task[]>([]);
-
-
-  // Avatar
   const [avatar, setAvatar] = useState<string | null>(user?.avatarUrl || "");
   const [showAvatarEditor, setShowAvatarEditor] = useState(false);
 
-  // --- Calendar Dates ---
   const today = new Date();
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   const calendarDates = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-
-  // For calendar: initialize selectedDate as today's date string (day number)
   const [selectedDate, setSelectedDate] = useState<string>(today.getDate().toString());
 
-  // --- Filter/Sort State ---
   const [kanbanSort, setKanbanSort] = useState<"none" | "priority" | "date">("none");
   const [assignedSort, setAssignedSort] = useState<"none" | "priority" | "date">("none");
 
-  // --- Edit Task State ---
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editCompany, setEditCompany] = useState("");
-  const [editAssignedTo, setEditAssignedTo] = useState("");
+  const [editAssignedTo, setEditAssignedTo] = useState<string[]>([]);
+
   const [editPriority, setEditPriority] = useState(3);
   const [editDueDate, setEditDueDate] = useState("");
 
-  // Prevent rendering until user is loader
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+  const userOptions = users.map(u => ({ value: u._id, label: u.name }));
+
   if (!user || !user._id) {
     return <div>Loading user...</div>;
   }
 
-  // Fetch users for assignment dropdown
   useEffect(() => {
     axios.get("/auth/users")
       .then(res => setUsers(res.data))
       .catch(err => console.error("Error fetching users:", err));
   }, []);
 
-  // Fetch all tasks for analytics/kanban/calendar
   useEffect(() => {
     axios.get(`/tasks/assignedTo/${user._id}`)
       .then(res => setTasks(res.data))
@@ -152,62 +143,91 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
   }, [nav, user._id]);
 
-  // Fetch notifications for this user
   useEffect(() => {
     axios.get(`/notifications/${user._id}`)
       .then(res => setNotifications(res.data))
       .catch(err => console.error("Error fetching notifications:", err));
   }, [user._id, showNotifications]);
 
-  // Create a new task
-  const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    try {
-      const token = sessionStorage.getItem("jwt-token");
-      await axios.post(
-        "/tasks",
-        {
-          title,
-          description,
-          assignedTo,
-          priority,
-          dueDate,
-          company,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-      setTitle("");
-      setDescription("");
-      setAssignedTo("");
-      setPriority(3);
-      setDueDate("");
-      setCompany("");
-      // Refresh tasks
-      const [assignedToRes, assignedByRes] = await Promise.all([
-        axios.get(`/tasks/assignedTo/${user._id}`, { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get(`/tasks/assignedBy/${user._id}`, { headers: { Authorization: `Bearer ${token}` } })
-      ]);
-      const allTasks = [...assignedToRes.data, ...assignedByRes.data];
-      const uniqueTasks = Array.from(new Map(allTasks.map(t => [t._id, t])).values());
-      setTasks(uniqueTasks);
-      alert("Task assigned!");
-    } catch (err: unknown) {
-      if (err && typeof err === "object" && "response" in err) {
-        // @ts-ignore
-        alert(err.response?.data?.message || "An error occurred");
-      } else if (err instanceof Error) {
-        alert(err.message);
-      } else {
-        alert("An unknown error occurred");
-      }
-    }
-  };
+const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  try {
+    const token = sessionStorage.getItem("jwt-token");
 
-  // Update task status with remark
+    // Debug: log payload before sending
+    const payload = {
+      title,
+      description,
+      priority: Number(priority),
+      assignedTo, // should be an array of strings (user IDs)
+      company,
+      dueDate,
+    };
+    console.log("Creating task with payload:", payload);
+
+    const response = await axios.post(
+      `${API_BASE_URL}/tasks`,
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+    console.log("Task creation response:", response.data);
+
+    // Reset form fields
+    setTitle("");
+    setDescription("");
+    setAssignedTo([]);
+    setPriority(3);
+    setDueDate("");
+    setCompany("");
+
+    // Refresh tasks
+    const [assignedToRes, assignedByRes] = await Promise.all([
+      axios.get(`${API_BASE_URL}/tasks/assignedTo/${user._id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      axios.get(`${API_BASE_URL}/tasks/assignedBy/${user._id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    ]);
+    const allTasks = [...assignedToRes.data, ...assignedByRes.data];
+    const uniqueTasks = Array.from(new Map(allTasks.map(t => [t._id, t])).values());
+    setTasks(uniqueTasks);
+
+    alert("Task assigned!");
+  } catch (err: any) {
+    // Robust error handling and logging
+    console.error("API error:", err);
+
+    if (err && err.response) {
+      // Log full backend error response for debugging
+      console.error("Backend error response:", err.response);
+
+      // Alert the backend message if available
+      if (err.response.data && err.response.data.message) {
+        alert(`Backend error: ${err.response.data.message}`);
+      } else {
+        alert(`Backend error: ${JSON.stringify(err.response.data)}`);
+      }
+    } else if (err && err.request) {
+      // No response received from backend
+      console.error("No response received:", err.request);
+      alert("No response received from server");
+    } else if (err instanceof Error) {
+      // Axios or JS error
+      alert(err.message);
+    } else {
+      alert("An unknown error occurred");
+    }
+  }
+};
+
+
+
+
   const handleStatus = async (taskId: string, status: string, remark: string) => {
     try {
       await axios.patch(`/tasks/${taskId}/status`, { status, remark });
@@ -220,7 +240,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
   };
 
-  // Mark notification as read
   const markNotificationRead = async (notificationId: string) => {
     try {
       await axios.patch(`/notifications/${notificationId}/read`);
@@ -232,7 +251,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     } catch (err) { }
   };
 
-  // Logout handler
   const handleLogoutClick = () => {
     if (onLogout) {
       onLogout();
@@ -242,7 +260,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
   };
 
-  // priority colors for star
   const priorityColors = [
     "#22c55e", // 1 - green
     "#a3e635", // 2 - lime
@@ -264,7 +281,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     </span>
   );
 
-  // --- Analytics ---
   const totalTasks = tasks.length;
   const doneTasks = tasks.filter(t => t.status === "Done").length;
   const inProgressTasks = tasks.filter(t => t.status === "Working on it").length;
@@ -272,18 +288,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   // --- Kanban Columns ---
   const kanbanColumns = ["Not Started", "Working on it", "Stuck", "Done"];
-  const kanbanTasks: Record<string, Task[]> = {
-    "Not Started": [],
-    "Working on it": [],
-    "Stuck": [],
-    "Done": [],
+  const getKanbanTasks = (): KanbanTasksType => {
+    const columns: KanbanTasksType = {};
+    kanbanColumns.forEach(col => {
+      columns[col] = [];
+    });
+    tasks.forEach(task => {
+      if (columns[task.status]) columns[task.status].push(task);
+    });
+    return columns;
   };
-  tasks.forEach(task => {
-    kanbanTasks[task.status] = kanbanTasks[task.status] || [];
-    kanbanTasks[task.status].push(task);
-  });
+  const kanbanTasks = getKanbanTasks();
 
-  // --- Sorting Helper ---
   const sortTasks = (tasks: Task[], sortBy: "none" | "priority" | "date") => {
     if (sortBy === "priority") {
       return [...tasks].sort((a, b) => b.priority - a.priority);
@@ -299,39 +315,82 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   };
 
   // --- Drag and Drop for Kanban ---
-  const onDragEnd = async (result: DropResult) => {
-    if (!result.destination) return;
-    const sourceCol = result.source.droppableId;
-    const destCol = result.destination.droppableId;
-    if (sourceCol === destCol && result.source.index === result.destination.index) return;
+  const onDragEnd = (result: DropResult) => {
+  if (!result.destination) return;
 
-    const sourceTasks = Array.from(kanbanTasks[sourceCol]);
-    const [movedTask] = sourceTasks.splice(result.source.index, 1);
+  const sourceCol = result.source.droppableId;
+  const destCol = result.destination.droppableId;
+  const sourceIndex = result.source.index;
+  const destIndex = result.destination.index;
 
-    // Move to new column/status
-    movedTask.status = destCol;
-    kanbanTasks[sourceCol] = sourceTasks;
-    kanbanTasks[destCol] = [...kanbanTasks[destCol], movedTask];
+  // Get the sorted/filtered source array as rendered
+  const sourceTasksSorted = sortTasks(kanbanTasks[sourceCol], kanbanSort);
 
-    // Update backend
-    await handleStatus(movedTask._id, destCol, movedTask.completionRemark || "");
-  };
+  // Find the task being dragged by its position in the rendered (sorted) list
+  const draggedTask = sourceTasksSorted[sourceIndex];
 
-  // --- Profile Avatar Upload ---
+  // Find the index of this task in the original (unsorted) array
+  const originalSourceTasks = kanbanTasks[sourceCol];
+  const originalSourceIndex = originalSourceTasks.findIndex(t => t._id === draggedTask._id);
+
+  // Remove from original source
+  const updatedSourceTasks = [...originalSourceTasks];
+  const [movedTask] = updatedSourceTasks.splice(originalSourceIndex, 1);
+
+  // If moving between columns, update status
+  if (sourceCol !== destCol) movedTask.status = destCol;
+
+  const updateStatus = async (taskId: string, userId: string, status: string) => {
+  await axios.patch(`/tasks/${taskId}/status`, { userId, status });
+  // Refresh tasks
+};
+
+
+  // Insert into destination at the correct position in the rendered (sorted) list
+  const destTasksSorted = sortTasks(kanbanTasks[destCol], kanbanSort);
+  // If moving within the same column and after the original position, adjust destIndex
+  let insertAt = destIndex;
+  if (sourceCol === destCol && destIndex > sourceIndex) insertAt--;
+
+  // Find the task at the destination index in the sorted list
+  const destTaskAtIndex = destTasksSorted[insertAt];
+  // Find the actual index in the original destination array
+  const originalDestTasks = kanbanTasks[destCol];
+  let originalDestIndex = destTaskAtIndex
+    ? originalDestTasks.findIndex(t => t._id === destTaskAtIndex._id)
+    : originalDestTasks.length;
+
+  // Insert into destination
+  const updatedDestTasks = [...originalDestTasks];
+  updatedDestTasks.splice(originalDestIndex, 0, movedTask);
+
+  // Build new tasks array
+  const newTasks = tasks.filter(t => t._id !== movedTask._id);
+  // Remove all tasks from destCol in newTasks
+  const filteredNewTasks = newTasks.filter(t => t.status !== destCol);
+  // Add updated destination tasks
+  const finalTasks = [
+    ...filteredNewTasks,
+    ...updatedDestTasks
+  ];
+
+  setTasks(finalTasks);
+  // Optionally: update backend here
+};
+
+
   const handleAvatarSave = (img: string | null) => {
     setAvatar(img);
     setShowAvatarEditor(false);
-    // TODO: Optionally upload to backend
+    // Optionally upload to backend
     // await axios.post("/auth/avatar", { avatar: img });
   };
 
-  // --- Helper: Overdue ---
   const isOverdue = (task: Task) => {
     if (!task.dueDate || task.status === "Done") return false;
     return new Date(task.dueDate) < new Date(new Date().toDateString());
   };
 
-  // Handler for deleting a task (only assignee can see the button)
   const handleDeleteTask = async (taskId: string) => {
     if (!window.confirm("Are you sure you want to delete this task?")) return;
     try {
@@ -431,32 +490,29 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     );
   } else if (nav === "kanban") {
     content = (
-      <div>
-        {/* FILTER BUTTONS FOR KANBAN */}
-        <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-          <span style={{ fontWeight: 600 }}>Sort by:</span>
-          <Button
-            type="button"
-            style={{ background: kanbanSort === "none" ? "#2563eb" : "#e5e7eb", color: kanbanSort === "none" ? "#fff" : "#222" }}
-            onClick={() => setKanbanSort("none")}
-          >None</Button>
-          <Button
-            type="button"
-            style={{ background: kanbanSort === "priority" ? "#2563eb" : "#e5e7eb", color: kanbanSort === "priority" ? "#fff" : "#222" }}
-            onClick={() => setKanbanSort("priority")}
-          >Priority</Button>
-          <Button
-            type="button"
-            style={{ background: kanbanSort === "date" ? "#2563eb" : "#e5e7eb", color: kanbanSort === "date" ? "#fff" : "#222" }}
-            onClick={() => setKanbanSort("date")}
-          >Due Date</Button>
-        </div>
-        {/* KANBAN BOARD */}
-        <DragDropContext onDragEnd={onDragEnd}>
-          <div style={{ display: "flex", gap: 24, alignItems: "flex-start", overflowX: "auto" }}>
-            {kanbanColumns.map(col => (
+    <div>
+      {/* Filter Dropdown */}
+      <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+        <label htmlFor="kanbanSort" style={{ fontWeight: 600 }}>Sort by:</label>
+        <select
+          id="kanbanSort"
+          value={kanbanSort}
+          onChange={e => setKanbanSort(e.target.value as "none" | "priority" | "date")}
+          style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #dbeafe" }}
+        >
+          <option value="none">None</option>
+          <option value="priority">Priority</option>
+          <option value="date">Due Date</option>
+        </select>
+      </div>
+      <DragDropContext onDragEnd={onDragEnd}>
+        <div style={{ display: "flex", gap: 24 }}>
+          {kanbanColumns.map(col => {
+            const tasksArray = kanbanTasks[col] || [];
+            const tasksToRender = sortTasks(tasksArray, kanbanSort);
+            return (
               <Droppable droppableId={col} key={col}>
-                {(provided: DroppableProvided, _snapshot: DroppableStateSnapshot) => (
+                {(provided: DroppableProvided) => (
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
@@ -472,14 +528,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     <div style={{ fontWeight: 700, color: statusColors[col], marginBottom: 12, fontSize: 18 }}>
                       {col}
                     </div>
-                    {kanbanTasks[col].length === 0 && (
+                    {tasksToRender.length === 0 && (
                       <div style={{ color: "#64748b", fontSize: 14 }}>No tasks</div>
                     )}
-                    {sortTasks(kanbanTasks[col], kanbanSort).map((task, idx) => {
-                      const isAssignee = task.assignedTo === user._id;
+                    {tasksToRender.map((task, idx) => {
+                      const isAssignee = typeof task.assignedTo === "object"
+                        ? task.assignedTo._id === user._id
+                        : task.assignedTo === user._id;
                       return (
                         <Draggable draggableId={task._id} index={idx} key={task._id}>
-                          {(provided: DraggableProvided, _snapshot: DraggableStateSnapshot) => (
+                          {(provided: DraggableProvided) => (
                             <TaskCard
                               ref={provided.innerRef}
                               {...provided.draggableProps}
@@ -560,12 +618,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   </div>
                 )}
               </Droppable>
-            ))}
-          </div>
-        </DragDropContext>
-      </div>
-    );
-  } else if (nav === "assignedtasks") {
+            );
+          })}
+        </div>
+      </DragDropContext>
+    </div>
+  );
+} else if (nav === "assignedtasks") {
     // Kanban columns for assigned tasks
     const assignedKanbanColumns = ["Not Started", "Working on it", "Stuck", "Done"];
     const assignedKanbanTasks: Record<string, Task[]> = {
@@ -649,7 +708,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                       setEditTitle(task.title);
                       setEditDescription(task.description);
                       setEditCompany(task.company || "");
-                      setEditAssignedTo(typeof task.assignedTo === "object" ? task.assignedTo._id : task.assignedTo);
+                      setEditAssignedTo(
+  Array.isArray(task.assignedTo)
+    ? task.assignedTo.map(u => typeof u === "object" ? u._id : u)
+    : [typeof task.assignedTo === "object" ? task.assignedTo._id : task.assignedTo]
+);
                       setEditPriority(task.priority);
                       setEditDueDate(task.dueDate ? task.dueDate.slice(0, 10) : "");
                       setShowEditModal(true);
@@ -825,16 +888,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           required
         />
         <Label style={{ color: "#22223b" }}>Assign To</Label>
+        
         <Select
-          value={assignedTo}
-          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setAssignedTo(e.target.value)}
-          required
-        >
-          <option key="default" value="">Select user...</option>
-          {users.map(u => (
-            <option key={u._id} value={u._id}>{u.name}</option>
-          ))}
-        </Select>
+  isMulti
+  options={userOptions}
+  value={userOptions.filter(opt => assignedTo.includes(opt.value))}
+  onChange={opts => setAssignedTo(opts.map(o => o.value))}
+/>
+
         <Label style={{ color: "#22223b" }}>Priority</Label>
         <div style={{ marginBottom: 8 }}>{renderStars(priority, setPriority)}</div>
         <Label style={{ color: "#22223b" }}>Due Date</Label>
@@ -973,12 +1034,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           <Label>Company</Label>
           <Input value={editCompany} onChange={(e: { target: { value: React.SetStateAction<string>; }; }) => setEditCompany(e.target.value)} />
           <Label>Assign To</Label>
-          <Select value={editAssignedTo} onChange={(e: { target: { value: React.SetStateAction<string>; }; }) => setEditAssignedTo(e.target.value)} required>
-            <option value="">Select user...</option>
-            {users.map(u => (
-              <option key={u._id} value={u._id}>{u.name}</option>
-            ))}
-          </Select>
+          <select
+  multiple
+  value={editAssignedTo}
+  onChange={e => {
+    const selected = Array.from(e.target.selectedOptions, option => option.value);
+    setEditAssignedTo(selected);
+  }}
+  required
+>
+  {users.map(u => (
+    <option key={u._id} value={u._id}>{u.name}</option>
+  ))}
+</select>
           <Label>Priority</Label>
           <div style={{ marginBottom: 8 }}>{renderStars(editPriority, setEditPriority)}</div>
           <Label>Due Date</Label>
@@ -1141,7 +1209,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           </div>
         </TopBar>
         {editModal}
-        {content}
         {/* SUPERADMIN VIEW: only visible to superadmin */}
         {user?.role === 'superadmin' && <SuperAdminView />}
 

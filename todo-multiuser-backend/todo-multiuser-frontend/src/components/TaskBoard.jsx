@@ -1,4 +1,3 @@
-import TaskItem from './TaskItem';
 
 export default function TaskBoard({ tasks, onStatusChange, onDeleteTask, currentUser, users }) {
   // Helper to get the assignee's ID as a string
@@ -28,31 +27,63 @@ export default function TaskBoard({ tasks, onStatusChange, onDeleteTask, current
     return acc;
   }, {});
 
-  return (
-    <div className="task-board">
-      {Object.keys(grouped).map(status => (
-        <div key={status}>
-          <h3>{status}</h3>
-          {grouped[status].map(task => {
-            const assigneeId = getAssigneeId(task);
-            const assignerId = getAssignerId(task);
-            const currentUserId = getCurrentUserId();
-            const canEdit = assigneeId === currentUserId; // Only assignee can change status
-            const canDelete = assignerId === currentUserId; // Only assigner can delete
-            return (
-              <TaskItem
-                key={task._id || task.id}
-                task={task}
-                onStatusChange={onStatusChange}
-                canEdit={canEdit}
-                canDelete={canDelete}
-                onDelete={onDeleteTask}
-                users={users} // Pass users here!
-              />
-            );
-          })}
-        </div>
-      ))}
-    </div>
-  );
+return (
+  <div className="task-board">
+    {Object.keys(grouped).map(status => (
+      <div key={status}>
+        <h3>{status}</h3>
+        {grouped[status].map(task => {
+          const currentUserId = getCurrentUserId();
+          const assignerId = getAssignerId(task);
+          return (
+            <div key={task._id || task.id} className="task-item">
+              <h4>{task.title}</h4>
+              <div>
+                <b>Assignees:</b>
+                <ul>
+                  {task.assignedTo.map(userId => {
+                    const user = users.find(u => u._id === userId);
+                    const statusObj = task.assigneeStatuses?.find(s => s.user === userId);
+                    const isCurrentUser = userId === currentUserId;
+                    return (
+                      <li key={userId}>
+                        {user?.name || userId}:
+                        <span style={{ marginLeft: 8 }}>
+                          {isCurrentUser ? (
+                            <select
+                              value={statusObj?.status || "Not Started"}
+                              onChange={e =>
+                                onStatusChange(task._id, userId, e.target.value)
+                              }
+                            >
+                              <option value="Not Started">Not Started</option>
+                              <option value="Working on it">Working on it</option>
+                              <option value="Stuck">Stuck</option>
+                              <option value="Done">Done</option>
+                            </select>
+                          ) : (
+                            statusObj?.status || "Not Started"
+                          )}
+                        </span>
+                        {statusObj?.completionRemark && (
+                          <span style={{ marginLeft: 8, color: "#888" }}>
+                            ({statusObj.completionRemark})
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+              {/* Optionally: show delete button for assigner */}
+              {assignerId === currentUserId && (
+                <button onClick={() => onDeleteTask(task._id)}>Delete</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    ))}
+  </div>
+);
 }
