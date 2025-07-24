@@ -1,117 +1,14 @@
 import React, { useState } from "react";
 import axios from "../api/axios";
 import { useNavigate, Link } from "react-router-dom";
-import styled from "styled-components";
 import { FaUserCircle } from "react-icons/fa";
 
-// Styled Components
-const PageContainer = styled.div`
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-`;
-
-const AuthBox = styled.div`
-  background: #fff;
-  padding: 72px 36px 32px 36px;
-  border-radius: 20px;
-  box-shadow: 0 8px 32px rgba(30, 41, 59, 0.09), 0 1.5px 6px #c7d2fe;
-  max-width: 390px;
-  width: 100%;
-  text-align: center;
-  border: 2.5px solid #dbeafe;
-  position: relative;
-  overflow: visible;
-`;
-
-const IconCircle = styled.div`
-  background: linear-gradient(135deg, #2563eb 60%, #60a5fa 100%);
-  color: #fff;
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: absolute;
-  top: -32px;
-  left: 50%;
-  transform: translateX(-50%);
-  box-shadow: 0 2px 12px #2563eb33;
-  border: 4px solid #fff;
-`;
-
-const AuthTitle = styled.h1`
-  font-family: 'Pacifico', cursive, sans-serif;
-  font-size: 2.3rem;
-  color: #1e293b;
-  margin-bottom: 30px;
-  letter-spacing: 1.5px;
-  margin-top: 0;
-`;
-
-const AuthForm = styled.form`
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-`;
-
-const AuthInput = styled.input`
-  padding: 11px;
-  border: 1.5px solid #dbeafe;
-  border-radius: 8px;
-  font-size: 1rem;
-  background: #f1f5fa;
-  transition: border 0.18s;
-  &:focus {
-    border-color: #2563eb;
-    outline: none;
-    background: #fff;
-  }
-`;
-
-const AuthButton = styled.button`
-  background: linear-gradient(90deg, #2563eb 60%, #60a5fa 100%);
-  color: #fff;
-  padding: 11px 18px;
-  border: none;
-  border-radius: 8px;
-  font-size: 1.08rem;
-  font-weight: 500;
-  cursor: pointer;
-  margin-top: 8px;
-  box-shadow: 0 2px 8px #2563eb22;
-  transition: background 0.18s;
-  &:hover {
-    background: linear-gradient(90deg, #1d4ed8 60%, #2563eb 100%);
-  }
-`;
-
-const ErrorMsg = styled.p`
-  color: #ef4444;
-  margin-top: 12px;
-  font-size: 1rem;
-`;
-
-const SwitchText = styled.div`
-  margin-top: 18px;
-  font-size: 0.98rem;
-  color: #64748b;
-  a {
-    color: #2563eb;
-    cursor: pointer;
-    text-decoration: underline;
-    margin-left: 6px;
-  }
-`;
-
 interface LoginProps {
-  setUser: React.Dispatch<React.SetStateAction<any>>; // Use your User type if you have it
+  setUser: React.Dispatch<React.SetStateAction<any>>;
 }
 
 const Login: React.FC<LoginProps> = ({ setUser }) => {
-  const [userId, setUserId] = useState("");  // <-- Change to use email
+  const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
@@ -122,9 +19,9 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
     try {
       const res = await axios.post("/auth/login", { userId, password });
       sessionStorage.setItem("jwt-token", res.data.token);
-      sessionStorage.setItem("user", JSON.stringify(res.data.user)); // Save user to sessionStorage
-      setUser(res.data.user); // Update user in App state
-      navigate("/dashboard"); // Go to dashboard
+      sessionStorage.setItem("user", JSON.stringify(res.data.user));
+      setUser(res.data.user);
+      navigate("/dashboard");
     } catch (err: unknown) {
       if (
         err &&
@@ -144,37 +41,132 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
   };
 
   return (
-    <PageContainer>
-      <AuthBox>
-        <IconCircle>
-          <FaUserCircle size={36} />
-        </IconCircle>
-        <AuthTitle>Login</AuthTitle>
-        <AuthForm onSubmit={handleSubmit}>
-  <AuthInput
-    type="text"
-    placeholder="User ID"
-    value={userId}
-    onChange={e => setUserId(e.target.value)}
-    required
-  />
-  <AuthInput
-    type="password"
-    placeholder="Password"
-    value={password}
-    onChange={e => setPassword(e.target.value)}
-    required
-  />
-  <AuthButton type="submit">Login</AuthButton>
-</AuthForm>
+    <div style={{
+      height: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#f8fafc'
+    }}>
+      <div style={{
+        background: '#fff',
+        padding: '48px 32px 32px 32px',
+        borderRadius: '16px',
+        boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)',
+        maxWidth: '400px',
+        width: '100%',
+        textAlign: 'center',
+        position: 'relative'
+      }}>
+        <div style={{
+          background: '#3b82f6',
+          color: '#fff',
+          width: '80px',
+          height: '80px',
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'absolute',
+          top: '-40px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
+          border: '4px solid #fff'
+        }}>
+          <FaUserCircle size={40} />
+        </div>
+        
+        <h1 style={{
+          fontSize: '28px',
+          fontWeight: '700',
+          color: '#1f2937',
+          marginBottom: '32px',
+          marginTop: '16px'
+        }}>Welcome Back</h1>
+        
+        <form onSubmit={handleSubmit} style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '16px'
+        }}>
+          <input
+            type="text"
+            placeholder="User ID"
+            value={userId}
+            onChange={e => setUserId(e.target.value)}
+            required
+            style={{
+              padding: '12px 16px',
+              border: '2px solid #e5e7eb',
+              borderRadius: '8px',
+              fontSize: '16px',
+              transition: 'border-color 0.2s',
+              outline: 'none'
+            }}
+            onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+            onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+            style={{
+              padding: '12px 16px',
+              border: '2px solid #e5e7eb',
+              borderRadius: '8px',
+              fontSize: '16px',
+              transition: 'border-color 0.2s',
+              outline: 'none'
+            }}
+            onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+            onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+          />
+          <button
+            type="submit"
+            style={{
+              background: '#3b82f6',
+              color: '#fff',
+              padding: '12px 24px',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '16px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              marginTop: '8px',
+              transition: 'background-color 0.2s'
+            }}
+            onMouseEnter={(e) => e.target.style.backgroundColor = '#2563eb'}
+            onMouseLeave={(e) => e.target.style.backgroundColor = '#3b82f6'}
+          >
+            Login
+          </button>
+        </form>
 
-        {error && <ErrorMsg>{error}</ErrorMsg>}
-        <SwitchText>
-          Don't have an account?
-          <Link to="/register">Register</Link>
-        </SwitchText> 
-      </AuthBox>
-    </PageContainer>
+        {error && (
+          <p style={{
+            color: '#ef4444',
+            marginTop: '16px',
+            fontSize: '14px'
+          }}>{error}</p>
+        )}
+        
+        <div style={{
+          marginTop: '24px',
+          fontSize: '14px',
+          color: '#6b7280'
+        }}>
+          Don't have an account?{' '}
+          <Link to="/register" style={{
+            color: '#3b82f6',
+            textDecoration: 'none',
+            fontWeight: '600'
+          }}>Register</Link>
+        </div>
+      </div>
+    </div>
   );
 };
 

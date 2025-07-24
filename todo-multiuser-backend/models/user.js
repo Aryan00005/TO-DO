@@ -9,7 +9,9 @@ const userSchema = new mongoose.Schema({
         type: String, 
         enum: ['superior', 'subordinate', 'subsubordinate', 'juniormost', 'superadmin'], 
         default: 'juniormost' 
-    }
+    },
+    organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization' },
+    isOrgAdmin: { type: Boolean, default: false }
 });
 
 // Prevent OverwriteModelError in dev/hot reload

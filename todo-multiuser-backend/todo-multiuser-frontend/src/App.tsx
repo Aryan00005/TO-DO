@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom
 import { useState, useEffect } from "react";
 import Register from "./pages/register";
 import Login from "./pages/login";
-import Dashboard from "./pages/dashboard";
+import Dashboard from "./pages/dashboard-new";
 
 // User type (optional, for TypeScript)
 interface User {
