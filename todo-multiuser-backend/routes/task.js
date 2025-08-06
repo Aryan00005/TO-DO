@@ -96,6 +96,19 @@ for (const userId of trimmedAssignedTo) {
       company
     });
     await task.save();
+    
+    // Create notifications for assigned users
+    const assignerUser = await User.findById(req.user._id);
+    const assignerName = assignerUser ? assignerUser.name : 'Someone';
+    
+    for (const userId of trimmedAssignedTo) {
+      await Notification.create({
+        user: userId,
+        message: `New task "${title}" has been assigned to you by ${assignerName}` +
+          (dueDateObj ? ` (Due: ${dueDateObj.toLocaleDateString()})` : '')
+      });
+    }
+    
     res.status(201).json({ message: 'Task created and assigned!', task });
   } catch (err) {
     console.error('Task creation error:', err);

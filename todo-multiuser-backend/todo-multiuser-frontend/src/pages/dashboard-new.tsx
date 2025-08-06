@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 // Removed drag library import - using native HTML5 drag and drop
 import { FaBell, FaCalendar, FaCalendarAlt, FaChartBar, FaColumns, FaMoon, FaPlus, FaSignOutAlt, FaStar, FaSun, FaTasks, FaUser, FaEdit } from "react-icons/fa";
 import { useTheme } from "../hooks/useTheme";
@@ -48,6 +49,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [showStuckModal, setShowStuckModal] = useState(false);
   const [stuckTaskId, setStuckTaskId] = useState('');
   const [stuckReason, setStuckReason] = useState('');
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const today = new Date();
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
@@ -56,7 +60,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   useEffect(() => {
     if (nav === "assignedtasks") {
       axios.get(`/tasks/assignedBy/${user._id}`)
-        .then(res => setAssignedTasks(res.data))
+        .then(res => {
+          // Process assigned tasks to show actual assignee status
+          const processedTasks = res.data.map((task: any) => {
+            // For assigned tasks, show the status of the first assignee
+            const firstAssigneeId = Array.isArray(task.assignedTo) ? task.assignedTo[0]._id || task.assignedTo[0] : task.assignedTo._id || task.assignedTo;
+            const assigneeStatus = task.assigneeStatuses?.find((s: any) => s.user.toString() === firstAssigneeId || s.user._id === firstAssigneeId);
+            return {
+              ...task,
+              status: assigneeStatus?.status || task.status || 'Not Started',
+              stuckReason: assigneeStatus?.completionRemark || task.stuckReason || ''
+            };
+          });
+          setAssignedTasks(processedTasks);
+        })
         .catch(err => console.error(err));
     }
   }, [nav, user._id]);
@@ -72,9 +89,65 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   useEffect(() => {
     axios.get(`/tasks/assignedTo/${user._id}`)
-      .then(res => setTasks(res.data))
+      .then(res => {
+        // Process tasks to get user-specific status from assigneeStatuses
+        const processedTasks = res.data.map((task: any) => {
+          const userStatus = task.assigneeStatuses?.find((s: any) => s.user.toString() === user._id || s.user._id === user._id);
+          return {
+            ...task,
+            status: userStatus?.status || task.status || 'Not Started',
+            stuckReason: userStatus?.completionRemark || task.stuckReason || ''
+          };
+        });
+        setTasks(processedTasks);
+      })
       .catch(err => console.error(err));
   }, [user._id]);
+
+  // Fetch notifications
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const token = sessionStorage.getItem("jwt-token");
+        const res = await axios.get(`/notifications/${user._id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setNotifications(res.data);
+        setUnreadCount(res.data.filter((n: any) => !n.isRead).length);
+      } catch (err) {
+        console.error('Error fetching notifications:', err);
+      }
+    };
+    fetchNotifications();
+  }, [user._id]);
+
+  const markNotificationAsRead = async (notificationId: string) => {
+    try {
+      const token = sessionStorage.getItem("jwt-token");
+      await axios.patch(`/notifications/${notificationId}/read`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setNotifications(prev => prev.map(n => 
+        n._id === notificationId ? { ...n, isRead: true } : n
+      ));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (err) {
+      console.error('Error marking notification as read:', err);
+    }
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    try {
+      const token = sessionStorage.getItem("jwt-token");
+      await axios.patch(`/notifications/all/${user._id}/read`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      setUnreadCount(0);
+    } catch (err) {
+      console.error('Error marking all notifications as read:', err);
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,7 +177,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       
       // Refresh tasks
       const res = await axios.get(`/tasks/assignedTo/${user._id}`);
-      setTasks(res.data);
+      const processedTasks = res.data.map((task: any) => {
+        const userStatus = task.assigneeStatuses?.find((s: any) => s.user.toString() === user._id || s.user._id === user._id);
+        return {
+          ...task,
+          status: userStatus?.status || task.status || 'Not Started',
+          stuckReason: userStatus?.completionRemark || task.stuckReason || ''
+        };
+      });
+      setTasks(processedTasks);
       
       showToast("Task created successfully!", "success");
       setNav("kanban"); // Switch to kanban view
@@ -126,14 +207,27 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Update local state
-      setTasks(prev => prev.map(task => 
-        task._id === taskId ? { 
-          ...task, 
-          status: newStatus,
-          ...(newStatus === 'Stuck' && remark ? { stuckReason: remark } : {})
-        } : task
-      ));
+      // Refresh tasks from backend to get updated status
+      const res = await axios.get(`/tasks/assignedTo/${user._id}`);
+      const processedTasks = res.data.map((task: any) => {
+        const userStatus = task.assigneeStatuses?.find((s: any) => s.user.toString() === user._id || s.user._id === user._id);
+        return {
+          ...task,
+          status: userStatus?.status || task.status || 'Not Started',
+          stuckReason: userStatus?.completionRemark || task.stuckReason || ''
+        };
+      });
+      setTasks(processedTasks);
+      
+      // Refresh notifications if task is completed
+      if (newStatus === 'Done') {
+        const token = sessionStorage.getItem("jwt-token");
+        const res = await axios.get(`/notifications/${user._id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setNotifications(res.data);
+        setUnreadCount(res.data.filter((n: any) => !n.isRead).length);
+      }
       
       showToast("Task status updated!", "success");
     } catch (err) {
@@ -182,18 +276,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
   };
 
-  const renderStars = (value: number, onClick?: (v: number) => void) => (
-    <span>
-      {[1, 2, 3, 4, 5].map(star => (
-        <FaStar
-          key={star}
-          color={star <= value ? "#ef4444" : "#e5e7eb"}
-          style={{ cursor: onClick ? "pointer" : "default", marginRight: 2 }}
-          onClick={onClick ? () => onClick(star) : undefined}
-        />
-      ))}
-    </span>
-  );
+  const renderStars = (value: number, onClick?: (v: number) => void) => {
+    const getStarColor = (starIndex: number, currentValue: number) => {
+      if (starIndex > currentValue) return "#e5e7eb"; // Gray for unselected
+      // All filled stars show the same color based on the priority level
+      if (currentValue === 1) return "#22c55e"; // All stars green for priority 1
+      if (currentValue === 2) return "#eab308"; // All stars yellow for priority 2
+      if (currentValue === 3) return "#f59e0b"; // All stars orange for priority 3
+      if (currentValue === 4) return "#fb7185"; // All stars light red for priority 4
+      return "#ef4444"; // All stars red for priority 5
+    };
+    
+    return (
+      <span>
+        {[1, 2, 3, 4, 5].map(star => (
+          <FaStar
+            key={star}
+            color={getStarColor(star, value)}
+            style={{ cursor: onClick ? "pointer" : "default", marginRight: 2 }}
+            onClick={onClick ? () => onClick(star) : undefined}
+          />
+        ))}
+      </span>
+    );
+  };
 
   const totalTasks = tasks.length;
   const doneTasks = tasks.filter(t => t.status === "Done").length;
@@ -225,6 +331,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
                 borderRadius: '20px',
                 padding: '20px',
+                margin: '-8px',
                 boxShadow: theme === 'dark' ? 
                   '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05)' : 
                   '0 8px 32px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
@@ -476,7 +583,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   </p>
                 )}
                 <p style={{ color: '#3b82f6', margin: '0 0 8px 0', fontSize: '14px' }}>
-                  Assignee: {typeof task.assignedTo === 'object' ? task.assignedTo.name : users.find(u => u._id === task.assignedTo)?.name || 'Unknown'}
+                  Assignee: {(() => {
+                    // Handle if assignedTo is already a populated user object with name
+                    if (typeof task.assignedTo === 'object' && task.assignedTo !== null && task.assignedTo.name) {
+                      return task.assignedTo.name;
+                    }
+                    
+                    // Handle if assignedTo is an array (get first user)
+                    if (Array.isArray(task.assignedTo)) {
+                      const firstAssignee = task.assignedTo[0];
+                      if (typeof firstAssignee === 'object' && firstAssignee?.name) {
+                        return firstAssignee.name;
+                      }
+                      const user = users.find(u => u._id === firstAssignee);
+                      return user?.name || 'Unknown User';
+                    }
+                    
+                    // Handle if assignedTo is just an ID string
+                    if (typeof task.assignedTo === 'string') {
+                      const user = users.find(u => u._id === task.assignedTo);
+                      return user?.name || 'Unknown User';
+                    }
+                    
+                    return 'Unknown User';
+                  })()}
                 </p>
                 {task.dueDate && (
                   <p style={{ color: '#6b7280', margin: '0', fontSize: '14px' }}>
@@ -845,20 +975,25 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         <h2 style={{ color: theme === 'dark' ? '#fff' : '#1f2937', marginBottom: '24px' }}>Tasks You Assigned</h2>
         <div className="kanban-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px', width: '100%' }}>
           {["Not Started", "Working on it", "Stuck", "Done"].map(col => (
-            <div key={col} style={{
-              background: theme === 'dark' ? 
-                'linear-gradient(135deg, #374151 0%, #1f2937 100%)' : 
-                'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-              borderRadius: '20px',
-              padding: '20px',
-              boxShadow: theme === 'dark' ? 
-                '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05)' : 
-                '0 8px 32px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
-              minHeight: '500px',
-              border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.05)',
-              backdropFilter: 'blur(10px)',
-              position: 'relative'
-            }}>
+            <div 
+              key={col}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, col)}
+              style={{
+                background: theme === 'dark' ? 
+                  'linear-gradient(135deg, #374151 0%, #1f2937 100%)' : 
+                  'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                borderRadius: '20px',
+                padding: '20px',
+                margin: '-8px',
+                boxShadow: theme === 'dark' ? 
+                  '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05)' : 
+                  '0 8px 32px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
+                minHeight: '500px',
+                border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.05)',
+                backdropFilter: 'blur(10px)',
+                position: 'relative'
+              }}>
               <div style={{ 
                 display: 'flex',
                 alignItems: 'center',
@@ -966,12 +1101,28 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     )}
                     <div style={{ color: '#6b7280', fontSize: '12px', marginBottom: '4px' }}>
                       <b>Assigned To:</b> {(() => {
-                        let userId = task.assignedTo;
-                        if (Array.isArray(task.assignedTo)) userId = task.assignedTo[0];
-                        if (typeof task.assignedTo === 'object' && task.assignedTo?.name) return task.assignedTo.name;
-                        if (typeof task.assignedTo === 'object' && task.assignedTo?._id) userId = task.assignedTo._id;
-                        const user = users.find(u => u._id === userId || u._id === String(userId));
-                        return user?.name || `User ID: ${userId}`;
+                        // Handle if assignedTo is already a populated user object with name
+                        if (typeof task.assignedTo === 'object' && task.assignedTo !== null && task.assignedTo.name) {
+                          return task.assignedTo.name;
+                        }
+                        
+                        // Handle if assignedTo is an array (get first user)
+                        if (Array.isArray(task.assignedTo)) {
+                          const firstAssignee = task.assignedTo[0];
+                          if (typeof firstAssignee === 'object' && firstAssignee?.name) {
+                            return firstAssignee.name;
+                          }
+                          const user = users.find(u => u._id === firstAssignee);
+                          return user?.name || 'Unknown User';
+                        }
+                        
+                        // Handle if assignedTo is just an ID string
+                        if (typeof task.assignedTo === 'string') {
+                          const user = users.find(u => u._id === task.assignedTo);
+                          return user?.name || 'Unknown User';
+                        }
+                        
+                        return 'Unknown User';
                       })()}
                     </div>
                     {task.dueDate && (
@@ -1072,7 +1223,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                               headers: { Authorization: `Bearer ${token}` }
                             });
                             const res = await axios.get(`/tasks/assignedBy/${user._id}`);
-                            setAssignedTasks(res.data);
+                            const processedTasks = res.data.map((task: any) => {
+                              const firstAssigneeId = Array.isArray(task.assignedTo) ? task.assignedTo[0]._id || task.assignedTo[0] : task.assignedTo._id || task.assignedTo;
+                              const assigneeStatus = task.assigneeStatuses?.find((s: any) => s.user.toString() === firstAssigneeId || s.user._id === firstAssigneeId);
+                              return {
+                                ...task,
+                                status: assigneeStatus?.status || task.status || 'Not Started',
+                                stuckReason: assigneeStatus?.completionRemark || task.stuckReason || ''
+                              };
+                            });
+                            setAssignedTasks(processedTasks);
                             showToast("Task deleted successfully!", "success");
                           } catch (err: any) {
                             showToast("Failed to delete task: " + (err.response?.data?.message || err.message), "error");
@@ -1162,6 +1322,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
+      
+      {/* Notification overlay */}
+      {showNotifications && (createPortal(
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 999998,
+            pointerEvents: 'auto'
+          }}
+          onClick={() => setShowNotifications(false)}
+        />,
+        document.body
+      ) as React.ReactNode)}
       
       {/* Sidebar */}
       <div style={{
@@ -1321,10 +1498,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           <h1 style={{
             fontSize: '28px',
             fontWeight: '800',
-            background: theme === 'dark' ? 'linear-gradient(135deg, #fff 0%, #e2e8f0 100%)' : 'linear-gradient(135deg, #1f2937 0%, #3b82f6 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
+            color: theme === 'dark' ? '#ffffff' : '#1f2937',
             margin: 0,
             letterSpacing: '-0.5px'
           }}>
@@ -1338,8 +1512,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 background: theme === 'dark' ? 'linear-gradient(135deg, #4b5563 0%, #374151 100%)' : 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)',
                 border: 'none',
                 borderRadius: '50%',
-                width: '44px',
-                height: '44px',
+                width: '52px',
+                height: '52px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1351,50 +1525,179 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               onMouseEnter={(e) => (e.target as HTMLElement).style.transform = 'scale(1.1)'}
               onMouseLeave={(e) => (e.target as HTMLElement).style.transform = 'scale(1)'}
             >
-              {theme === 'light' ? <FaMoon size={16} /> : <FaSun size={16} />}
+              {theme === 'light' ? <FaMoon size={22} /> : <FaSun size={22} />}
             </button>
             
-            <button
-              style={{
-                background: theme === 'dark' ? 'linear-gradient(135deg, #4b5563 0%, #374151 100%)' : 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)',
-                border: 'none',
-                borderRadius: '50%',
-                width: '44px',
-                height: '44px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                color: theme === 'dark' ? '#fbbf24' : '#3b82f6',
-                position: 'relative',
-                boxShadow: theme === 'dark' ? '0 4px 12px rgba(0,0,0,0.3)' : '0 4px 12px rgba(0,0,0,0.1)',
-                transition: 'all 0.3s ease'
-              }}
-              onMouseEnter={(e) => (e.target as HTMLElement).style.transform = 'scale(1.1)'}
-              onMouseLeave={(e) => (e.target as HTMLElement).style.transform = 'scale(1)'}
-            >
-              <FaBell size={16} />
-              <span style={{
-                position: 'absolute',
-                top: '-6px',
-                right: '-6px',
-                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                color: '#fff',
-                borderRadius: '50%',
-                width: '22px',
-                height: '22px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '11px',
-                fontWeight: '700',
-                border: '2px solid #fff',
-                boxShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
-                animation: 'pulse 2s infinite'
-              }}>
-                2
-              </span>
-            </button>
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                style={{
+                  background: theme === 'dark' ? 'linear-gradient(135deg, #4b5563 0%, #374151 100%)' : 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '52px',
+                  height: '52px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: theme === 'dark' ? '#fbbf24' : '#3b82f6',
+                  position: 'relative',
+                  boxShadow: theme === 'dark' ? '0 4px 12px rgba(0,0,0,0.3)' : '0 4px 12px rgba(0,0,0,0.1)',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => (e.target as HTMLElement).style.transform = 'scale(1.1)'}
+                onMouseLeave={(e) => (e.target as HTMLElement).style.transform = 'scale(1)'}
+              >
+                <FaBell size={24} />
+                {unreadCount > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '-6px',
+                    right: '-6px',
+                    background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                    color: '#fff',
+                    borderRadius: '50%',
+                    width: '22px',
+                    height: '22px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    border: '2px solid #fff',
+                    boxShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
+                    animation: 'pulse 2s infinite'
+                  }}>
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+              
+              {/* Notifications Dropdown */}
+              {showNotifications && (createPortal(
+                <div style={{
+                  position: 'fixed',
+                  top: '80px',
+                  right: '32px',
+                  width: '400px',
+                  maxHeight: '500px',
+                  background: theme === 'dark' ? 'linear-gradient(135deg, #374151 0%, #1f2937 100%)' : 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+                  borderRadius: '16px',
+                  boxShadow: theme === 'dark' ? '0 20px 40px rgba(0,0,0,0.4)' : '0 20px 40px rgba(0,0,0,0.15)',
+                  border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.1)',
+                  backdropFilter: 'blur(20px)',
+                  zIndex: 999999,
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    padding: '20px',
+                    borderBottom: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.1)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <h3 style={{
+                      margin: 0,
+                      fontSize: '18px',
+                      fontWeight: '700',
+                      color: theme === 'dark' ? '#fff' : '#1f2937'
+                    }}>Notifications</h3>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={markAllNotificationsAsRead}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#3b82f6',
+                          fontSize: '14px',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          padding: '4px 8px',
+                          borderRadius: '6px'
+                        }}
+                        onMouseEnter={(e) => (e.target as HTMLElement).style.background = theme === 'dark' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.05)'}
+                        onMouseLeave={(e) => (e.target as HTMLElement).style.background = 'transparent'}
+                      >
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div style={{
+                    maxHeight: '400px',
+                    overflowY: 'auto',
+                    overflowX: 'hidden'
+                  }}>
+                    {notifications.length === 0 ? (
+                      <div style={{
+                        padding: '40px 20px',
+                        textAlign: 'center',
+                        color: '#6b7280'
+                      }}>
+                        <FaBell size={32} style={{ marginBottom: '12px', opacity: 0.5 }} />
+                        <div>No notifications yet</div>
+                      </div>
+                    ) : (
+                      notifications.map((notification) => (
+                        <div
+                          key={notification._id}
+                          onClick={() => !notification.isRead && markNotificationAsRead(notification._id)}
+                          style={{
+                            padding: '16px 20px',
+                            borderBottom: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.05)' : '1px solid rgba(0, 0, 0, 0.05)',
+                            cursor: notification.isRead ? 'default' : 'pointer',
+                            background: notification.isRead ? 'transparent' : (theme === 'dark' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.05)'),
+                            position: 'relative',
+                            transition: 'background 0.2s ease'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!notification.isRead) {
+                              (e.target as HTMLElement).style.background = theme === 'dark' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(59, 130, 246, 0.08)';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!notification.isRead) {
+                              (e.target as HTMLElement).style.background = theme === 'dark' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.05)';
+                            }
+                          }}
+                        >
+                          {!notification.isRead && (
+                            <div style={{
+                              position: 'absolute',
+                              left: '8px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              width: '8px',
+                              height: '8px',
+                              borderRadius: '50%',
+                              background: '#3b82f6'
+                            }} />
+                          )}
+                          <div style={{
+                            fontSize: '14px',
+                            color: theme === 'dark' ? '#fff' : '#1f2937',
+                            lineHeight: '1.5',
+                            marginBottom: '4px',
+                            paddingLeft: notification.isRead ? '0' : '16px'
+                          }}>
+                            {notification.message}
+                          </div>
+                          <div style={{
+                            fontSize: '12px',
+                            color: '#6b7280',
+                            paddingLeft: notification.isRead ? '0' : '16px'
+                          }}>
+                            {new Date(notification.createdAt).toLocaleString()}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>,
+                document.body
+              ) as React.ReactNode)}
+            </div>
           </div>
         </div>
         
