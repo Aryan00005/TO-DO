@@ -1,44 +1,26 @@
 {
-  "name": "todo-multiuser-backend",
+  "name": "todo-multiuser-frontend",
   "version": "1.0.0",
-  "main": "server.js",
+  "private": true,
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
-    "build": "echo 'No build step required for Node.js backend'"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
-  "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=8.0.0"
-  },
-  "keywords": [
-    "todo",
-    "task-management",
-    "nodejs",
-    "express",
-    "supabase"
-  ],
-  "author": "Vrund",
-  "license": "MIT",
-  "description": "Multi-user task management system with Google OAuth and Supabase",
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0",
+    "@hello-pangea/dnd": "^18.0.1",
     "axios": "^1.9.0",
-    "bcrypt": "^6.0.0",
-    "bcryptjs": "^3.0.2",
-    "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
-    "ecdsa-sig-formatter": "^1.0.11",
-    "express": "^5.1.0",
-    "jsonwebtoken": "^9.0.2",
-    "nodemailer": "^7.0.11",
-    "passport": "^0.7.0",
-    "passport-google-oauth20": "^2.0.0",
-    "pg": "^8.16.3"
+    "react": "^18.2.0",
+    "react-avatar-edit": "^1.2.0",
+    "react-dom": "^18.2.0",
+    "react-icons": "^5.5.0",
+    "react-router-dom": "^7.6.2",
+    "react-select": "^5.10.1",
+    "styled-components": "^6.1.18"
   },
   "devDependencies": {
-    "@types/react": "^18.3.23",
-    "@types/react-dom": "^18.3.7",
-    "nodemon": "^3.1.11"
+    "@vitejs/plugin-react": "^4.0.0",
+    "@vitejs/plugin-react-swc": "^3.10.1",
+    "vite": "^6.3.5"
   }
 }
