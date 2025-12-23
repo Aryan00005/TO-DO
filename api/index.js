@@ -9,31 +9,54 @@ module.exports = (req, res) => {
     return;
   }
 
-  // Simple test endpoint
-  if (req.url === '/api' || req.url === '/api/') {
+  // Parse request body for POST requests
+  let body = {};
+  if (req.method === 'POST' && req.body) {
+    body = req.body;
+  }
+
+  const url = req.url || '';
+  const method = req.method || 'GET';
+
+  console.log('API Request:', method, url, body);
+
+  // Route handling
+  if (url === '/api' || url === '/api/') {
     return res.json({ message: 'API is working!', timestamp: new Date().toISOString() });
   }
 
-  // Auth test endpoint
-  if (req.url === '/api/auth/test') {
+  if (url === '/api/auth/test' || url.endsWith('/auth/test')) {
     return res.json({ message: 'Auth routes working' });
   }
 
-  // Login endpoint
-  if (req.url === '/api/auth/login' && req.method === 'POST') {
-    const { userId, password } = req.body || {};
+  if ((url === '/api/auth/login' || url.endsWith('/auth/login')) && method === 'POST') {
+    const { userId, password } = body;
     
-    // Simple test login
+    console.log('Login attempt:', { userId, password });
+    
+    // Test login
     if (userId === 'testuser' && password === 'password123') {
       return res.json({ 
         token: 'test-token-123',
-        user: { _id: '1', name: 'Test User', userId: 'testuser', email: 'test@example.com' }
+        user: { 
+          _id: '1', 
+          name: 'Test User', 
+          userId: 'testuser', 
+          email: 'test@example.com',
+          authProvider: 'local'
+        }
       });
     }
     
     return res.status(400).json({ message: 'Invalid credentials.' });
   }
 
-  // Default 404
-  res.status(404).json({ message: 'Endpoint not found' });
+  // Default response
+  console.log('No route matched for:', method, url);
+  res.status(404).json({ 
+    message: 'Endpoint not found', 
+    url: url,
+    method: method,
+    availableEndpoints: ['/api', '/api/auth/test', '/api/auth/login']
+  });
 };
