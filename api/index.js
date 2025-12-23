@@ -1,29 +1,39 @@
-const express = require('express');
-const cors = require('cors');
-require('dotenv').config();
+module.exports = (req, res) => {
+  // Enable CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
 
-// Import routes
-const authRoutes = require('../routes/auth');
-const taskRoutes = require('../routes/task');
-const notificationRoutes = require('../routes/notification');
+  // Simple test endpoint
+  if (req.url === '/api' || req.url === '/api/') {
+    return res.json({ message: 'API is working!', timestamp: new Date().toISOString() });
+  }
 
-const app = express();
+  // Auth test endpoint
+  if (req.url === '/api/auth/test') {
+    return res.json({ message: 'Auth routes working' });
+  }
 
-// Middleware
-app.use(express.json());
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'https://office-tasks-git-main-vrund-patels-projects-881710aa.vercel.app',
-  credentials: true
-}));
+  // Login endpoint
+  if (req.url === '/api/auth/login' && req.method === 'POST') {
+    const { userId, password } = req.body || {};
+    
+    // Simple test login
+    if (userId === 'testuser' && password === 'password123') {
+      return res.json({ 
+        token: 'test-token-123',
+        user: { _id: '1', name: 'Test User', userId: 'testuser', email: 'test@example.com' }
+      });
+    }
+    
+    return res.status(400).json({ message: 'Invalid credentials.' });
+  }
 
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/tasks', taskRoutes);
-app.use('/api/notifications', notificationRoutes);
-
-// Test route
-app.get('/api/test', (req, res) => {
-  res.json({ message: 'API is working!' });
-});
-
-module.exports = app;
+  // Default 404
+  res.status(404).json({ message: 'Endpoint not found' });
+};
