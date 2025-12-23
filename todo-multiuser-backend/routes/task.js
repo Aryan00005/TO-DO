@@ -66,6 +66,42 @@ router.patch('/:taskId', auth, async (req, res) => {
   }
 });
 
+// Update entire task
+router.put('/:taskId', auth, async (req, res) => {
+  try {
+    const { title, description, assignedTo, priority, dueDate, company } = req.body;
+    
+    if (!title || !description || !assignedTo) {
+      return res.status(400).json({ message: 'Title, description, and assignees are required' });
+    }
+
+    const assigneeArray = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
+    
+    const updatedTask = await Task.findByIdAndUpdate(
+      req.params.taskId,
+      {
+        title,
+        description,
+        assignedTo: assigneeArray,
+        priority,
+        dueDate,
+        company
+      },
+      { new: true }
+    ).populate('assignedTo', 'name email')
+     .populate('assignedBy', 'name email');
+    
+    if (!updatedTask) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+    
+    res.json({ message: 'Task updated successfully', task: updatedTask });
+  } catch (err) {
+    console.error('Task update error:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
 // Delete task
 router.delete('/:taskId', auth, async (req, res) => {
   try {
