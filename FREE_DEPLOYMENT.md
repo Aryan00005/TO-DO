@@ -27,9 +27,9 @@
 SUPABASE_URL=https://[project-id].supabase.co
 SUPABASE_KEY=[your-anon-key]
 JWT_SECRET=your-super-secure-jwt-secret
-GOOGLE_CLIENT_ID=289796032032-bvtm9g16nfnnt2107j4d3h23a6hochkb.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=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
-MAIL_USER=vrund.rakesh1412@gmail.com
-MAIL_PASS=lixj ymqr smkf seaw
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+MAIL_USER=your-email@gmail.com
+MAIL_PASS=your-app-password
 FRONTEND_URL=https://your-app.vercel.app
 NODE_ENV=production
