@@ -1,9 +1,32 @@
-const mongoose = require('mongoose');
+const { createClient } = require('@supabase/supabase-js');
 
-const organizationSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  type: { type: String, enum: ['company', 'individual'], required: true },
-  createdAt: { type: Date, default: Date.now }
-});
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
 
-module.exports = mongoose.models.Organization || mongoose.model('Organization', organizationSchema);
+class Organization {
+  static async create(data) {
+    const { data: result, error } = await supabase
+      .from('organizations')
+      .insert(data)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return result;
+  }
+
+  static async findById(id) {
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) throw error;
+    return data;
+  }
+}
+
+module.exports = Organization;

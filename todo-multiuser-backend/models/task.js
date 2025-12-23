@@ -1,36 +1,131 @@
-const mongoose = require('mongoose');
+const { createClient } = require('@supabase/supabase-js');
+const bcrypt = require('bcryptjs');
 
-const assigneeStatusSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-  status: { 
-    type: String, 
-    enum: ['Not Started', 'Working on it', 'Stuck', 'Done'], 
-    default: 'Not Started' 
-  },
-  completionRemark: { type: String, default: "" },
-  updatedAt: { type: Date, default: Date.now }
-}, { _id: false });
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
 
-const taskSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  description: String,
-  assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  assignedTo: [{ type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }],
-  assigneeStatuses: [assigneeStatusSchema], // <-- NEW FIELD
-  status: { 
-    type: String, 
-    enum: ['Not Started', 'Working on it', 'Stuck', 'Done'], 
-    default: 'Not Started' 
-  },
-  priority: { type: Number, min: 1, max: 5, default: 3 },
-  completionRemark: { type: String, default: "" },
-  dueDate: { type: Date },
-  company: { type: String },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now },
-  stuckReason: { type: String, default: '' }
+class Task {
+  static async create(taskData) {
+    const { title, description, assignedBy, assignedTo, priority = 3, dueDate, company } = taskData;
+    
+    // Create task
+    const { data: task, error: taskError } = await supabase
+      .from('tasks')
+      .insert({
+        title,
+        description,
+        assigned_by: assignedBy,
+        priority,
+        due_date: dueDate,
+        company
+      })
+      .select()
+      .single();
+    
+    if (taskError) throw taskError;
+    
+    // Create task assignments
+    if (assignedTo && assignedTo.length > 0) {
+      const assignments = assignedTo.map(userId => ({
+        task_id: task.id,
+        user_id: userId,
+        status: 'Not Started'
+      }));
+      
+      const { error: assignError } = await supabase
+        .from('task_assignments')
+        .insert(assignments);
+      
+      if (assignError) throw assignError;
+    }
+    
+    return task;
+  }
 
-});
+  static async findAssignedToUser(userId) {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        task_assignments!inner(
+          user_id,
+          status,
+          completion_remark
+        )
+      `)
+      .eq('task_assignments.user_id', userId)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    // Transform data to match expected format
+    return data.map(task => ({
+      ...task,
+      _id: task.id,
+      assigneeStatuses: task.task_assignments.map(ta => ({
+        user: ta.user_id,
+        status: ta.status,
+        completionRemark: ta.completion_remark
+      }))
+    }));
+  }
 
-// Fix OverwriteModelError by reusing model if it exists
-module.exports = mongoose.models.Task || mongoose.model('Task', taskSchema);
+  static async findAssignedByUser(userId) {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        task_assignments(
+          user_id,
+          status,
+          completion_remark
+        )
+      `)
+      .eq('assigned_by', userId)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    return data.map(task => ({
+      ...task,
+      _id: task.id,
+      assigneeStatuses: task.task_assignments.map(ta => ({
+        user: ta.user_id,
+        status: ta.status,
+        completionRemark: ta.completion_remark
+      }))
+    }));
+  }
+
+  static async updateUserStatus(taskId, userId, status, remark = null) {
+    const { data, error } = await supabase
+      .from('task_assignments')
+      .update({
+        status,
+        completion_remark: remark
+      })
+      .eq('task_id', taskId)
+      .eq('user_id', userId)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  }
+
+  static async deleteById(taskId) {
+    const { data, error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', taskId)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  }
+}
+
+module.exports = Task;

@@ -46,6 +46,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [assignedTasks, setAssignedTasks] = useState<Task[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date().getDate().toString());
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [showStuckModal, setShowStuckModal] = useState(false);
   const [stuckTaskId, setStuckTaskId] = useState('');
   const [stuckReason, setStuckReason] = useState('');
@@ -54,8 +56,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [unreadCount, setUnreadCount] = useState(0);
 
   const today = new Date();
-  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+  const firstDayOfMonth = new Date(selectedYear, selectedMonth, 1).getDay();
   const calendarDates = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const emptyDays = Array.from({ length: firstDayOfMonth }, (_, i) => null);
+  
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 13 }, (_, i) => currentYear - 1 + i);
 
   useEffect(() => {
     if (nav === "assignedtasks") {
@@ -905,66 +917,357 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         padding: '24px',
         boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)',
         border: '1px solid #e5e7eb',
-        maxWidth: '700px',
+        maxWidth: '800px',
         margin: '0 auto'
       }}>
-        <div style={{ fontWeight: '700', fontSize: '20px', marginBottom: '18px', color: theme === 'dark' ? '#fff' : '#1f2937' }}>
-          <FaCalendarAlt style={{ marginRight: '8px' }} /> Calendar
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between',
+          marginBottom: '24px'
+        }}>
+          <div style={{ fontWeight: '700', fontSize: '20px', color: theme === 'dark' ? '#fff' : '#1f2937' }}>
+            <FaCalendarAlt style={{ marginRight: '8px' }} /> Calendar
+          </div>
+          
+          {/* Month and Year Controls */}
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <select
+              value={selectedMonth}
+              onChange={(e) => {
+                const newMonth = parseInt(e.target.value);
+                setSelectedMonth(newMonth);
+                // Reset selected date if it doesn't exist in new month
+                const daysInNewMonth = new Date(selectedYear, newMonth + 1, 0).getDate();
+                if (parseInt(selectedDate) > daysInNewMonth) {
+                  setSelectedDate('1');
+                }
+              }}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: theme === 'dark' ? '1px solid #4b5563' : '1px solid #d1d5db',
+                background: theme === 'dark' ? '#1f2937' : '#fff',
+                color: theme === 'dark' ? '#fff' : '#1f2937',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                outline: 'none'
+              }}
+            >
+              {monthNames.map((month, index) => (
+                <option key={index} value={index}>{month}</option>
+              ))}
+            </select>
+            
+            <select
+              value={selectedYear}
+              onChange={(e) => {
+                const newYear = parseInt(e.target.value);
+                setSelectedYear(newYear);
+                // Handle leap year for February
+                if (selectedMonth === 1) {
+                  const daysInFeb = new Date(newYear, 2, 0).getDate();
+                  if (parseInt(selectedDate) > daysInFeb) {
+                    setSelectedDate('1');
+                  }
+                }
+              }}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: theme === 'dark' ? '1px solid #4b5563' : '1px solid #d1d5db',
+                background: theme === 'dark' ? '#1f2937' : '#fff',
+                color: theme === 'dark' ? '#fff' : '#1f2937',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                outline: 'none'
+              }}
+            >
+              {years.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+            
+            <button
+              onClick={() => {
+                const today = new Date();
+                setSelectedMonth(today.getMonth());
+                setSelectedYear(today.getFullYear());
+                setSelectedDate(today.getDate().toString());
+              }}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '8px',
+                border: 'none',
+                background: '#3b82f6',
+                color: '#fff',
+                fontSize: '14px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => (e.target as HTMLElement).style.background = '#2563eb'}
+              onMouseLeave={(e) => (e.target as HTMLElement).style.background = '#3b82f6'}
+            >
+              Today
+            </button>
+          </div>
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '24px' }}>
-          {calendarDates.map(day => (
+        
+        {/* Calendar Grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, 1fr)',
+          gap: '4px',
+          marginBottom: '24px'
+        }}>
+          {/* Day headers */}
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
             <div
               key={day}
-              onClick={() => setSelectedDate(day.toString())}
               style={{
-                width: '38px', height: '38px', lineHeight: '38px', textAlign: 'center',
-                borderRadius: '50%', cursor: 'pointer',
-                background: selectedDate === day.toString() ? '#3b82f6' : '#e5e7eb',
-                color: selectedDate === day.toString() ? '#fff' : '#1f2937',
-                fontWeight: '600', fontSize: '16px'
+                padding: '8px',
+                textAlign: 'center',
+                fontWeight: '600',
+                fontSize: '12px',
+                color: theme === 'dark' ? '#9ca3af' : '#6b7280',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
               }}
             >
               {day}
             </div>
           ))}
-        </div>
-        <div>
-          <div style={{ fontWeight: '600', fontSize: '16px', marginBottom: '16px', color: theme === 'dark' ? '#fff' : '#1f2937' }}>
-            Tasks for Day {selectedDate}:
-          </div>
-          {tasks.filter(t => t.dueDate && new Date(t.dueDate).getDate().toString() === selectedDate).map(task => (
-            <div key={task._id} style={{
-              background: theme === 'dark' ? '#4b5563' : '#f9fafb',
-              border: '1px solid #e5e7eb',
-              borderRadius: '10px',
-              padding: '16px',
-              marginBottom: '12px'
-            }}>
-              <div style={{ fontWeight: '600', fontSize: '16px', color: theme === 'dark' ? '#fff' : '#1f2937', marginBottom: '8px' }}>
-                {task.title}
-                <span style={{ float: 'right' }}>{renderStars(task.priority)}</span>
-              </div>
-              <div style={{ color: theme === 'dark' ? '#e5e7eb' : '#475569', marginBottom: '8px' }}>{task.description}</div>
-              {task.company && (
-                <div style={{ fontSize: '14px', color: theme === 'dark' ? '#d1d5db' : '#555', marginBottom: '4px' }}>
-                  <b>Company:</b> {task.company}
-                </div>
-              )}
-              <div style={{
-                background: (task.status === 'Done' ? '#22c55e' : task.status === 'Working on it' ? '#fbbf24' : task.status === 'Stuck' ? '#ef4444' : '#64748b') + '22',
-                color: task.status === 'Done' ? '#22c55e' : task.status === 'Working on it' ? '#fbbf24' : task.status === 'Stuck' ? '#ef4444' : '#64748b',
-                borderRadius: '8px',
-                padding: '4px 12px',
-                display: 'inline-block',
-                fontSize: '12px',
-                fontWeight: '600'
-              }}>
-                {task.status}
-              </div>
-            </div>
+          
+          {/* Empty days for proper alignment */}
+          {emptyDays.map((_, index) => (
+            <div key={`empty-${index}`} style={{ height: '40px' }} />
           ))}
-          {tasks.filter(t => t.dueDate && new Date(t.dueDate).getDate().toString() === selectedDate).length === 0 && (
-            <div style={{ color: '#6b7280' }}>No tasks for this day.</div>
+          
+          {/* Calendar days */}
+          {calendarDates.map(day => {
+            const isToday = today.getDate() === day && 
+                           today.getMonth() === selectedMonth && 
+                           today.getFullYear() === selectedYear;
+            const isSelected = selectedDate === day.toString();
+            const hasTask = tasks.some(t => {
+              if (!t.dueDate) return false;
+              const taskDate = new Date(t.dueDate);
+              return taskDate.getDate() === day &&
+                     taskDate.getMonth() === selectedMonth &&
+                     taskDate.getFullYear() === selectedYear;
+            });
+            
+            return (
+              <div
+                key={day}
+                onClick={() => setSelectedDate(day.toString())}
+                style={{
+                  height: '40px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: isSelected || isToday ? '700' : '500',
+                  fontSize: '14px',
+                  position: 'relative',
+                  background: isSelected ? '#3b82f6' : 
+                             isToday ? (theme === 'dark' ? '#1f2937' : '#f3f4f6') : 
+                             'transparent',
+                  color: isSelected ? '#fff' : 
+                         isToday ? '#3b82f6' : 
+                         (theme === 'dark' ? '#fff' : '#1f2937'),
+                  border: isToday && !isSelected ? '2px solid #3b82f6' : 'none',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSelected) {
+                    (e.target as HTMLElement).style.background = theme === 'dark' ? '#374151' : '#f9fafb';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected) {
+                    (e.target as HTMLElement).style.background = isToday ? (theme === 'dark' ? '#1f2937' : '#f3f4f6') : 'transparent';
+                  }
+                }}
+              >
+                {day}
+                {hasTask && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '2px',
+                    right: '2px',
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: isSelected ? '#fff' : '#ef4444'
+                  }} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+        
+        {/* Tasks for selected date */}
+        <div>
+          <div style={{ 
+            fontWeight: '600', 
+            fontSize: '16px', 
+            marginBottom: '16px', 
+            color: theme === 'dark' ? '#fff' : '#1f2937',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <span>Tasks for {monthNames[selectedMonth]} {selectedDate}, {selectedYear}:</span>
+            {tasks.filter(t => {
+              if (!t.dueDate) return false;
+              const taskDate = new Date(t.dueDate);
+              return taskDate.getDate().toString() === selectedDate &&
+                     taskDate.getMonth() === selectedMonth &&
+                     taskDate.getFullYear() === selectedYear;
+            }).length > 0 && (
+              <span style={{
+                background: '#3b82f6',
+                color: '#fff',
+                borderRadius: '12px',
+                padding: '2px 8px',
+                fontSize: '12px',
+                fontWeight: '700'
+              }}>
+                {tasks.filter(t => {
+                  if (!t.dueDate) return false;
+                  const taskDate = new Date(t.dueDate);
+                  return taskDate.getDate().toString() === selectedDate &&
+                         taskDate.getMonth() === selectedMonth &&
+                         taskDate.getFullYear() === selectedYear;
+                }).length}
+              </span>
+            )}
+          </div>
+          
+          {tasks.filter(t => {
+            if (!t.dueDate) return false;
+            const taskDate = new Date(t.dueDate);
+            return taskDate.getDate().toString() === selectedDate &&
+                   taskDate.getMonth() === selectedMonth &&
+                   taskDate.getFullYear() === selectedYear;
+          }).map(task => {
+            const isOverdue = task.status !== 'Done' && new Date(task.dueDate!) < new Date();
+            return (
+              <div key={task._id} style={{
+                background: isOverdue ? 
+                  'linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.05) 100%)' :
+                  (theme === 'dark' ? '#4b5563' : '#f9fafb'),
+                border: isOverdue ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid #e5e7eb',
+                borderRadius: '12px',
+                padding: '16px',
+                marginBottom: '12px',
+                position: 'relative',
+                overflow: 'hidden'
+              }}>
+                {/* Priority indicator */}
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: '3px',
+                  background: task.priority >= 4 ? '#ef4444' : task.priority >= 3 ? '#f59e0b' : '#22c55e'
+                }} />
+                
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'flex-start',
+                  marginBottom: '8px'
+                }}>
+                  <div style={{ 
+                    fontWeight: '600', 
+                    fontSize: '16px', 
+                    color: theme === 'dark' ? '#fff' : '#1f2937',
+                    flex: 1
+                  }}>
+                    {task.title}
+                  </div>
+                  <div style={{ marginLeft: '12px' }}>
+                    {renderStars(task.priority)}
+                  </div>
+                </div>
+                
+                <div style={{ 
+                  color: theme === 'dark' ? '#e5e7eb' : '#475569', 
+                  marginBottom: '12px',
+                  fontSize: '14px'
+                }}>
+                  {task.description}
+                </div>
+                
+                {task.company && (
+                  <div style={{ 
+                    fontSize: '14px', 
+                    color: theme === 'dark' ? '#d1d5db' : '#555', 
+                    marginBottom: '8px'
+                  }}>
+                    <strong>Company:</strong> {task.company}
+                  </div>
+                )}
+                
+                {isOverdue && (
+                  <div style={{
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    color: '#ef4444',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    display: 'inline-block',
+                    marginBottom: '8px'
+                  }}>
+                    ⚠️ OVERDUE
+                  </div>
+                )}
+                
+                <div style={{
+                  background: (task.status === 'Done' ? '#22c55e' : 
+                             task.status === 'Working on it' ? '#fbbf24' : 
+                             task.status === 'Stuck' ? '#ef4444' : '#64748b') + '22',
+                  color: task.status === 'Done' ? '#22c55e' : 
+                         task.status === 'Working on it' ? '#fbbf24' : 
+                         task.status === 'Stuck' ? '#ef4444' : '#64748b',
+                  borderRadius: '8px',
+                  padding: '4px 12px',
+                  display: 'inline-block',
+                  fontSize: '12px',
+                  fontWeight: '600'
+                }}>
+                  {task.status}
+                </div>
+              </div>
+            );
+          })}
+          
+          {tasks.filter(t => {
+            if (!t.dueDate) return false;
+            const taskDate = new Date(t.dueDate);
+            return taskDate.getDate().toString() === selectedDate &&
+                   taskDate.getMonth() === selectedMonth &&
+                   taskDate.getFullYear() === selectedYear;
+          }).length === 0 && (
+            <div style={{ 
+              color: '#6b7280', 
+              textAlign: 'center',
+              padding: '32px',
+              background: theme === 'dark' ? 'rgba(75, 85, 99, 0.1)' : 'rgba(243, 244, 246, 0.5)',
+              borderRadius: '12px',
+              border: '2px dashed #d1d5db'
+            }}>
+              <FaCalendar size={24} style={{ marginBottom: '8px', opacity: 0.5 }} />
+              <div>No tasks scheduled for this day</div>
+            </div>
           )}
         </div>
       </div>
@@ -1261,6 +1564,176 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
       </div>
     );
+  } else if (nav === "setup-password") {
+    content = (
+      <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+        <div style={{
+          background: theme === 'dark' ? '#374151' : '#fff',
+          borderRadius: '12px',
+          padding: '32px',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)',
+          border: '1px solid #e5e7eb'
+        }}>
+          <h2 style={{ color: theme === 'dark' ? '#fff' : '#1f2937', marginBottom: '24px' }}>Set Password</h2>
+          <p style={{ color: '#6b7280', marginBottom: '24px' }}>Enable password login for your account</p>
+          <button
+            onClick={() => window.location.href = '/setup-password'}
+            style={{
+              background: '#3b82f6',
+              color: '#fff',
+              border: 'none',
+              padding: '12px 24px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              width: '100%'
+            }}
+          >
+            Go to Set Password Page
+          </button>
+        </div>
+      </div>
+    );
+  } else if (nav === "change-password") {
+    content = (
+      <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+        <div style={{
+          background: theme === 'dark' ? '#374151' : '#fff',
+          borderRadius: '12px',
+          padding: '32px',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)',
+          border: '1px solid #e5e7eb'
+        }}>
+          <h2 style={{ color: theme === 'dark' ? '#fff' : '#1f2937', marginBottom: '24px' }}>Change Password</h2>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target as HTMLFormElement);
+            const oldPassword = formData.get('oldPassword') as string;
+            const newPassword = formData.get('newPassword') as string;
+            const confirmPassword = formData.get('confirmPassword') as string;
+            
+            if (newPassword !== confirmPassword) {
+              showToast('Passwords do not match', 'error');
+              return;
+            }
+            
+            if (newPassword.length < 6) {
+              showToast('Password must be at least 6 characters', 'error');
+              return;
+            }
+            
+            try {
+              const token = sessionStorage.getItem('jwt-token');
+              const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5500/api'}/auth/change-password`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ oldPassword, newPassword })
+              });
+              
+              const data = await response.json();
+              
+              if (response.ok) {
+                showToast('Password updated successfully!', 'success');
+                setNav('profile');
+              } else {
+                showToast(data.message || 'Failed to update password', 'error');
+              }
+            } catch (err) {
+              showToast('Network error. Please try again.', 'error');
+            }
+          }}>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', color: theme === 'dark' ? '#fff' : '#374151', fontWeight: '600' }}>Current Password</label>
+              <input
+                type="password"
+                name="oldPassword"
+                required
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
+                placeholder="Enter current password"
+              />
+            </div>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', color: theme === 'dark' ? '#fff' : '#374151', fontWeight: '600' }}>New Password</label>
+              <input
+                type="password"
+                name="newPassword"
+                required
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
+                placeholder="Enter new password"
+              />
+            </div>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', color: theme === 'dark' ? '#fff' : '#374151', fontWeight: '600' }}>Confirm Password</label>
+              <input
+                type="password"
+                name="confirmPassword"
+                required
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
+                placeholder="Confirm new password"
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                type="submit"
+                style={{
+                  flex: 1,
+                  background: '#3b82f6',
+                  color: '#fff',
+                  border: 'none',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  cursor: 'pointer',
+                  fontWeight: '600'
+                }}
+              >
+                Update Password
+              </button>
+              <button
+                type="button"
+                onClick={() => setNav('profile')}
+                style={{
+                  flex: 1,
+                  background: 'transparent',
+                  color: '#6b7280',
+                  border: '1px solid #d1d5db',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  fontSize: '16px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
   } else if (nav === "profile") {
     content = (
       <div style={{
@@ -1269,7 +1742,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         padding: '32px',
         boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)',
         border: '1px solid #e5e7eb',
-        maxWidth: '400px',
+        maxWidth: '500px',
         margin: '0 auto',
         textAlign: 'center'
       }}>
@@ -1289,18 +1762,84 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           {getInitials(user.name)}
         </div>
         <h2 style={{ color: theme === 'dark' ? '#fff' : '#1f2937', margin: '0 0 8px 0' }}>{user.name}</h2>
-        <p style={{ color: '#6b7280', margin: '0 0 24px 0' }}>{user.email}</p>
-        <button style={{
-          background: '#3b82f6',
-          color: '#fff',
-          border: 'none',
-          padding: '12px 24px',
-          borderRadius: '8px',
-          cursor: 'pointer',
-          fontWeight: '600'
+        <p style={{ color: '#6b7280', margin: '0 0 8px 0' }}>{user.email}</p>
+        
+        <div style={{
+          background: theme === 'dark' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.05)',
+          padding: '16px',
+          borderRadius: '12px',
+          marginBottom: '24px',
+          textAlign: 'left'
         }}>
-          Edit Profile
-        </button>
+          <div style={{ 
+            fontSize: '14px', 
+            fontWeight: '600', 
+            color: theme === 'dark' ? '#fff' : '#1f2937',
+            marginBottom: '12px'
+          }}>
+            Login Credentials:
+          </div>
+          <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '8px' }}>
+            <strong>User ID:</strong> <span style={{ color: '#3b82f6', fontWeight: '600' }}>{user.userId}</span>
+          </div>
+          <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '12px' }}>
+            <strong>Email:</strong> {user.email}
+          </div>
+          <div style={{ fontSize: '14px', color: '#6b7280' }}>
+            <strong>Password Login:</strong> {user.authProvider === 'google' ? 
+              <span style={{ color: '#f59e0b' }}>Not Set</span> : 
+              <span style={{ color: '#22c55e' }}>✓ Enabled</span>
+            }
+          </div>
+        </div>
+        
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+          {user.authProvider === 'google' && (
+            <button 
+              onClick={() => setNav('setup-password')}
+              style={{
+                background: '#22c55e',
+                color: '#fff',
+                border: 'none',
+                padding: '12px 24px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                fontSize: '14px'
+              }}
+            >
+              Set Password
+            </button>
+          )}
+          <button 
+            onClick={() => setNav('change-password')}
+            style={{
+              background: '#f59e0b',
+              color: '#fff',
+              border: 'none',
+              padding: '12px 24px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '14px',
+              marginRight: '12px'
+            }}
+          >
+            Change Password
+          </button>
+          <button style={{
+            background: '#3b82f6',
+            color: '#fff',
+            border: 'none',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '14px'
+          }}>
+            Edit Profile
+          </button>
+        </div>
       </div>
     );
   }
@@ -1347,9 +1886,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         borderRight: theme === 'dark' ? '1px solid #4b5563' : '1px solid #e2e8f0',
         display: 'flex',
         flexDirection: 'column',
-        position: 'relative',
+        position: 'fixed',
+        left: 0,
+        top: 0,
         height: '100vh',
-        boxShadow: theme === 'dark' ? '4px 0 20px rgba(0,0,0,0.3)' : '4px 0 20px rgba(0,0,0,0.08)'
+        boxShadow: theme === 'dark' ? '4px 0 20px rgba(0,0,0,0.3)' : '4px 0 20px rgba(0,0,0,0.08)',
+        zIndex: 100
       }}>
         {/* Profile Section */}
         <div style={{
@@ -1411,10 +1953,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             {user.name}
           </div>
           <div style={{ color: '#6b7280', fontSize: '14px' }}>{user.email}</div>
+          <div style={{ 
+            color: '#3b82f6', 
+            fontSize: '12px', 
+            fontWeight: '600',
+            marginTop: '4px',
+            background: theme === 'dark' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.05)',
+            padding: '4px 8px',
+            borderRadius: '6px',
+            display: 'inline-block'
+          }}>
+            ID: {user.userId}
+          </div>
         </div>
         
         {/* Navigation */}
-        <div style={{ flex: 1, padding: '16px 0' }}>
+        <div style={{ flex: 1, padding: '16px 0', overflowY: 'auto', overflowX: 'hidden' }}>
           {[
             { key: 'profile', icon: FaUser, label: 'Profile' },
             { key: 'kanban', icon: FaColumns, label: 'Tasks Board' },
@@ -1462,18 +2016,37 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           ))}
         </div>
         
-        {/* Logout */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb' }}>
+        {/* Logout - Fixed at bottom */}
+        <div style={{ 
+          padding: '16px 24px', 
+          borderTop: theme === 'dark' ? '1px solid #4b5563' : '1px solid #e2e8f0',
+          background: theme === 'dark' ? 'rgba(31, 41, 55, 0.95)' : 'rgba(248, 250, 252, 0.95)',
+          backdropFilter: 'blur(10px)',
+          position: 'sticky',
+          bottom: 0,
+          zIndex: 10
+        }}>
           <div
             onClick={onLogout}
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: '12px',
-              padding: '12px 0',
+              padding: '12px 16px',
               cursor: 'pointer',
               color: '#ef4444',
-              fontWeight: '500'
+              fontWeight: '600',
+              borderRadius: '12px',
+              transition: 'all 0.3s ease',
+              background: 'transparent'
+            }}
+            onMouseEnter={(e) => {
+              (e.target as HTMLElement).style.background = 'rgba(239, 68, 68, 0.1)';
+              (e.target as HTMLElement).style.transform = 'translateX(4px)';
+            }}
+            onMouseLeave={(e) => {
+              (e.target as HTMLElement).style.background = 'transparent';
+              (e.target as HTMLElement).style.transform = 'translateX(0)';
             }}
           >
             <FaSignOutAlt size={16} />
@@ -1483,7 +2056,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       </div>
       
       {/* Main Content */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginLeft: '280px' }}>
         {/* Top Bar */}
         <div style={{
           background: theme === 'dark' ? 'rgba(55, 65, 81, 0.95)' : 'rgba(255, 255, 255, 0.95)',

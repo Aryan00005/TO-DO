@@ -1,0 +1,9 @@
+{
+  "name": "todo-app-deployment",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "cd todo-multiuser-backend/todo-multiuser-frontend && npm install && npm run build",
+    "start": "cd todo-multiuser-backend && npm start"
+  },
+  "dependencies": {}
+}

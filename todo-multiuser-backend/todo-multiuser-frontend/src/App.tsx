@@ -3,6 +3,10 @@ import { useState, useEffect } from "react";
 import Register from "./pages/register";
 import Login from "./pages/login";
 import Dashboard from "./pages/dashboard-new";
+import AuthCallback from "./pages/AuthCallback";
+import SetPassword from "./pages/SetPassword";
+import SetCredentials from "./pages/SetCredentials";
+import CompleteAccount from "./pages/CompleteAccount";
 
 // User type (optional, for TypeScript)
 interface User {
@@ -49,6 +53,10 @@ function App() {
       <Routes>
         <Route path="/login" element={<Login setUser={setUser} />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/auth/callback" element={<AuthCallback setUser={setUser} />} />
+        <Route path="/complete-account" element={<CompleteAccount setUser={setUser} />} />
+        <Route path="/setup-password" element={<SetPassword />} />
+        <Route path="/setup-credentials" element={<SetCredentials />} />
         <Route path="/" element={<Navigate to="/dashboard" />} />
         <Route element={<ProtectedRoute />}>
           <Route

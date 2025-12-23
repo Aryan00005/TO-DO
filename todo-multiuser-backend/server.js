@@ -1,17 +1,22 @@
 require('dotenv').config();
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
+const passport = require('./config/passport');
+const { testConnection } = require('./config/database');
 
 const app = express();
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true
+}));
 app.disable('x-powered-by');
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('MongoDB connected'))
-    .catch(err => console.error('MongoDB connection error:', err));
+// Initialize Passport
+app.use(passport.initialize());
+
+// Test PostgreSQL connection
+testConnection();
 
 // Import and use superadmin routes
 const superadminRoutes = require('./routes/superadmin.js');

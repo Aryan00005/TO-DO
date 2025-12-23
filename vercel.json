@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "todo-multiuser-backend/todo-multiuser-frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/todo-multiuser-backend/todo-multiuser-frontend/dist/$1"
+    }
+  ]
+}

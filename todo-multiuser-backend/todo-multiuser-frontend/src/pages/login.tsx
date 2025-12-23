@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import axios from "../api/axios";
 import { useNavigate, Link } from "react-router-dom";
-import { FaUserCircle } from "react-icons/fa";
+import { FaUserCircle, FaGoogle } from "react-icons/fa";
 
 interface LoginProps {
   setUser: React.Dispatch<React.SetStateAction<any>>;
@@ -38,6 +38,10 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
         setError("Login failed");
       }
     }
+  };
+
+  const handleGoogleLogin = () => {
+    window.location.href = `${axios.defaults.baseURL}/auth/google`;
   };
 
   return (
@@ -84,6 +88,50 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
           marginBottom: '32px',
           marginTop: '16px'
         }}>Welcome Back</h1>
+        
+        {/* Google Login Button */}
+        <button
+          onClick={handleGoogleLogin}
+          style={{
+            width: '100%',
+            background: '#fff',
+            color: '#374151',
+            padding: '12px 16px',
+            border: '2px solid #e5e7eb',
+            borderRadius: '8px',
+            fontSize: '16px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            marginBottom: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            transition: 'all 0.2s'
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.borderColor = '#3b82f6';
+            e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.borderColor = '#e5e7eb';
+            e.target.style.boxShadow = 'none';
+          }}
+        >
+          <FaGoogle style={{ color: '#ea4335' }} />
+          Continue with Google
+        </button>
+
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          margin: '20px 0',
+          color: '#9ca3af'
+        }}>
+          <div style={{ flex: 1, height: '1px', background: '#e5e7eb' }}></div>
+          <span style={{ padding: '0 16px', fontSize: '14px' }}>or</span>
+          <div style={{ flex: 1, height: '1px', background: '#e5e7eb' }}></div>
+        </div>
         
         <form onSubmit={handleSubmit} style={{
           display: 'flex',

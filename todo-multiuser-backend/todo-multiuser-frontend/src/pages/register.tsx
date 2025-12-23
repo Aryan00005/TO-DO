@@ -121,7 +121,7 @@ const Register = () => {
     setError("");
     try {
       // Use the full backend URL for registration
-      await axios.post("http://localhost:5000/api/auth/register", { name, userId, email, password });
+      await axios.post("http://localhost:9000/api/auth/register", { name, userId, email, password });
       navigate("/login");
     } catch (err) {
       if (axios.isAxiosError(err)) {
