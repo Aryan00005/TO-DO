@@ -5,12 +5,27 @@ const passport = require('./config/passport');
 const { testConnection } = require('./config/database');
 
 const app = express();
-app.use(express.json());
+
+// Trust proxy for Render
+app.set('trust proxy', 1);
+
+app.use(express.json({ limit: '10mb' }));
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.disable('x-powered-by');
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
 
 // Initialize Passport
 app.use(passport.initialize());

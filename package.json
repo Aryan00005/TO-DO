@@ -1,26 +1,24 @@
 {
-  "name": "todo-multiuser-frontend",
+  "name": "todo-backend",
   "version": "1.0.0",
-  "private": true,
+  "main": "server.js",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "build": "echo 'No build step required'"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
-    "@hello-pangea/dnd": "^18.0.1",
-    "axios": "^1.9.0",
-    "react": "^18.2.0",
-    "react-avatar-edit": "^1.2.0",
-    "react-dom": "^18.2.0",
-    "react-icons": "^5.5.0",
-    "react-router-dom": "^7.6.2",
-    "react-select": "^5.10.1",
-    "styled-components": "^6.1.18"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.0.0",
-    "@vitejs/plugin-react-swc": "^3.10.1",
-    "vite": "^6.3.5"
+    "@supabase/supabase-js": "^2.39.0",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^7.0.11",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0"
   }
 }
