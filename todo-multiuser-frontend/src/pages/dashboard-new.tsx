@@ -642,7 +642,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   </div>
                 </div>
               ));
-              })()}}
+              })()}
             </div>
           )}
         </div>
