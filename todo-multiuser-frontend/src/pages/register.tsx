@@ -1,5 +1,5 @@
 import { useState } from "react";
-import axios from "axios";
+import axios from "../api/axios";
 import { useNavigate, Link } from "react-router-dom";
 import styled from "styled-components";
 import { FaUserPlus } from "react-icons/fa";
@@ -120,8 +120,7 @@ const Register = () => {
     e.preventDefault();
     setError("");
     try {
-      // Use the full backend URL for registration
-      await axios.post("http://localhost:9000/api/auth/register", { name, userId, email, password });
+      await axios.post("/auth/register", { name, userId, email, password });
       navigate("/login");
     } catch (err) {
       if (axios.isAxiosError(err)) {
