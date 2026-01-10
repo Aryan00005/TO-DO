@@ -28,7 +28,28 @@ class Task {
     
     // Create task assignments
     if (assignedTo && assignedTo.length > 0) {
-      const assignments = assignedTo.map(userId => ({
+      // Convert usernames to user IDs if needed
+      const userIds = [];
+      for (const assignee of assignedTo) {
+        if (typeof assignee === 'string' && isNaN(assignee)) {
+          // It's a username, convert to user ID
+          const { data: user, error: userError } = await supabase
+            .from('users')
+            .select('id')
+            .eq('name', assignee)
+            .single();
+          
+          if (userError || !user) {
+            throw new Error(`User not found: ${assignee}`);
+          }
+          userIds.push(user.id);
+        } else {
+          // It's already a user ID
+          userIds.push(parseInt(assignee));
+        }
+      }
+      
+      const assignments = userIds.map(userId => ({
         task_id: task.id,
         user_id: userId,
         status: 'Not Started'
