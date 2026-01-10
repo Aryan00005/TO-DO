@@ -54,26 +54,39 @@ router.get('/google',
 );
 
 router.get('/google/callback',
-  passport.authenticate('google', { 
-    session: false,
-    failureRedirect: `${process.env.FRONTEND_URL}/login?error=oauth_failed`
-  }),
+  (req, res, next) => {
+    passport.authenticate('google', { 
+      session: false,
+      failureRedirect: `${process.env.FRONTEND_URL}/login?error=oauth_failed`
+    })(req, res, (err) => {
+      if (err) {
+        console.error('🔥 Passport authentication error:', err);
+        return res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
+      }
+      next();
+    });
+  },
   async (req, res) => {
     try {
       const user = req.user;
       
+      if (!user) {
+        console.error('❌ No user returned from Google OAuth');
+        return res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
+      }
+      
       console.log('🔍 Google callback - User data:', {
-        id: user._id,
+        id: user.id,
         email: user.email,
-        accountStatus: user.accountStatus,
+        accountStatus: user.account_status,
         requiresCompletion: user.requiresCompletion,
-        userId: user.userId,
+        userId: user.user_id,
         hasPassword: !!user.password
       });
       
       // FORCE all Google users to complete account setup
       // Check if user has no userId or password (needs completion)
-      const needsCompletion = !user.userId || !user.password || user.accountStatus === 'incomplete';
+      const needsCompletion = !user.user_id || !user.password || user.account_status === 'incomplete';
       
       if (needsCompletion) {
         console.log('🔄 User needs to complete account setup');
@@ -96,7 +109,7 @@ router.get('/google/callback',
         res.redirect(redirectUrl);
       }
     } catch (error) {
-      console.error('Google callback error:', error);
+      console.error('💥 Google callback error:', error);
       res.redirect(`${process.env.FRONTEND_URL}/login?error=login_failed`);
     }
   }
@@ -126,15 +139,12 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'Email already in use.' });
     }
 
-    console.log('🔐 Hashing password...');
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
     console.log('💾 Creating user...');
     const user = await User.create({ 
       name, 
       userId, 
       email, 
-      password: hashedPassword,
+      password: password, // User.create will handle hashing
       authProvider: 'local'
     });
     
@@ -160,9 +170,14 @@ router.post('/login', async (req, res) => {
       user = await User.findByEmail(userId);
     }
     
+    console.log('🔍 Login attempt for:', userId, 'User found:', !!user);
+    
     if (!user) {
+      console.log('❌ User not found');
       return res.status(400).json({ message: 'Invalid credentials.' });
     }
+
+    console.log('🔑 User auth provider:', user.auth_provider, 'Has password:', !!user.password);
 
     if (!user.password) {
       return res.status(400).json({ 
@@ -172,7 +187,10 @@ router.post('/login', async (req, res) => {
     }
     
     const isMatch = await User.verifyPassword(password, user.password);
+    console.log('🔐 Password match:', isMatch);
+    
     if (!isMatch) {
+      console.log('❌ Password mismatch');
       return res.status(400).json({ message: 'Invalid credentials.' });
     }
 

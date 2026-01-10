@@ -1,74 +1,45 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import axios from '../api/axios';
+import { FaUserPlus } from 'react-icons/fa';
 
 interface CompleteAccountProps {
-  setUser?: React.Dispatch<React.SetStateAction<any>>;
+  setUser: React.Dispatch<React.SetStateAction<any>>;
 }
 
 const CompleteAccount: React.FC<CompleteAccountProps> = ({ setUser }) => {
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
 
+  useEffect(() => {
+    if (!token) {
+      navigate('/login');
+    }
+  }, [token, navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
-    if (!token) {
-      setError('Invalid or missing token. Please try logging in again.');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-
-    if (userId.length < 3) {
-      setError('User ID must be at least 3 characters long');
-      return;
-    }
-
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long');
-      return;
-    }
-
     setLoading(true);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5500/api'}/auth/complete-account`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ token, userId, password })
+      const res = await axios.post('/auth/complete-account', {
+        token,
+        userId,
+        password
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        // Store login session
-        sessionStorage.setItem('jwt-token', data.token);
-        sessionStorage.setItem('user', JSON.stringify(data.user));
-        
-        // Update parent component state
-        if (setUser) {
-          setUser(data.user);
-        }
-        
-        // Redirect to dashboard
-        navigate('/dashboard');
-      } else {
-        setError(data.message || 'Failed to complete account');
-      }
-    } catch (err) {
-      setError('Network error. Please try again.');
+      sessionStorage.setItem('jwt-token', res.data.token);
+      sessionStorage.setItem('user', JSON.stringify(res.data.user));
+      setUser(res.data.user);
+      navigate('/dashboard');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to complete account');
     } finally {
       setLoading(false);
     }
@@ -76,188 +47,125 @@ const CompleteAccount: React.FC<CompleteAccountProps> = ({ setUser }) => {
 
   return (
     <div style={{
-      minHeight: '100vh',
+      height: '100vh',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      padding: '20px'
+      background: 'linear-gradient(120deg, #f5f7fa 0%, #e0e7ef 100%)'
     }}>
       <div style={{
-        background: 'white',
-        padding: '40px',
+        background: '#fff',
+        padding: '48px 32px 32px 32px',
         borderRadius: '16px',
-        boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+        boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)',
+        maxWidth: '400px',
         width: '100%',
-        maxWidth: '450px'
+        textAlign: 'center',
+        position: 'relative'
       }}>
-        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-          <div style={{
-            width: '60px',
-            height: '60px',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 16px',
-            fontSize: '28px'
-          }}>
-            🔐
-          </div>
-          <h2 style={{ color: '#1f2937', marginBottom: '8px', fontSize: '24px' }}>
-            Complete Your Account
-          </h2>
-          <p style={{ color: '#6b7280', fontSize: '14px' }}>
-            Create your login credentials to finish registration
-          </p>
-        </div>
-
         <div style={{
-          background: '#fef3c7',
-          border: '1px solid #fbbf24',
-          borderRadius: '8px',
-          padding: '12px',
-          marginBottom: '24px',
-          fontSize: '13px',
-          color: '#92400e'
+          background: '#3b82f6',
+          color: '#fff',
+          width: '80px',
+          height: '80px',
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'absolute',
+          top: '-40px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
+          border: '4px solid #fff'
         }}>
-          ⚠️ <strong>Required:</strong> You must complete this step to access your account
+          <FaUserPlus size={40} />
         </div>
-
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ 
-              display: 'block', 
-              marginBottom: '8px', 
-              color: '#374151',
-              fontSize: '14px',
-              fontWeight: '600'
-            }}>
-              Create User ID *
-            </label>
-            <input
-              type="text"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '2px solid #e5e7eb',
-                borderRadius: '8px',
-                fontSize: '16px',
-                boxSizing: 'border-box'
-              }}
-              placeholder="Choose a unique User ID"
-              required
-            />
-            <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-              Minimum 3 characters (letters, numbers, underscore)
-            </div>
-          </div>
-
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ 
-              display: 'block', 
-              marginBottom: '8px', 
-              color: '#374151',
-              fontSize: '14px',
-              fontWeight: '600'
-            }}>
-              Create Password *
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '2px solid #e5e7eb',
-                borderRadius: '8px',
-                fontSize: '16px',
-                boxSizing: 'border-box'
-              }}
-              placeholder="Enter a strong password"
-              required
-            />
-          </div>
-
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ 
-              display: 'block', 
-              marginBottom: '8px', 
-              color: '#374151',
-              fontSize: '14px',
-              fontWeight: '600'
-            }}>
-              Confirm Password *
-            </label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                border: '2px solid #e5e7eb',
-                borderRadius: '8px',
-                fontSize: '16px',
-                boxSizing: 'border-box'
-              }}
-              placeholder="Re-enter your password"
-              required
-            />
-          </div>
-
-          {error && (
-            <div style={{
-              background: '#fef2f2',
-              color: '#dc2626',
-              padding: '12px',
+        
+        <h1 style={{
+          fontSize: '28px',
+          fontWeight: '700',
+          color: '#1f2937',
+          marginBottom: '16px',
+          marginTop: '16px'
+        }}>Complete Your Account</h1>
+        
+        <p style={{
+          color: '#6b7280',
+          marginBottom: '32px',
+          fontSize: '14px'
+        }}>
+          Please create a User ID and password to complete your Google account setup.
+        </p>
+        
+        <form onSubmit={handleSubmit} style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '16px'
+        }}>
+          <input
+            type="text"
+            placeholder="Choose a User ID"
+            value={userId}
+            onChange={e => setUserId(e.target.value)}
+            required
+            minLength={3}
+            style={{
+              padding: '12px 16px',
+              border: '2px solid #e5e7eb',
               borderRadius: '8px',
-              fontSize: '14px',
-              marginBottom: '20px',
-              border: '1px solid #fecaca'
-            }}>
-              {error}
-            </div>
-          )}
-
+              fontSize: '16px',
+              transition: 'border-color 0.2s',
+              outline: 'none'
+            }}
+            onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+            onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+          />
+          <input
+            type="password"
+            placeholder="Create a password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+            minLength={6}
+            style={{
+              padding: '12px 16px',
+              border: '2px solid #e5e7eb',
+              borderRadius: '8px',
+              fontSize: '16px',
+              transition: 'border-color 0.2s',
+              outline: 'none'
+            }}
+            onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+            onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+          />
           <button
             type="submit"
             disabled={loading}
             style={{
-              width: '100%',
-              background: loading ? '#9ca3af' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              color: 'white',
-              padding: '14px',
+              background: loading ? '#9ca3af' : '#3b82f6',
+              color: '#fff',
+              padding: '12px 24px',
               border: 'none',
               borderRadius: '8px',
               fontSize: '16px',
               fontWeight: '600',
               cursor: loading ? 'not-allowed' : 'pointer',
-              marginBottom: '20px'
+              marginTop: '8px',
+              transition: 'background-color 0.2s'
             }}
           >
-            {loading ? 'Creating Account...' : 'Complete Registration'}
+            {loading ? 'Completing...' : 'Complete Account'}
           </button>
         </form>
 
-        <div style={{
-          padding: '16px',
-          background: '#f0f9ff',
-          borderRadius: '8px',
-          fontSize: '13px',
-          color: '#0369a1'
-        }}>
-          <strong>After completion, you can login using:</strong>
-          <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
-            <li>Google (one-click login)</li>
-            <li>Your User ID + Password</li>
-            <li>Your Email + Password</li>
-          </ul>
-        </div>
+        {error && (
+          <p style={{
+            color: '#ef4444',
+            marginTop: '16px',
+            fontSize: '14px'
+          }}>{error}</p>
+        )}
       </div>
     </div>
   );

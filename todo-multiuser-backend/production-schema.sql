@@ -11,9 +11,11 @@ CREATE TABLE users (
     email VARCHAR(255) UNIQUE NOT NULL,
     user_id VARCHAR(100) UNIQUE,
     password VARCHAR(255),
+    google_id VARCHAR(255) UNIQUE,
     auth_provider VARCHAR(20) DEFAULT 'local' CHECK (auth_provider IN ('local', 'google', 'hybrid')),
     account_status VARCHAR(20) DEFAULT 'active' CHECK (account_status IN ('incomplete', 'active', 'suspended')),
     role VARCHAR(20) DEFAULT 'employee' CHECK (role IN ('admin', 'manager', 'employee')),
+    email_verified BOOLEAN DEFAULT FALSE,
     reset_token VARCHAR(255),
     reset_token_expiry TIMESTAMP WITH TIME ZONE,
     reset_attempts INTEGER DEFAULT 0,
@@ -77,6 +79,7 @@ CREATE TABLE audit_logs (
 -- Performance indexes
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_user_id ON users(user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL;
 CREATE INDEX idx_users_role ON users(role);
 CREATE INDEX idx_users_status ON users(account_status);
 
