@@ -76,8 +76,22 @@ app.use((req, res, next) => {
 
 // Global error handler (should be last)
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).send('Something broke!');
+  console.error('💥 Global error handler:', {
+    message: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method
+  });
+  
+  // Don't expose error details in production
+  if (process.env.NODE_ENV === 'production') {
+    res.status(500).json({ message: 'Internal server error' });
+  } else {
+    res.status(500).json({ 
+      message: err.message,
+      stack: err.stack 
+    });
+  }
 });
 
 const PORT = process.env.PORT || 5500;

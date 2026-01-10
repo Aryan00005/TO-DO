@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node dist/server.js",
     "dev": "nodemon server.js",
-    "build": "npm install",
+    "build": "npm install && npm run obfuscate",
+    "obfuscate": "node obfuscate.js",
     "postinstall": "echo 'Dependencies installed successfully'"
   },
   "engines": {
@@ -22,5 +23,9 @@
     "nodemailer": "^7.0.11",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0"
+  },
+  "devDependencies": {
+    "fs-extra": "^11.3.3",
+    "javascript-obfuscator": "^4.2.2"
   }
 }

@@ -8,8 +8,17 @@ const supabase = createClient(
 
 class User {
   static async create(userData) {
-    const { name, email, userId, password, authProvider = 'local', accountStatus = 'active' } = userData;
-    const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
+    const { name, email, userId, password, authProvider = 'local', accountStatus = 'active', googleId } = userData;
+    const hashedPassword = password ? await bcrypt.hash(password, 12) : null;
+    
+    console.log('💾 Creating user in database:', {
+      name,
+      email,
+      userId,
+      hasPassword: !!password,
+      authProvider,
+      accountStatus
+    });
     
     const { data, error } = await supabase
       .from('users')
@@ -19,12 +28,18 @@ class User {
         user_id: userId,
         password: hashedPassword,
         auth_provider: authProvider,
-        account_status: accountStatus
+        account_status: accountStatus,
+        google_id: googleId
       })
       .select()
       .single();
     
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Database error creating user:', error);
+      throw error;
+    }
+    
+    console.log('✅ User created successfully:', data.id);
     return data;
   }
 
