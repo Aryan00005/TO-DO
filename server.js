@@ -33,13 +33,26 @@ app.use(passport.initialize());
 // Test PostgreSQL connection
 testConnection();
 
+// Debug: Log environment variables
+console.log('🔍 Environment check:');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Missing');
+console.log('GOOGLE_CLIENT_SECRET:', process.env.GOOGLE_CLIENT_SECRET ? 'Set' : 'Missing');
+console.log('BACKEND_URL:', process.env.BACKEND_URL);
+console.log('FRONTEND_URL:', process.env.FRONTEND_URL);
+
 // Import and use superadmin routes
 const superadminRoutes = require('./routes/superadmin.js');
 app.use('/api/superadmin', superadminRoutes);
 
 // Import and use auth routes
-const authRoutes = require('./routes/auth.js');
-app.use('/api/auth', authRoutes);
+try {
+  const authRoutes = require('./routes/auth.js');
+  app.use('/api/auth', authRoutes);
+  console.log('✅ Auth routes loaded successfully');
+} catch (error) {
+  console.error('❌ Error loading auth routes:', error.message);
+}
 
 // Import and use task routes
 const taskRoutes = require('./routes/task.js');
