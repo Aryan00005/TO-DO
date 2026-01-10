@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { FaBell, FaCalendar, FaCalendarAlt, FaChartBar, FaColumns, FaMoon, FaPlus, FaSignOutAlt, FaStar, FaSun, FaTasks, FaUser, FaEdit, FaTrash, FaQuestionCircle, FaCheckCircle } from "react-icons/fa";
 import { useTheme } from "../hooks/useTheme";
 import { useToast } from "../components/Toast";
@@ -42,8 +41,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [priority, setPriority] = useState(5);
   const [dueDate, setDueDate] = useState("");
   const [loading, setLoading] = useState(false);
-  const [assignedTasks, setAssignedTasks] = useState<Task[]>([]);
-  const [selectedDate, setSelectedDate] = useState(new Date().getDate().toString());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -65,7 +62,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
   const firstDayOfMonth = new Date(selectedYear, selectedMonth, 1).getDay();
   const calendarDates = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const emptyDays = Array.from({ length: firstDayOfMonth }, (_, i) => null);
   
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -594,7 +590,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     task.description.toLowerCase().includes(searchTerm.toLowerCase())
                   );
                 
-                return filteredTasks.map((task, index) => (
+                return filteredTasks.map((task) => (
                 <div
                   key={task._id}
                   style={{
@@ -832,7 +828,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             gap: '1px'
           }}>
             {/* Empty days */}
-            {emptyDays.map((_, index) => (
+            {Array.from({ length: firstDayOfMonth }, (_, index) => (
               <div key={`empty-${index}`} style={{ height: '100px' }} />
             ))}
             

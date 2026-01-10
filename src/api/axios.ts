@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const instance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "/api" : "http://localhost:5500/api"),
+  baseURL: "https://to-do-m0we.onrender.com/api",
 });
 
 instance.interceptors.request.use((config) => {
