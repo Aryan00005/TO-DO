@@ -13,7 +13,7 @@ const filesToObfuscate = [
   'middleware/auth.js',
   'models/task.js',
   'models/user.js',
-  'models/notification.js',
+  'models/notification.js', 
   'models/organization.js',
   'routes/auth.js',
   'routes/task.js',

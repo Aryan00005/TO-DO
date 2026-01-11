@@ -10,7 +10,7 @@ CREATE TABLE users (
     auth_provider VARCHAR(20) DEFAULT 'local',
     account_status VARCHAR(20) DEFAULT 'active',
     reset_token VARCHAR(255),  
-    reset_token_expiry TIMESTAMP,
+    reset_token_expiry TIMESTAMP,x`
     reset_attempts INTEGER DEFAULT 0,
     last_reset_attempt TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
