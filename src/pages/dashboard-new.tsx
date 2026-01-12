@@ -59,6 +59,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [taskFilter, setTaskFilter] = useState('all');
   const [sortBy, setSortBy] = useState('none');
   const [searchTerm, setSearchTerm] = useState('');
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [selectedDateTasks, setSelectedDateTasks] = useState<Task[]>([]);
+  const [selectedDateStr, setSelectedDateStr] = useState('');
   const [showHelp, setShowHelp] = useState(false);
 
   const today = new Date();
@@ -138,36 +141,84 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   }, []);
 
   useEffect(() => {
-    if (nav === "assignedtasks") {
-      axios.get(`/tasks/assignedBy/${user._id}`)
-        .then(res => {
-          const processedTasks = res.data.map((task: any) => {
-            const firstAssigneeId = Array.isArray(task.assignedTo) ? task.assignedTo[0]._id || task.assignedTo[0] : task.assignedTo._id || task.assignedTo;
-            const assigneeStatus = task.assigneeStatuses?.find((s: any) => s.user.toString() === firstAssigneeId || s.user._id === firstAssigneeId);
-            return {
-              ...task,
-              status: assigneeStatus?.status || task.status || 'Not Started',
-              stuckReason: assigneeStatus?.completionRemark || task.stuckReason || ''
-            };
-          });
-          setAssignedTasks(processedTasks);
-        })
-        .catch(err => console.error(err));
-    }
-  }, [nav, user._id]);
-
-  useEffect(() => {
-    axios.get(`/tasks/assignedTo/${user._id}`)
-      .then(res => {
-        const processedTasks = res.data.map((task: any) => {
+    if (user.role === 'admin') {
+      // Admin sees ALL tasks in the system
+      Promise.all([
+        axios.get(`/tasks/assignedTo/${user._id}`),
+        axios.get(`/tasks/assignedBy/${user._id}`),
+        axios.get('/tasks/all', { headers: { Authorization: `Bearer ${sessionStorage.getItem("jwt-token")}` } })
+      ]).then(([assignedToRes, assignedByRes, allRes]) => {
+        // Combine all tasks for admin
+        const allTasks = [...assignedToRes.data, ...assignedByRes.data, ...allRes.data];
+        const uniqueTasks = allTasks.filter((task, index, self) => 
+          index === self.findIndex(t => t._id === task._id || t.id === task.id)
+        );
+        
+        const processedTasks = uniqueTasks.map((task: any) => {
           const userAssignment = task.assigneeStatuses?.find((s: any) => s.user.toString() === user._id || s.user === user._id);
           return {
             ...task,
-            status: userAssignment?.status || 'Not Started',
-            stuckReason: userAssignment?.completionRemark || ''
+            _id: task._id || task.id,
+            dueDate: task.due_date || task.dueDate,
+            status: userAssignment?.status || task.status || 'Not Started',
+            stuckReason: userAssignment?.completionRemark || task.stuckReason || ''
           };
         });
         setTasks(processedTasks);
+      }).catch(err => {
+        // Fallback to regular user behavior
+        axios.get(`/tasks/assignedTo/${user._id}`)
+          .then(res => {
+            const processedTasks = res.data.map((task: any) => {
+              const userAssignment = task.assigneeStatuses?.find((s: any) => s.user.toString() === user._id || s.user === user._id);
+              return {
+                ...task,
+                dueDate: task.due_date,
+                status: userAssignment?.status || 'Not Started',
+                stuckReason: userAssignment?.completionRemark || ''
+              };
+            });
+            setTasks(processedTasks);
+          })
+          .catch(err => console.error(err));
+      });
+    } else {
+      // Regular user sees only their assigned tasks
+      axios.get(`/tasks/assignedTo/${user._id}`)
+        .then(res => {
+          const processedTasks = res.data.map((task: any) => {
+            const userAssignment = task.assigneeStatuses?.find((s: any) => s.user.toString() === user._id || s.user === user._id);
+            return {
+              ...task,
+              dueDate: task.due_date,
+              status: userAssignment?.status || 'Not Started',
+              stuckReason: userAssignment?.completionRemark || ''
+            };
+          });
+          setTasks(processedTasks);
+        })
+        .catch(err => console.error(err));
+    }
+  }, [user._id, user.role]);
+
+  useEffect(() => {
+    // Always load assigned tasks
+    axios.get(`/tasks/assignedBy/${user._id}`)
+      .then(res => {
+        const processedTasks = res.data.map((task: any) => {
+          const firstAssignee = task.assigneeStatuses?.[0];
+          return {
+            ...task,
+            dueDate: task.due_date,
+            assignedTo: firstAssignee?.user ? {
+              _id: firstAssignee.user._id || firstAssignee.user,
+              name: firstAssignee.user.name || 'Unknown'
+            } : { _id: 'unknown', name: 'No Assignee' },
+            status: firstAssignee?.status || 'Not Started',
+            stuckReason: firstAssignee?.completionRemark || ''
+          };
+        });
+        setAssignedTasks(processedTasks);
       })
       .catch(err => console.error(err));
   }, [user._id]);
@@ -228,12 +279,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       }
       
       // Number keys to switch views (only when not typing in input fields)
-      if (event.key >= '1' && event.key <= '7' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      if (event.key >= '1' && event.key <= '8' && !event.ctrlKey && !event.metaKey && !event.altKey) {
         const target = event.target as HTMLElement;
         const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable;
         
         if (!isTyping) {
-          const views = ['profile', 'kanban', 'assigntasks', 'list', 'completed', 'calendar', 'analytics'];
+          const views = ['profile', 'kanban', 'assigntasks', 'assignedtasks', 'list', 'completed', 'calendar', 'analytics'];
           const index = parseInt(event.key) - 1;
           if (views[index]) {
             setNav(views[index]);
@@ -272,16 +323,37 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       
       setTitle(""); setDescription(""); setAssignedTo(""); setPriority(5); setDueDate(""); setCompany("");
       
-      const res = await axios.get(`/tasks/assignedTo/${user._id}`);
-      const processedTasks = res.data.map((task: any) => {
+      // Simple refresh - just reload the page data
+      const [assignedRes, createdRes] = await Promise.all([
+        axios.get(`/tasks/assignedTo/${user._id}`),
+        axios.get(`/tasks/assignedBy/${user._id}`)
+      ]);
+      
+      const processedTasks = assignedRes.data.map((task: any) => {
         const userAssignment = task.assigneeStatuses?.find((s: any) => s.user.toString() === user._id || s.user === user._id);
         return {
           ...task,
+          dueDate: task.due_date,
           status: userAssignment?.status || 'Not Started',
           stuckReason: userAssignment?.completionRemark || ''
         };
       });
       setTasks(processedTasks);
+      
+      const processedAssignedTasks = createdRes.data.map((task: any) => {
+        const firstAssignee = task.assigneeStatuses?.[0];
+        return {
+          ...task,
+          dueDate: task.due_date,
+          assignedTo: firstAssignee?.user ? {
+            _id: firstAssignee.user._id || firstAssignee.user,
+            name: firstAssignee.user.name || 'Unknown'
+          } : { _id: 'unknown', name: 'No Assignee' },
+          status: firstAssignee?.status || 'Not Started',
+          stuckReason: firstAssignee?.completionRemark || ''
+        };
+      });
+      setAssignedTasks(processedAssignedTasks);
       
       showToast("Task created successfully!", "success");
       setNav("kanban");
@@ -303,17 +375,37 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Force refresh tasks from server
-      const res = await axios.get(`/tasks/assignedTo/${user._id}`);
-      const processedTasks = res.data.map((task: any) => {
+      // Force refresh both task lists from server
+      const [assignedRes, createdRes] = await Promise.all([
+        axios.get(`/tasks/assignedTo/${user._id}`),
+        axios.get(`/tasks/assignedBy/${user._id}`)
+      ]);
+      
+      const processedTasks = assignedRes.data.map((task: any) => {
         const userAssignment = task.assigneeStatuses?.find((s: any) => s.user.toString() === user._id || s.user === user._id);
         return {
           ...task,
+          dueDate: task.due_date,
           status: userAssignment?.status || 'Not Started',
           stuckReason: userAssignment?.completionRemark || ''
         };
       });
       setTasks(processedTasks);
+      
+      const processedAssignedTasks = createdRes.data.map((task: any) => {
+        const firstAssignee = task.assigneeStatuses?.[0];
+        return {
+          ...task,
+          dueDate: task.due_date,
+          assignedTo: firstAssignee?.user ? {
+            _id: firstAssignee.user._id || firstAssignee.user,
+            name: firstAssignee.user.name || 'Unknown'
+          } : { _id: 'unknown', name: 'No Assignee' },
+          status: firstAssignee?.status || 'Not Started',
+          stuckReason: firstAssignee?.completionRemark || ''
+        };
+      });
+      setAssignedTasks(processedAssignedTasks);
       
       setRefreshKey(prev => prev + 1);
       showToast(`Task moved to ${newStatus}!`, "success");
@@ -465,10 +557,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   };
 
   // Calculate stats dynamically
-  const totalTasks = tasks.length;
-  const doneTasks = tasks.filter(t => t.status === "Done").length;
-  const inProgressTasks = tasks.filter(t => t.status === "Working on it").length;
-  const stuckTasks = tasks.filter(t => t.status === "Stuck").length;
+  const allTasks = [...tasks, ...assignedTasks];
+  const uniqueTasks = allTasks.filter((task, index, self) => 
+    index === self.findIndex(t => t._id === task._id)
+  );
+  const totalTasks = uniqueTasks.length;
+  const doneTasks = uniqueTasks.filter(t => t.status === "Done").length;
+  const inProgressTasks = uniqueTasks.filter(t => t.status === "Working on it").length;
+  const stuckTasks = uniqueTasks.filter(t => t.status === "Stuck").length;
 
   let content = null;
 
@@ -507,7 +603,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 {user.name}
               </h3>
               <p style={{ color: '#6b7280', fontSize: '16px', marginBottom: '4px' }}>{user.email}</p>
-              <p style={{ color: '#6b7280', fontSize: '14px' }}>Role: {user.role || 'User'}</p>
+              <p style={{ color: '#6b7280', fontSize: '14px' }}>Role: {user.role === 'admin' ? 'Company Admin' : 'User'}</p>
+              {user.company && (
+                <p style={{ color: '#6b7280', fontSize: '12px' }}>Company: {user.company}</p>
+              )}
             </div>
           </div>
           
@@ -612,11 +711,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)',
           border: '1px solid #e5e7eb'
         }}>
-          {tasks.length === 0 ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
-              No tasks found
-            </div>
-          ) : (
+          {(() => {
+            const allTasks = [...tasks, ...assignedTasks];
+            const uniqueTasks = allTasks.filter((task, index, self) => 
+              index === self.findIndex(t => t._id === task._id)
+            );
+            return uniqueTasks.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
+                No tasks found
+              </div>
+            ) : (
             <div>
               {/* Header */}
               <div style={{
@@ -639,7 +743,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               
               {/* Tasks */}
               {(() => {
-                const filteredTasks = tasks
+                const allTasks = [...tasks, ...assignedTasks];
+                const uniqueTasks = allTasks.filter((task, index, self) => 
+                  index === self.findIndex(t => t._id === task._id)
+                );
+                const filteredTasks = uniqueTasks
                   .filter(task => taskFilter === 'all' || task.status === taskFilter)
                   .filter(task => 
                     searchTerm === '' || 
@@ -697,12 +805,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               ));
               })()}
             </div>
-          )}
+            );
+          })()}
         </div>
       </div>
     );
   } else if (nav === "completed") {
-    const completedTasks = tasks.filter(task => task.status === 'Done');
+    const allTasks = [...tasks, ...assignedTasks];
+    const uniqueTasks = allTasks.filter((task, index, self) => 
+      index === self.findIndex(t => t._id === task._id)
+    );
+    const completedTasks = uniqueTasks.filter(task => task.status === 'Done');
     
     content = (
       <div>
@@ -802,7 +915,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   } else if (nav === "calendar") {
     const getTasksForDate = (date: number) => {
       const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`;
-      return tasks.filter(task => {
+      const allTasks = [...tasks, ...assignedTasks];
+      const uniqueTasks = allTasks.filter((task, index, self) => 
+        index === self.findIndex(t => t._id === task._id)
+      );
+      return uniqueTasks.filter(task => {
         if (!task.dueDate) return false;
         const taskDate = new Date(task.dueDate).toISOString().split('T')[0];
         return taskDate === dateStr;
@@ -897,13 +1014,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               return (
                 <div
                   key={date}
+                  onClick={() => {
+                    const dayTasks = getTasksForDate(date);
+                    setSelectedDateTasks(dayTasks);
+                    setSelectedDateStr(`${monthNames[selectedMonth]} ${date}, ${selectedYear}`);
+                    setShowTaskModal(true);
+                  }}
                   style={{
                     minHeight: '100px',
                     padding: '8px',
                     background: theme === 'dark' ? '#4b5563' : '#f9fafb',
                     border: isToday ? '2px solid #3b82f6' : '1px solid #e5e7eb',
                     borderRadius: '6px',
-                    position: 'relative'
+                    position: 'relative',
+                    cursor: 'pointer'
                   }}
                 >
                   <div style={{
@@ -1015,7 +1139,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           </select>
         </div>
         <div key={`kanban-${refreshKey}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px' }}>
-          {["Not Started", "Working on it", "Stuck", "Done"].map(col => (
+          {["Not Started", "Working on it", "Stuck", "Done"].map(col => {
+            const allTasks = [...tasks, ...assignedTasks];
+            const uniqueTasks = allTasks.filter((task, index, self) => 
+              index === self.findIndex(t => t._id === task._id)
+            );
+            const columnTasks = uniqueTasks.filter(task => task.status === col);
+            
+            return (
             <div
               key={col}
               onDragOver={handleDragOver}
@@ -1044,14 +1175,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   padding: '2px 8px',
                   fontSize: '12px'
                 }}>
-                  {tasks.filter(task => task.status === col).length}
+                  {columnTasks.length}
                 </span>
               </div>
               
-              {tasks.filter(task => task.status === col)
+              {columnTasks
                 .sort((a, b) => {
                   if (sortBy === 'priority') {
-                    return b.priority - a.priority; // Higher priority first
+                    return b.priority - a.priority;
                   } else if (sortBy === 'date') {
                     if (!a.dueDate && !b.dueDate) return 0;
                     if (!a.dueDate) return 1;
@@ -1176,13 +1307,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 </div>
               ))}
               
-              {tasks.filter(task => task.status === col).length === 0 && (
+              {columnTasks.length === 0 && (
                 <div style={{ color: '#9ca3af', textAlign: 'center', padding: '20px' }}>
                   No tasks
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -1353,6 +1485,101 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
       </div>
     );
+  } else if (nav === "assignedtasks") {
+    content = (
+      <div>
+        <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ fontSize: '24px', fontWeight: '700', color: theme === 'dark' ? '#fff' : '#1f2937' }}>
+            Tasks I Assigned ({assignedTasks.length})
+          </h2>
+        </div>
+        
+        <div style={{
+          background: theme === 'dark' ? '#374151' : '#fff',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)',
+          border: '1px solid #e5e7eb'
+        }}>
+          {assignedTasks.length === 0 ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
+              No tasks assigned by you yet
+            </div>
+          ) : (
+            <div>
+              {/* Header */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '2fr 1fr 100px 100px 100px',
+                gap: '16px',
+                padding: '16px 24px',
+                background: theme === 'dark' ? '#4b5563' : '#f9fafb',
+                borderBottom: '1px solid #e5e7eb',
+                fontWeight: '600',
+                fontSize: '14px',
+                color: theme === 'dark' ? '#d1d5db' : '#6b7280'
+              }}>
+                <div>TASK</div>
+                <div>ASSIGNEE</div>
+                <div style={{ textAlign: 'center' }}>PRIORITY</div>
+                <div style={{ textAlign: 'center' }}>STATUS</div>
+                <div style={{ textAlign: 'center' }}>DUE DATE</div>
+              </div>
+              
+              {/* Tasks */}
+              {assignedTasks.map((task, index) => (
+                <div
+                  key={task._id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '2fr 1fr 100px 100px 100px',
+                    gap: '16px',
+                    padding: '16px 24px',
+                    borderBottom: index < assignedTasks.length - 1 ? '1px solid #e5e7eb' : 'none',
+                    background: theme === 'dark' ? '#374151' : '#fff',
+                    alignItems: 'center'
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: '600', color: theme === 'dark' ? '#fff' : '#1f2937', marginBottom: '4px' }}>
+                      {task.title}
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#6b7280' }}>
+                      {task.description.length > 60 ? task.description.substring(0, 60) + '...' : task.description}
+                    </div>
+                  </div>
+                  
+                  <div style={{ color: theme === 'dark' ? '#d1d5db' : '#4b5563' }}>
+                    {typeof task.assignedTo === 'object' ? task.assignedTo.name : 'Unknown'}
+                  </div>
+                  
+                  <div style={{ textAlign: 'center' }}>
+                    {renderStars(task.priority)}
+                  </div>
+                  
+                  <div style={{ textAlign: 'center' }}>
+                    <span style={{
+                      padding: '4px 8px',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      background: task.status === 'Done' ? '#dcfce7' : task.status === 'Working on it' ? '#fef3c7' : task.status === 'Stuck' ? '#fee2e2' : '#f1f5f9',
+                      color: task.status === 'Done' ? '#166534' : task.status === 'Working on it' ? '#92400e' : task.status === 'Stuck' ? '#991b1b' : '#475569'
+                    }}>
+                      {task.status}
+                    </span>
+                  </div>
+                  
+                  <div style={{ fontSize: '14px', color: '#6b7280', textAlign: 'center' }}>
+                    {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No date'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
   } else if (nav === "analytics") {
     content = (
       <div style={{
@@ -1469,7 +1696,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           {[
             { key: 'profile', icon: FaUser, label: 'Profile' },
             { key: 'kanban', icon: FaColumns, label: 'Tasks Board' },
-            { key: 'assigntasks', icon: FaPlus, label: 'Assign Tasks' },
+            { key: 'assigntasks', icon: FaPlus, label: 'Create Tasks' },
+            { key: 'assignedtasks', icon: FaTasks, label: 'My Assigned Tasks' },
             { key: 'list', icon: FaTasks, label: 'Task List' },
             { key: 'completed', icon: FaCheckCircle, label: 'Completed Tasks' },
             { key: 'calendar', icon: FaCalendarAlt, label: 'Calendar' },
@@ -1482,13 +1710,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
-                padding: '14px 24px',
-                margin: '4px 12px',
+                padding: '12px 20px',
+                margin: '2px 16px',
                 cursor: 'pointer',
                 background: nav === key ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' : 'transparent',
                 color: nav === key ? '#fff' : (theme === 'dark' ? '#d1d5db' : '#4b5563'),
-                borderRadius: '12px',
-                transition: 'all 0.3s ease'
+                borderRadius: '8px',
+                transition: 'all 0.2s ease',
+                fontSize: '14px'
               }}
             >
               <Icon size={16} />
@@ -1741,6 +1970,111 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         
         <ToastContainer />
         
+        {/* Task Details Modal for Calendar */}
+        {showTaskModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}>
+            <div style={{
+              background: theme === 'dark' ? '#374151' : '#fff',
+              borderRadius: '12px',
+              padding: '32px',
+              maxWidth: '600px',
+              width: '90%',
+              maxHeight: '80vh',
+              overflow: 'auto'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                <h3 style={{ color: theme === 'dark' ? '#fff' : '#1f2937', fontSize: '24px', fontWeight: '700', margin: 0 }}>
+                  Tasks for {selectedDateStr}
+                </h3>
+                <button
+                  onClick={() => setShowTaskModal(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: '24px',
+                    cursor: 'pointer',
+                    color: '#6b7280'
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+              
+              {selectedDateTasks.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#6b7280', padding: '40px' }}>
+                  No tasks scheduled for this date
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {selectedDateTasks.map((task) => (
+                    <div
+                      key={task._id}
+                      style={{
+                        background: theme === 'dark' ? '#4b5563' : '#f9fafb',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        padding: '16px'
+                      }}
+                    >
+                      <div style={{ 
+                        fontWeight: 'bold', 
+                        color: theme === 'dark' ? '#fff' : '#1f2937',
+                        marginBottom: '8px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <span>{task.title}</span>
+                        <span style={{
+                          padding: '4px 8px',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          background: task.status === 'Done' ? '#dcfce7' : task.status === 'Working on it' ? '#fef3c7' : task.status === 'Stuck' ? '#fee2e2' : '#f1f5f9',
+                          color: task.status === 'Done' ? '#166534' : task.status === 'Working on it' ? '#92400e' : task.status === 'Stuck' ? '#991b1b' : '#475569'
+                        }}>
+                          {task.status}
+                        </span>
+                      </div>
+                      
+                      <div style={{ 
+                        color: theme === 'dark' ? '#d1d5db' : '#6b7280',
+                        fontSize: '14px',
+                        marginBottom: '12px'
+                      }}>
+                        {task.description}
+                      </div>
+                      
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ fontSize: '12px', color: '#6b7280' }}>Priority:</span>
+                          {renderStars(task.priority)}
+                        </div>
+                        {task.company && (
+                          <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                            Company: {task.company}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        
         {/* Help Modal */}
         {showHelp && (
           <div style={{
@@ -1780,20 +2114,24 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   <kbd style={{ background: theme === 'dark' ? '#4b5563' : '#f3f4f6', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>3 or Ctrl+N</kbd>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: theme === 'dark' ? '#d1d5db' : '#4b5563' }}>Navigate to Task List</span>
+                  <span style={{ color: theme === 'dark' ? '#d1d5db' : '#4b5563' }}>My Assigned Tasks</span>
                   <kbd style={{ background: theme === 'dark' ? '#4b5563' : '#f3f4f6', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>4</kbd>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: theme === 'dark' ? '#d1d5db' : '#4b5563' }}>Navigate to Completed Tasks</span>
+                  <span style={{ color: theme === 'dark' ? '#d1d5db' : '#4b5563' }}>Navigate to Task List</span>
                   <kbd style={{ background: theme === 'dark' ? '#4b5563' : '#f3f4f6', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>5</kbd>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: theme === 'dark' ? '#d1d5db' : '#4b5563' }}>Navigate to Calendar</span>
+                  <span style={{ color: theme === 'dark' ? '#d1d5db' : '#4b5563' }}>Navigate to Completed Tasks</span>
                   <kbd style={{ background: theme === 'dark' ? '#4b5563' : '#f3f4f6', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>6</kbd>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: theme === 'dark' ? '#d1d5db' : '#4b5563' }}>Navigate to Analytics</span>
+                  <span style={{ color: theme === 'dark' ? '#d1d5db' : '#4b5563' }}>Navigate to Calendar</span>
                   <kbd style={{ background: theme === 'dark' ? '#4b5563' : '#f3f4f6', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>7</kbd>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: theme === 'dark' ? '#d1d5db' : '#4b5563' }}>Navigate to Analytics</span>
+                  <kbd style={{ background: theme === 'dark' ? '#4b5563' : '#f3f4f6', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>8</kbd>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: theme === 'dark' ? '#d1d5db' : '#4b5563' }}>Close Modals</span>

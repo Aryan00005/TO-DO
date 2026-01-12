@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom
 import { useState, useEffect } from "react";
 import Register from "./pages/register";
 import Login from "./pages/login";
+import AdminLogin from "./pages/AdminLogin";
+import AdminRegister from "./pages/AdminRegister";
 import Dashboard from "./pages/dashboard-new";
 import AuthCallback from "./pages/AuthCallback";
 import SetPassword from "./pages/SetPassword";
@@ -13,6 +15,8 @@ interface User {
   _id: string;
   name: string;
   email: string;
+  role?: string;
+  company?: string;
 }
 
 // 1. Load user from localStorage
@@ -76,6 +80,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/admin/login" element={<AdminLogin setUser={setUser} />} />
+        <Route path="/admin/register" element={<AdminRegister />} />
         <Route path="/login" element={<Login setUser={setUser} />} />
         <Route path="/register" element={<Register />} />
         <Route path="/auth/callback" element={<AuthCallback setUser={setUser} />} />

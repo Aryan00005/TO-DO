@@ -30,7 +30,9 @@ const handleLoginSuccess = async (user, res) => {
         name: user.name,
         userId: user.user_id,
         email: user.email,
-        authProvider: user.auth_provider
+        authProvider: user.auth_provider,
+        role: user.role || 'user',
+        company: user.company
       }
     };
     return response;
@@ -114,6 +116,101 @@ router.get('/google/callback',
     }
   }
 );
+
+// Admin registration route
+router.post('/admin/register', async (req, res) => {
+  const { name, userId, email, password, company } = req.body;
+  try {
+    console.log('📝 Admin registration attempt:', { name, userId, email, company });
+    
+    if (!name || !userId || !email || !password || !company) {
+      console.log('❌ Missing fields');
+      return res.status(400).json({ message: 'All fields including company are required.' });
+    }
+    
+    console.log('🔍 Checking existing user...');
+    const existingUser = await User.findByUserId(userId);
+    if (existingUser) {
+      console.log('❌ User ID already exists');
+      return res.status(400).json({ message: 'User ID already in use.' });
+    }
+
+    const existingEmail = await User.findByEmail(email);
+    if (existingEmail) {
+      console.log('❌ Email already exists');
+      return res.status(400).json({ message: 'Email already in use.' });
+    }
+
+    console.log('💾 Creating admin user...');
+    const user = await User.create({ 
+      name, 
+      userId, 
+      email, 
+      password: password,
+      authProvider: 'local',
+      role: 'admin',
+      company
+    });
+    
+    console.log('✅ Admin registered successfully');
+    res.status(201).json({ message: 'Company admin registered successfully.' });
+  } catch (err) {
+    console.error('❌ Admin registration error:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
+// Admin login route
+router.post('/admin/login', async (req, res) => {
+  const { userId, password } = req.body;
+  try {
+    if (!userId || !password) {
+      return res.status(400).json({ message: 'Email/UserID and password are required.' });
+    }
+    
+    // Find user by userId OR email
+    let user = await User.findByUserId(userId);
+    if (!user) {
+      user = await User.findByEmail(userId);
+    }
+    
+    console.log('🔍 Admin login attempt for:', userId, 'User found:', !!user);
+    
+    if (!user) {
+      console.log('❌ User not found');
+      return res.status(400).json({ message: 'Invalid credentials.' });
+    }
+
+    // Check if user is admin
+    if (user.role !== 'admin') {
+      console.log('❌ User is not admin');
+      return res.status(403).json({ message: 'Access denied. Admin privileges required.' });
+    }
+
+    console.log('🔑 User auth provider:', user.auth_provider, 'Has password:', !!user.password);
+
+    if (!user.password) {
+      return res.status(400).json({ 
+        message: 'This account uses Google login. Please sign in with Google.',
+        requiresGoogleLogin: true
+      });
+    }
+    
+    const isMatch = await User.verifyPassword(password, user.password);
+    console.log('🔐 Password match:', isMatch);
+    
+    if (!isMatch) {
+      console.log('❌ Password mismatch');
+      return res.status(400).json({ message: 'Invalid credentials.' });
+    }
+
+    const loginData = await handleLoginSuccess(user, res);
+    res.json(loginData);
+  } catch (err) {
+    console.error('Admin login error:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
 
 // Register Route
 router.post('/register', async (req, res) => {
@@ -220,7 +317,7 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// Get users
+// Get users (show all users to everyone)
 router.get('/users', authenticateToken, async (req, res) => {
   try {
     const users = await User.findAll();
@@ -328,6 +425,8 @@ router.get('/profile', authenticateToken, async (req, res) => {
       email: user.email,
       userId: user.user_id,
       authProvider: user.auth_provider,
+      role: user.role || 'user',
+      company: user.company,
       emailVerified: user.email_verified,
       canUsePasswordLogin: !!user.password,
       loginMethods: {

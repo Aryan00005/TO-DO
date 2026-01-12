@@ -120,6 +120,33 @@ class Task {
     }));
   }
 
+  static async findByCompany(company) {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        task_assignments(
+          user_id,
+          status,
+          completion_remark
+        )
+      `)
+      .eq('company', company)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+
+    return data.map(task => ({
+      ...task,
+      _id: task.id,
+      assigneeStatuses: task.task_assignments.map(ta => ({
+        user: ta.user_id,
+        status: ta.status,
+        completionRemark: ta.completion_remark
+      }))
+    }));
+  }
+
   static async updateUserStatus(taskId, userId, status, remark = null) {
     const { data, error } = await supabase
       .from('task_assignments')

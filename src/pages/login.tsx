@@ -216,6 +216,21 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
             textDecoration: 'none',
             fontWeight: '600'
           }}>Register</Link>
+          <br />
+          <span style={{ marginTop: '8px', display: 'block' }}>
+            Company admin?{' '}
+            <Link to="/admin/login" style={{
+              color: '#3b82f6',
+              textDecoration: 'none',
+              fontWeight: '600'
+            }}>Admin Login</Link>
+            {' | '}
+            <Link to="/admin/register" style={{
+              color: '#10b981',
+              textDecoration: 'none',
+              fontWeight: '600'
+            }}>Create Admin Account</Link>
+          </span>
         </div>
       </div>
     </div>

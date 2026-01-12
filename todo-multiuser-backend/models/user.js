@@ -8,7 +8,7 @@ const supabase = createClient(
 
 class User {
   static async create(userData) {
-    const { name, email, userId, password, authProvider = 'local', accountStatus = 'active', googleId } = userData;
+    const { name, email, userId, password, authProvider = 'local', accountStatus = 'active', googleId, role = 'user', company } = userData;
     const hashedPassword = password ? await bcrypt.hash(password, 12) : null;
     
     console.log('💾 Creating user in database:', {
@@ -29,7 +29,9 @@ class User {
         password: hashedPassword,
         auth_provider: authProvider,
         account_status: accountStatus,
-        google_id: googleId
+        google_id: googleId,
+        role,
+        company
       })
       .select()
       .single();
@@ -78,7 +80,7 @@ class User {
 
   static async updateById(id, updates) {
     if (updates.password) {
-      updates.password = await bcrypt.hash(updates.password, 10);
+      updates.password = await bcrypt.hash(updates.password, 12);
     }
     
     const { data, error } = await supabase
@@ -95,7 +97,18 @@ class User {
   static async findAll() {
     const { data, error } = await supabase
       .from('users')
-      .select('id, name, email, user_id, auth_provider, account_status, created_at')
+      .select('id, name, email, user_id, auth_provider, account_status, role, company, created_at')
+      .order('name');
+    
+    if (error) throw error;
+    return data;
+  }
+
+  static async findByCompany(company) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, email, user_id, role, company, created_at')
+      .eq('company', company)
       .order('name');
     
     if (error) throw error;

@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "fs-extra": "^11.3.3",
-    "javascript-obfuscator": "^4.2.2"
+    "javascript-obfuscator": "^4.2.2",
+    "nodemon": "^3.1.11"
   }
 }
