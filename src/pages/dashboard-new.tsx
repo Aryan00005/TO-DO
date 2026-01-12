@@ -75,7 +75,60 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 13 }, (_, i) => currentYear - 1 + i);
 
-  if (!user) return <div>Loading...</div>;
+  if (!user) {
+    // Try to get user from session storage if available
+    const storedUser = sessionStorage.getItem('user');
+    if (storedUser) {
+      // This will trigger a re-render with the user data
+      return null;
+    }
+    
+    return (
+      <div style={{
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f8fafc'
+      }}>
+        <div style={{
+          textAlign: 'center',
+          padding: '32px'
+        }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            border: '4px solid #e5e7eb',
+            borderTop: '4px solid #3b82f6',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 16px'
+          }}></div>
+          <p style={{ color: '#6b7280', fontSize: '16px' }}>Loading user data...</p>
+          <button 
+            onClick={() => window.location.href = '/login'}
+            style={{
+              marginTop: '16px',
+              padding: '8px 16px',
+              background: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            Back to Login
+          </button>
+          <style>{`
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          `}</style>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     const token = sessionStorage.getItem("jwt-token");

@@ -6,8 +6,8 @@ export const register = async (name: string, userId: string, email: string, pass
   return response.data;
 };
 
-export const login = async (email: string, password: string) => {
-  const response = await axios.post("/auth/login", { email, password });
+export const login = async (userId: string, password: string) => {
+  const response = await axios.post("/auth/login", { userId, password });
   sessionStorage.setItem("jwt-token", response.data.token);
   return response.data;
 };

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import axios from "axios";
+import axios from "../api/axios";
 import { useNavigate, Link } from "react-router-dom";
 import styled from "styled-components";
 import { FaUserPlus } from "react-icons/fa";
@@ -120,16 +120,18 @@ const Register = () => {
     e.preventDefault();
     setError("");
     try {
-      // Use the full backend URL for registration
-      await axios.post("http://localhost:9000/api/auth/register", { name, userId, email, password });
+      console.log('Registration attempt:', { name, userId, email });
+      await axios.post("/auth/register", { name, userId, email, password });
+      console.log('Registration successful');
       navigate("/login");
     } catch (err) {
+      console.error('Registration error:', err);
       if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.message || "Registration failed");
+        setError(err.response?.data?.message || "Registration failed. Please try again.");
       } else if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Registration failed");
+        setError("Registration failed. Please try again.");
       }
     }
   };

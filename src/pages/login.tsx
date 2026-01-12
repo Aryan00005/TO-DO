@@ -18,11 +18,13 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
     setError("");
     try {
       const res = await axios.post("/auth/login", { userId, password });
+      console.log('Login successful:', res.data);
       sessionStorage.setItem("jwt-token", res.data.token);
       sessionStorage.setItem("user", JSON.stringify(res.data.user));
       setUser(res.data.user);
       navigate("/dashboard");
     } catch (err: unknown) {
+      console.error('Login error:', err);
       if (
         err &&
         typeof err === "object" &&
@@ -35,13 +37,15 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
       } else if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Login failed");
+        setError("Login failed. Please check your credentials and try again.");
       }
     }
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = `${axios.defaults.baseURL}/auth/google`;
+    // Use the configured axios baseURL for Google OAuth
+    const baseURL = axios.defaults.baseURL || 'https://to-do-m0we.onrender.com/api';
+    window.location.href = `${baseURL}/auth/google`;
   };
 
   return (
@@ -140,7 +144,7 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
         }}>
           <input
             type="text"
-            placeholder="User ID"
+            placeholder="User ID or Email"
             value={userId}
             onChange={e => setUserId(e.target.value)}
             required

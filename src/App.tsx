@@ -23,12 +23,37 @@ const getStoredUser = (): User | null => {
 
 const ProtectedRoute = () => {
   const token = sessionStorage.getItem("jwt-token");
-  return token ? <Outlet /> : <Navigate to="/login" />;
+  const user = sessionStorage.getItem("user");
+  
+  if (!token) {
+    return <Navigate to="/login" />;
+  }
+  
+  // If no user data but has token, try to fetch user data
+  if (!user) {
+    console.warn('Token exists but no user data found, redirecting to login');
+    return <Navigate to="/login" />;
+  }
+  
+  return <Outlet />;
 };
 
 function App() {
   // 2. Use state for user
   const [user, setUser] = useState<User | null>(getStoredUser);
+  
+  // Add effect to handle missing user data
+  useEffect(() => {
+    const token = sessionStorage.getItem('jwt-token');
+    const userStr = sessionStorage.getItem('user');
+    
+    if (token && !user && !userStr) {
+      // If we have a token but no user data, redirect to login
+      console.log('Token exists but no user data, clearing session');
+      sessionStorage.removeItem('jwt-token');
+      window.location.href = '/login';
+    }
+  }, [user]);
 
   // Optional: Keep user state in sync with localStorage (for multi-tab support)
   useEffect(() => {
@@ -61,7 +86,7 @@ function App() {
         <Route element={<ProtectedRoute />}>
           <Route
             path="/dashboard"
-            element={<Dashboard user={user} onLogout={handleLogout} />}
+            element={<Dashboard user={user || {_id: 'loading', name: 'Loading...', email: ''}} onLogout={handleLogout} />}
           />
         </Route>
         <Route path="*" element={<div>404 Not Found</div>} />
