@@ -4,6 +4,8 @@ import Register from "./pages/register";
 import Login from "./pages/login";
 import AdminLogin from "./pages/AdminLogin";
 import AdminRegister from "./pages/AdminRegister";
+import SuperAdminLogin from "./pages/SuperAdminLogin";
+import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import Dashboard from "./pages/dashboard-new";
 import AuthCallback from "./pages/AuthCallback";
 import SetPassword from "./pages/SetPassword";
@@ -82,6 +84,8 @@ function App() {
       <Routes>
         <Route path="/admin/login" element={<AdminLogin setUser={setUser} />} />
         <Route path="/admin/register" element={<AdminRegister />} />
+        <Route path="/system-admin-access" element={<SuperAdminLogin setUser={setUser} />} />
+        <Route path="/superadmin/dashboard" element={<SuperAdminDashboard user={user || {_id: 'loading', name: 'Loading...', email: ''}} onLogout={handleLogout} />} />
         <Route path="/login" element={<Login setUser={setUser} />} />
         <Route path="/register" element={<Register />} />
         <Route path="/auth/callback" element={<AuthCallback setUser={setUser} />} />

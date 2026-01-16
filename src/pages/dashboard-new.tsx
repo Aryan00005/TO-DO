@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { FaBell, FaCalendar, FaCalendarAlt, FaChartBar, FaColumns, FaMoon, FaPlus, FaSignOutAlt, FaStar, FaSun, FaTasks, FaUser, FaEdit, FaTrash, FaQuestionCircle, FaCheckCircle } from "react-icons/fa";
 import { useTheme } from "../hooks/useTheme";
 import { useToast } from "../components/Toast";
-import LoadingSpinner from "../components/LoadingSpinner";
+import TaskBoard from "../components/TaskBoard";
 import axios from "../api/axios";
 
 interface Task {
@@ -206,21 +206,26 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     axios.get(`/tasks/assignedBy/${user._id}`)
       .then(res => {
         const processedTasks = res.data.map((task: any) => {
-          const firstAssignee = task.assigneeStatuses?.[0];
+          // Get all assignees, not just the first one
+          const assignees = task.assigneeStatuses || [];
+          const assigneeNames = assignees.map((status: any) => 
+            status.user?.name || 'Unknown'
+          ).join(', ');
+          
           return {
             ...task,
             dueDate: task.due_date,
-            assignedTo: firstAssignee?.user ? {
-              _id: firstAssignee.user._id || firstAssignee.user,
-              name: firstAssignee.user.name || 'Unknown'
-            } : { _id: 'unknown', name: 'No Assignee' },
-            status: firstAssignee?.status || 'Not Started',
-            stuckReason: firstAssignee?.completionRemark || ''
+            assignedTo: {
+              _id: 'multiple',
+              name: assigneeNames || 'No Assignee'
+            },
+            status: assignees.length > 0 ? assignees[0]?.status || 'Not Started' : 'Not Started',
+            stuckReason: assignees.length > 0 ? assignees[0]?.completionRemark || '' : ''
           };
         });
         setAssignedTasks(processedTasks);
       })
-      .catch(err => console.error(err));
+      .catch(err => console.error('Error loading assigned tasks:', err));
   }, [user._id]);
 
   useEffect(() => {
@@ -606,6 +611,52 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               <p style={{ color: '#6b7280', fontSize: '14px' }}>Role: {user.role === 'admin' ? 'Company Admin' : 'User'}</p>
               {user.company && (
                 <p style={{ color: '#6b7280', fontSize: '12px' }}>Company: {user.company}</p>
+              )}
+              {user.role === 'admin' && user.company && (
+                <div style={{
+                  marginTop: '12px',
+                  padding: '12px',
+                  background: '#f0f9ff',
+                  border: '1px solid #0ea5e9',
+                  borderRadius: '8px'
+                }}>
+                  <p style={{ fontSize: '14px', fontWeight: '600', color: '#0369a1', margin: '0 0 4px 0' }}>Company Code for Users:</p>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <code style={{
+                      background: '#e0f2fe',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      fontFamily: 'monospace',
+                      fontSize: '16px',
+                      fontWeight: '700',
+                      color: '#0c4a6e'
+                    }}>
+                      {user.company}
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(user.company);
+                        showToast('Company code copied to clipboard!', 'success');
+                      }}
+                      style={{
+                        background: '#0ea5e9',
+                        color: '#fff',
+                        border: 'none',
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <p style={{ fontSize: '12px', color: '#0369a1', margin: '4px 0 0 0' }}>Share this code with employees to register</p>
+                </div>
               )}
             </div>
           </div>
@@ -1494,90 +1545,267 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           </h2>
         </div>
         
-        <div style={{
-          background: theme === 'dark' ? '#374151' : '#fff',
-          borderRadius: '12px',
-          overflow: 'hidden',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)',
-          border: '1px solid #e5e7eb'
-        }}>
-          {assignedTasks.length === 0 ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
-              No tasks assigned by you yet
-            </div>
-          ) : (
-            <div>
-              {/* Header */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '2fr 1fr 100px 100px 100px',
-                gap: '16px',
-                padding: '16px 24px',
-                background: theme === 'dark' ? '#4b5563' : '#f9fafb',
-                borderBottom: '1px solid #e5e7eb',
-                fontWeight: '600',
-                fontSize: '14px',
-                color: theme === 'dark' ? '#d1d5db' : '#6b7280'
+        {assignedTasks.length === 0 ? (
+          <div style={{
+            background: theme === 'dark' ? '#374151' : '#fff',
+            borderRadius: '12px',
+            padding: '40px',
+            textAlign: 'center',
+            color: '#6b7280',
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)',
+            border: '1px solid #e5e7eb'
+          }}>
+            No tasks assigned by you yet
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px' }}>
+            {/* TASK Column */}
+            <div style={{
+              background: theme === 'dark' ? '#374151' : '#fff',
+              borderRadius: '12px',
+              padding: '20px',
+              minHeight: '500px',
+              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+            }}>
+              <div style={{ 
+                fontWeight: 'bold', 
+                color: '#3b82f6',
+                marginBottom: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
               }}>
-                <div>TASK</div>
-                <div>ASSIGNEE</div>
-                <div style={{ textAlign: 'center' }}>PRIORITY</div>
-                <div style={{ textAlign: 'center' }}>STATUS</div>
-                <div style={{ textAlign: 'center' }}>DUE DATE</div>
+                TASK
+                <span style={{
+                  background: '#3b82f6',
+                  color: '#fff',
+                  borderRadius: '12px',
+                  padding: '2px 8px',
+                  fontSize: '12px'
+                }}>
+                  {assignedTasks.length}
+                </span>
               </div>
               
-              {/* Tasks */}
-              {assignedTasks.map((task, index) => (
+              {assignedTasks.map((task) => (
                 <div
-                  key={task._id}
+                  key={`task-${task._id}`}
                   style={{
-                    display: 'grid',
-                    gridTemplateColumns: '2fr 1fr 100px 100px 100px',
-                    gap: '16px',
-                    padding: '16px 24px',
-                    borderBottom: index < assignedTasks.length - 1 ? '1px solid #e5e7eb' : 'none',
-                    background: theme === 'dark' ? '#374151' : '#fff',
-                    alignItems: 'center'
+                    background: theme === 'dark' ? '#4b5563' : '#f9fafb',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    padding: '16px',
+                    marginBottom: '12px'
                   }}
                 >
-                  <div>
-                    <div style={{ fontWeight: '600', color: theme === 'dark' ? '#fff' : '#1f2937', marginBottom: '4px' }}>
-                      {task.title}
-                    </div>
-                    <div style={{ fontSize: '14px', color: '#6b7280' }}>
-                      {task.description.length > 60 ? task.description.substring(0, 60) + '...' : task.description}
-                    </div>
+                  <div style={{ 
+                    fontWeight: 'bold', 
+                    color: theme === 'dark' ? '#fff' : '#1f2937',
+                    marginBottom: '8px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <span>{task.title}</span>
+                    <button
+                      onClick={() => {
+                        if (confirm('Are you sure you want to delete this task?')) {
+                          handleDeleteTask(task._id);
+                        }
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#ef4444',
+                        cursor: 'pointer',
+                        padding: '4px'
+                      }}
+                    >
+                      🗑️
+                    </button>
                   </div>
                   
-                  <div style={{ color: theme === 'dark' ? '#d1d5db' : '#4b5563' }}>
-                    {typeof task.assignedTo === 'object' ? task.assignedTo.name : 'Unknown'}
+                  <div style={{ 
+                    color: theme === 'dark' ? '#d1d5db' : '#6b7280',
+                    fontSize: '14px',
+                    marginBottom: '8px'
+                  }}>
+                    {task.description}
                   </div>
                   
-                  <div style={{ textAlign: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ fontSize: '12px', color: '#6b7280' }}>Priority:</span>
                     {renderStars(task.priority)}
                   </div>
-                  
-                  <div style={{ textAlign: 'center' }}>
-                    <span style={{
-                      padding: '4px 8px',
-                      borderRadius: '12px',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      background: task.status === 'Done' ? '#dcfce7' : task.status === 'Working on it' ? '#fef3c7' : task.status === 'Stuck' ? '#fee2e2' : '#f1f5f9',
-                      color: task.status === 'Done' ? '#166534' : task.status === 'Working on it' ? '#92400e' : task.status === 'Stuck' ? '#991b1b' : '#475569'
-                    }}>
-                      {task.status}
-                    </span>
+                </div>
+              ))}
+            </div>
+            
+            {/* ASSIGNEE Column */}
+            <div style={{
+              background: theme === 'dark' ? '#374151' : '#fff',
+              borderRadius: '12px',
+              padding: '20px',
+              minHeight: '500px',
+              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+            }}>
+              <div style={{ 
+                fontWeight: 'bold', 
+                color: '#10b981',
+                marginBottom: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                ASSIGNEE
+                <span style={{
+                  background: '#10b981',
+                  color: '#fff',
+                  borderRadius: '12px',
+                  padding: '2px 8px',
+                  fontSize: '12px'
+                }}>
+                  {assignedTasks.length}
+                </span>
+              </div>
+              
+              {assignedTasks.map((task) => (
+                <div
+                  key={`assignee-${task._id}`}
+                  style={{
+                    background: theme === 'dark' ? '#4b5563' : '#f9fafb',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    padding: '16px',
+                    marginBottom: '12px',
+                    textAlign: 'center'
+                  }}
+                >
+                  <div style={{
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    color: theme === 'dark' ? '#fff' : '#1f2937',
+                    marginBottom: '8px'
+                  }}>
+                    {typeof task.assignedTo === 'object' ? task.assignedTo.name : 'Unknown'}
                   </div>
-                  
-                  <div style={{ fontSize: '14px', color: '#6b7280', textAlign: 'center' }}>
+                  <div style={{
+                    fontSize: '12px',
+                    color: '#6b7280'
+                  }}>
+                    Assigned to
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {/* STATUS Column */}
+            <div style={{
+              background: theme === 'dark' ? '#374151' : '#fff',
+              borderRadius: '12px',
+              padding: '20px',
+              minHeight: '500px',
+              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+            }}>
+              <div style={{ 
+                fontWeight: 'bold', 
+                color: '#f59e0b',
+                marginBottom: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                STATUS
+                <span style={{
+                  background: '#f59e0b',
+                  color: '#fff',
+                  borderRadius: '12px',
+                  padding: '2px 8px',
+                  fontSize: '12px'
+                }}>
+                  {assignedTasks.length}
+                </span>
+              </div>
+              
+              {assignedTasks.map((task) => (
+                <div
+                  key={`status-${task._id}`}
+                  style={{
+                    background: theme === 'dark' ? '#4b5563' : '#f9fafb',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    padding: '16px',
+                    marginBottom: '12px',
+                    textAlign: 'center'
+                  }}
+                >
+                  <span style={{
+                    padding: '6px 12px',
+                    borderRadius: '20px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    background: task.status === 'Done' ? '#dcfce7' : task.status === 'Working on it' ? '#fef3c7' : task.status === 'Stuck' ? '#fee2e2' : '#f1f5f9',
+                    color: task.status === 'Done' ? '#166534' : task.status === 'Working on it' ? '#92400e' : task.status === 'Stuck' ? '#991b1b' : '#475569',
+                    border: `1px solid ${task.status === 'Done' ? '#bbf7d0' : task.status === 'Working on it' ? '#fde68a' : task.status === 'Stuck' ? '#fecaca' : '#e2e8f0'}`
+                  }}>
+                    {task.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+            
+            {/* DUE DATE Column */}
+            <div style={{
+              background: theme === 'dark' ? '#374151' : '#fff',
+              borderRadius: '12px',
+              padding: '20px',
+              minHeight: '500px',
+              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+            }}>
+              <div style={{ 
+                fontWeight: 'bold', 
+                color: '#ef4444',
+                marginBottom: '20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}>
+                DUE DATE
+                <span style={{
+                  background: '#ef4444',
+                  color: '#fff',
+                  borderRadius: '12px',
+                  padding: '2px 8px',
+                  fontSize: '12px'
+                }}>
+                  {assignedTasks.length}
+                </span>
+              </div>
+              
+              {assignedTasks.map((task) => (
+                <div
+                  key={`date-${task._id}`}
+                  style={{
+                    background: theme === 'dark' ? '#4b5563' : '#f9fafb',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    padding: '16px',
+                    marginBottom: '12px',
+                    textAlign: 'center'
+                  }}
+                >
+                  <div style={{
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    color: theme === 'dark' ? '#fff' : '#1f2937'
+                  }}>
                     {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No date'}
                   </div>
                 </div>
               ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     );
   } else if (nav === "analytics") {

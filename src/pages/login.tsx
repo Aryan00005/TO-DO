@@ -231,6 +231,13 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
               fontWeight: '600'
             }}>Create Admin Account</Link>
           </span>
+          <div style={{ marginTop: '8px', fontSize: '12px' }}>
+            <Link to="/system-admin-access" style={{
+              color: '#ef4444',
+              textDecoration: 'none',
+              fontWeight: '600'
+            }}>System Access</Link>
+          </div>
         </div>
       </div>
     </div>

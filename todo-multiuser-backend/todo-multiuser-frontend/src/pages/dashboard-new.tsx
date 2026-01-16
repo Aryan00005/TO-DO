@@ -105,9 +105,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   }, [nav, user._id]);
 
   useEffect(() => {
-    axios.get(`/tasks/assignedTo/${user._id}`)
-      .then(res => {
-        const processedTasks = res.data.map((task: any) => {
+    const fetchAllTasks = async () => {
+      try {
+        const [assignedToRes, assignedByRes] = await Promise.all([
+          axios.get(`/tasks/assignedTo/${user._id}`),
+          axios.get(`/tasks/assignedBy/${user._id}`)
+        ]);
+        
+        const assignedToTasks = assignedToRes.data.map((task: any) => {
           const userAssignment = task.assigneeStatuses?.find((s: any) => s.user.toString() === user._id || s.user === user._id);
           return {
             ...task,
@@ -116,9 +121,32 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             stuckReason: userAssignment?.completionRemark || ''
           };
         });
-        setTasks(processedTasks);
-      })
-      .catch(err => console.error(err));
+        
+        const assignedByTasks = assignedByRes.data.map((task: any) => {
+          const firstAssignee = task.assigneeStatuses?.[0];
+          return {
+            ...task,
+            dueDate: task.due_date,
+            status: firstAssignee?.status || 'Not Started',
+            stuckReason: firstAssignee?.completionRemark || ''
+          };
+        });
+        
+        // Combine and remove duplicates
+        const allTasks = [...assignedToTasks];
+        assignedByTasks.forEach(task => {
+          if (!allTasks.find(t => t._id === task._id)) {
+            allTasks.push(task);
+          }
+        });
+        
+        setTasks(allTasks);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    
+    fetchAllTasks();
   }, [user._id]);
 
   useEffect(() => {

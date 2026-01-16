@@ -111,6 +111,7 @@ const Register = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [companyCode, setCompanyCode] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const [userId, setUserId] = useState("");
@@ -120,8 +121,8 @@ const Register = () => {
     e.preventDefault();
     setError("");
     try {
-      console.log('Registration attempt:', { name, userId, email });
-      await axios.post("/auth/register", { name, userId, email, password });
+      console.log('Registration attempt:', { name, userId, email, companyCode });
+      await axios.post("/auth/register", { name, userId, email, password, companyCode });
       console.log('Registration successful');
       navigate("/login");
     } catch (err) {
@@ -170,6 +171,13 @@ const Register = () => {
             placeholder="Password"
             value={password}
             onChange={e => setPassword(e.target.value)}
+            required
+          />
+          <AuthInput
+            type="text"
+            placeholder="Company Code (provided by admin)"
+            value={companyCode}
+            onChange={e => setCompanyCode(e.target.value)}
             required
           />
           <AuthButton type="submit">Register</AuthButton>

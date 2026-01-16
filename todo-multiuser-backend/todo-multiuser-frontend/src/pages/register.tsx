@@ -114,13 +114,14 @@ const Register = () => {
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const [userId, setUserId] = useState("");
+  const [companyCode, setCompanyCode] = useState("");
 
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
     try {
-      await axios.post("/auth/register", { name, userId, email, password });
+      await axios.post("/auth/register", { name, userId, email, password, companyCode });
       navigate("/login");
     } catch (err) {
       if (axios.isAxiosError(err)) {
@@ -161,6 +162,14 @@ const Register = () => {
             value={email}
             onChange={e => setEmail(e.target.value)}
             required
+          />
+          <AuthInput
+            type="text"
+            placeholder="Company Code"
+            value={companyCode}
+            onChange={e => setCompanyCode(e.target.value.toUpperCase())}
+            required
+            style={{ fontFamily: 'monospace', letterSpacing: '1px' }}
           />
           <AuthInput
             type="password"

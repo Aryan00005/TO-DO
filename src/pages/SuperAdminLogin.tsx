@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import axios from "../api/axios";
 import { useNavigate, Link } from "react-router-dom";
-import { FaUserCircle, FaGoogle } from "react-icons/fa";
+import { FaShieldAlt } from "react-icons/fa";
 
-interface LoginProps {
+interface SuperAdminLoginProps {
   setUser: React.Dispatch<React.SetStateAction<any>>;
 }
 
-const Login: React.FC<LoginProps> = ({ setUser }) => {
+const SuperAdminLogin: React.FC<SuperAdminLoginProps> = ({ setUser }) => {
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -18,30 +18,19 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
     setError("");
     try {
       const res = await axios.post("/auth/login", { userId, password });
+      
+      if (!res.data.user.isSuperAdmin) {
+        setError("Access denied. Super admin privileges required.");
+        return;
+      }
+      
       sessionStorage.setItem("jwt-token", res.data.token);
       sessionStorage.setItem("user", JSON.stringify(res.data.user));
       setUser(res.data.user);
-      navigate("/dashboard");
-    } catch (err: unknown) {
-      if (
-        err &&
-        typeof err === "object" &&
-        "response" in err &&
-        // @ts-ignore
-        err.response?.data?.message
-      ) {
-        // @ts-ignore
-        setError(err.response.data.message);
-      } else if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Login failed");
-      }
+      navigate("/superadmin/dashboard");
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Login failed");
     }
-  };
-
-  const handleGoogleLogin = () => {
-    window.location.href = `${axios.defaults.baseURL}/auth/google`;
   };
 
   return (
@@ -50,20 +39,20 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: '#f8fafc'
+      background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)'
     }}>
       <div style={{
         background: '#fff',
         padding: '48px 32px 32px 32px',
         borderRadius: '16px',
-        boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)',
+        boxShadow: '0 20px 40px rgba(220, 38, 38, 0.3)',
         maxWidth: '400px',
         width: '100%',
         textAlign: 'center',
         position: 'relative'
       }}>
         <div style={{
-          background: '#3b82f6',
+          background: '#dc2626',
           color: '#fff',
           width: '80px',
           height: '80px',
@@ -75,63 +64,25 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
           top: '-40px',
           left: '50%',
           transform: 'translateX(-50%)',
-          boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
+          boxShadow: '0 4px 12px rgba(220, 38, 38, 0.4)',
           border: '4px solid #fff'
         }}>
-          <FaUserCircle size={40} />
+          <FaShieldAlt size={40} />
         </div>
         
         <h1 style={{
           fontSize: '28px',
           fontWeight: '700',
-          color: '#1f2937',
-          marginBottom: '32px',
+          color: '#dc2626',
+          marginBottom: '8px',
           marginTop: '16px'
-        }}>Welcome Back</h1>
+        }}>Super Admin</h1>
         
-        {/* Google Login Button */}
-        <button
-          onClick={handleGoogleLogin}
-          style={{
-            width: '100%',
-            background: '#fff',
-            color: '#374151',
-            padding: '12px 16px',
-            border: '2px solid #e5e7eb',
-            borderRadius: '8px',
-            fontSize: '16px',
-            fontWeight: '600',
-            cursor: 'pointer',
-            marginBottom: '24px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            transition: 'all 0.2s'
-          }}
-          onMouseEnter={(e) => {
-            e.target.style.borderColor = '#3b82f6';
-            e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.borderColor = '#e5e7eb';
-            e.target.style.boxShadow = 'none';
-          }}
-        >
-          <FaGoogle style={{ color: '#ea4335' }} />
-          Continue with Google
-        </button>
-
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          margin: '20px 0',
-          color: '#9ca3af'
-        }}>
-          <div style={{ flex: 1, height: '1px', background: '#e5e7eb' }}></div>
-          <span style={{ padding: '0 16px', fontSize: '14px' }}>or</span>
-          <div style={{ flex: 1, height: '1px', background: '#e5e7eb' }}></div>
-        </div>
+        <p style={{
+          color: '#6b7280',
+          fontSize: '14px',
+          marginBottom: '32px'
+        }}>Restricted Access Only</p>
         
         <form onSubmit={handleSubmit} style={{
           display: 'flex',
@@ -140,7 +91,7 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
         }}>
           <input
             type="text"
-            placeholder="User ID"
+            placeholder="Super Admin ID"
             value={userId}
             onChange={e => setUserId(e.target.value)}
             required
@@ -152,7 +103,7 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
               transition: 'border-color 0.2s',
               outline: 'none'
             }}
-            onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+            onFocus={(e) => e.target.style.borderColor = '#dc2626'}
             onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
           />
           <input
@@ -169,13 +120,13 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
               transition: 'border-color 0.2s',
               outline: 'none'
             }}
-            onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+            onFocus={(e) => e.target.style.borderColor = '#dc2626'}
             onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
           />
           <button
             type="submit"
             style={{
-              background: '#3b82f6',
+              background: '#dc2626',
               color: '#fff',
               padding: '12px 24px',
               border: 'none',
@@ -186,10 +137,10 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
               marginTop: '8px',
               transition: 'background-color 0.2s'
             }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = '#2563eb'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = '#3b82f6'}
+            onMouseEnter={(e) => e.target.style.backgroundColor = '#b91c1c'}
+            onMouseLeave={(e) => e.target.style.backgroundColor = '#dc2626'}
           >
-            Login
+            Access System
           </button>
         </form>
 
@@ -206,27 +157,15 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
           fontSize: '14px',
           color: '#6b7280'
         }}>
-          Don't have an account?{' '}
-          <Link to="/register" style={{
+          <Link to="/login" style={{
             color: '#3b82f6',
             textDecoration: 'none',
             fontWeight: '600'
-          }}>Register</Link>
-        </div>
-        
-        <div style={{
-          marginTop: '12px',
-          fontSize: '13px',
-          color: '#9ca3af'
-        }}>
-          <Link to="/super-admin-login" style={{
-            color: '#6b7280',
-            textDecoration: 'none'
-          }}>Super Admin Login →</Link>
+          }}>← Back to Login</Link>
         </div>
       </div>
     </div>
   );
 };
 
-export default Login;
+export default SuperAdminLogin;
