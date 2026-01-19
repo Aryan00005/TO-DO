@@ -6,7 +6,8 @@
     "start": "node dist/server.js",
     "dev": "nodemon server.js",
     "build": "npm install && npm run obfuscate",
-    "obfuscate": "node obfuscate.js",
+    "obfuscate": "node obfuscate-dashboard-safe.js",
+    "obfuscate:old": "node obfuscate.js",
     "postinstall": "echo 'Dependencies installed successfully'"
   },
   "engines": {
@@ -17,7 +18,7 @@
     "@supabase/supabase-js": "^2.39.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
+    "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^7.0.11",
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "fs-extra": "^11.3.3",
-    "javascript-obfuscator": "^4.2.2"
+    "javascript-obfuscator": "^4.2.2",
+    "nodemon": "^3.1.11"
   }
 }

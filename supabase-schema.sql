@@ -1,7 +1,7 @@
 -- PostgreSQL Schema for TO-DO App (Supabase)
 
 -- Users table
-CREATE TABLE users (
+CREATE TABLE users(
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
@@ -9,8 +9,8 @@ CREATE TABLE users (
     password VARCHAR(255),
     auth_provider VARCHAR(20) DEFAULT 'local',
     account_status VARCHAR(20) DEFAULT 'active',
-    reset_token VARCHAR(255),  
-    reset_token_expiry TIMESTAMP,
+    reset_token VARCHAR(255),
+    reset_token_expiry TIMESTAMP,x`
     reset_attempts INTEGER DEFAULT 0,
     last_reset_attempt TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

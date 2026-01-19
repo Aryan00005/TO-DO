@@ -5,15 +5,22 @@ const path = require('path');
 const sourceDir = './';
 const outputDir = './dist';
 
-// Files and directories to obfuscate
+// DYNAMIC SAAS: Only obfuscate licensing logic, keep dashboard code readable
 const filesToObfuscate = [
+  // Future licensing files only
+  'utils/licenseValidator.js',
+  'config/pricing.js'
+];
+
+// Copy these files without obfuscation (keep dashboard working)
+const filesToCopy = [
   'server.js',
   'config/database.js',
   'config/passport.js',
   'middleware/auth.js',
   'models/task.js',
   'models/user.js',
-  'models/notification.js', 
+  'models/notification.js',
   'models/organization.js',
   'routes/auth.js',
   'routes/task.js',
@@ -24,72 +31,63 @@ const filesToObfuscate = [
   'utils/welcomeEmailService.js'
 ];
 
-// Obfuscation options
+// SAFE obfuscation - won't break your dashboard
 const obfuscationOptions = {
-  compact: true,
-  controlFlowFlattening: true,
-  controlFlowFlatteningThreshold: 0.75,
-  deadCodeInjection: true,
-  deadCodeInjectionThreshold: 0.4,
-  debugProtection: true,
-  debugProtectionInterval: 4000,
-  disableConsoleOutput: true,
-  identifierNamesGenerator: 'hexadecimal',
+  compact: false,
+  controlFlowFlattening: false,
+  deadCodeInjection: false,
+  debugProtection: false,
+  disableConsoleOutput: false,
+  identifierNamesGenerator: 'mangled',
   log: false,
-  numbersToExpressions: true,
+  numbersToExpressions: false,
   renameGlobals: false,
-  selfDefending: true,
+  selfDefending: false,
   simplify: true,
-  splitStrings: true,
-  splitStringsChunkLength: 5,
-  stringArray: true,
-  stringArrayCallsTransform: true,
-  stringArrayEncoding: ['base64'],
-  stringArrayIndexShift: true,
-  stringArrayRotate: true,
-  stringArrayShuffle: true,
-  stringArrayWrappersCount: 2,
-  stringArrayWrappersChainedCalls: true,
-  stringArrayWrappersParametersMaxCount: 4,
-  stringArrayWrappersType: 'function',
-  stringArrayThreshold: 0.75,
-  transformObjectKeys: true,
+  splitStrings: false,
+  stringArray: false,
+  transformObjectKeys: false,
   unicodeEscapeSequence: false
 };
 
 async function obfuscateFiles() {
   try {
-    // Ensure output directory exists
     await fs.ensureDir(outputDir);
-    
-    console.log('🔒 Starting code obfuscation...');
-    
+    console.log('🔒 DYNAMIC SAAS: Dashboard-safe build...');
+
+    // Obfuscate only licensing files
     for (const file of filesToObfuscate) {
       const sourcePath = path.join(sourceDir, file);
       const outputPath = path.join(outputDir, file);
-      
+
       if (await fs.pathExists(sourcePath)) {
-        // Ensure output subdirectory exists
         await fs.ensureDir(path.dirname(outputPath));
-        
-        // Read source file
         const sourceCode = await fs.readFile(sourcePath, 'utf8');
-        
-        // Obfuscate code
         const obfuscatedResult = JavaScriptObfuscator.obfuscate(sourceCode, obfuscationOptions);
-        
-        // Write obfuscated code
         await fs.writeFile(outputPath, obfuscatedResult.getObfuscatedCode());
-        
-        console.log(`✅ Obfuscated: ${file}`);
+        console.log(`🔒 Obfuscated: ${file}`);
       } else {
-        console.log(`⚠️  File not found: ${file}`);
+        await fs.ensureDir(path.dirname(outputPath));
+        await fs.writeFile(outputPath, '// Future licensing logic\nmodule.exports = {};');
+        console.log(`📝 Created placeholder: ${file}`);
       }
     }
-    
+
+    // Copy dashboard files without obfuscation
+    for (const file of filesToCopy) {
+      const sourcePath = path.join(sourceDir, file);
+      const outputPath = path.join(outputDir, file);
+
+      if (await fs.pathExists(sourcePath)) {
+        await fs.ensureDir(path.dirname(outputPath));
+        await fs.copy(sourcePath, outputPath);
+        console.log(`📄 Copied (readable): ${file}`);
+      }
+    }
+
     // Copy package.json and other necessary files
     await fs.copy('./package.json', path.join(outputDir, 'package.json'));
-    
+
     // Copy .env files if they exist
     if (await fs.pathExists('./.env')) {
       await fs.copy('./.env', path.join(outputDir, '.env'));
@@ -98,11 +96,12 @@ async function obfuscateFiles() {
       await fs.copy('./.env.production', path.join(outputDir, '.env.production'));
     }
     
-    console.log('🎉 Code obfuscation completed successfully!');
-    console.log('📁 Obfuscated files are in the ./dist directory');
+    console.log('✅ DASHBOARD-SAFE build completed!');
+    console.log('📦 Your dynamic dashboard will work perfectly');
+    console.log('🐛 All files remain debuggable for production support');
     
   } catch (error) {
-    console.error('❌ Error during obfuscation:', error);
+    console.error('❌ Error during build:', error);
     process.exit(1);
   }
 }

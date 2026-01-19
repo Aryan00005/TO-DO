@@ -30,7 +30,10 @@ const handleLoginSuccess = async (user, res) => {
         name: user.name,
         userId: user.user_id,
         email: user.email,
-        authProvider: user.auth_provider
+        authProvider: user.auth_provider,
+        role: user.role || 'user',
+        company: user.company,
+        isSuperAdmin: user.is_super_admin || false
       }
     };
     return response;
@@ -46,16 +49,16 @@ router.get('/test', (req, res) => {
 });
 
 // Google OAuth Routes
-router.get('/google', 
-  passport.authenticate('google', { 
+router.get('/google',
+  passport.authenticate('google', {
     scope: ['profile', 'email'],
-    session: false 
+    session: false
   })
 );
 
 router.get('/google/callback',
   (req, res, next) => {
-    passport.authenticate('google', { 
+    passport.authenticate('google', {
       session: false,
       failureRedirect: `${process.env.FRONTEND_URL}/login?error=oauth_failed`
     })(req, res, (err) => {
@@ -69,12 +72,12 @@ router.get('/google/callback',
   async (req, res) => {
     try {
       const user = req.user;
-      
+
       if (!user) {
         console.error('❌ No user returned from Google OAuth');
         return res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
       }
-      
+
       console.log('🔍 Google callback - User data:', {
         id: user.id,
         email: user.email,
@@ -83,11 +86,11 @@ router.get('/google/callback',
         userId: user.user_id,
         hasPassword: !!user.password
       });
-      
+
       // FORCE all Google users to complete account setup
       // Check if user has no userId or password (needs completion)
       const needsCompletion = !user.user_id || !user.password || user.account_status === 'incomplete';
-      
+
       if (needsCompletion) {
         console.log('🔄 User needs to complete account setup');
         // Create temporary token for account completion (short-lived)
@@ -96,7 +99,7 @@ router.get('/google/callback',
           process.env.JWT_SECRET,
           { expiresIn: '30m' } // 30 minutes to complete account
         );
-        
+
         // Redirect to account completion page (NOT logged in)
         const redirectUrl = `${process.env.FRONTEND_URL}/complete-account?token=${tempToken}`;
         console.log('🔗 Redirect URL:', redirectUrl);
@@ -115,15 +118,131 @@ router.get('/google/callback',
   }
 );
 
-// Register Route
-router.post('/register', async (req, res) => {
-  const { name, userId, email, password } = req.body;
+// Admin registration route
+router.post('/admin/register', async (req, res) => {
+  const { name, userId, email, password, company } = req.body;
   try {
-    console.log('📝 Registration attempt:', { name, userId, email });
-    
-    if (!name || !userId || !email || !password) {
+    console.log('📝 Admin registration attempt:', { name, userId, email, company });
+
+    if (!name || !userId || !email || !password || !company) {
       console.log('❌ Missing fields');
-      return res.status(400).json({ message: 'All fields are required.' });
+      return res.status(400).json({ message: 'All fields including company are required.' });
+    }
+
+    console.log('🔍 Checking existing user...');
+    const existingUser = await User.findByUserId(userId);
+    if (existingUser) {
+      console.log('❌ User ID already exists');
+      return res.status(400).json({ message: 'User ID already in use.' });
+    }
+
+    const existingEmail = await User.findByEmail(email);
+    if (existingEmail) {
+      console.log('❌ Email already exists');
+      return res.status(400).json({ message: 'Email already in use.' });
+    }
+
+    console.log('💾 Creating admin user...');
+    const user = await User.create({ 
+      name, 
+      userId, 
+      email, 
+      password: password,
+      authProvider: 'local',
+      role: 'admin',
+      company,
+      accountStatus: 'pending'
+    });
+    
+    console.log('✅ Admin registered successfully - PENDING APPROVAL');
+    res.status(201).json({ message: 'Admin registration submitted. Awaiting super admin approval.' });
+  } catch (err) {
+    console.error('❌ Admin registration error:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
+// Admin login route
+router.post('/admin/login', async (req, res) => {
+  const { userId, password } = req.body;
+  try {
+    if (!userId || !password) {
+      return res.status(400).json({ message: 'Email/UserID and password are required.' });
+    }
+    
+    // Find user by userId OR email
+    let user = await User.findByUserId(userId);
+    if (!user) {
+      user = await User.findByEmail(userId);
+    }
+    
+    console.log('🔍 Admin login attempt for:', userId, 'User found:', !!user);
+    
+    if (!user) {
+      console.log('❌ User not found');
+      return res.status(400).json({ message: 'Invalid credentials.' });
+    }
+
+    // Check if user is admin
+    if (user.role !== 'admin') {
+      console.log('❌ User is not admin');
+      return res.status(403).json({ message: 'Access denied. Admin privileges required.' });
+    }
+
+    console.log('🔑 User auth provider:', user.auth_provider, 'Has password:', !!user.password);
+
+    if (!user.password) {
+      return res.status(400).json({ 
+        message: 'This account uses Google login. Please sign in with Google.',
+        requiresGoogleLogin: true
+      });
+    }
+    
+    const isMatch = await User.verifyPassword(password, user.password);
+    console.log('🔐 Password match:', isMatch);
+    
+    if (!isMatch) {
+      console.log('❌ Password mismatch');
+      return res.status(400).json({ message: 'Invalid credentials.' });
+    }
+
+    // Check account status
+    if (user.account_status === 'pending') {
+      return res.status(403).json({ message: 'Account pending approval. Please wait for super admin approval.' });
+    }
+    
+    if (user.account_status === 'rejected') {
+      return res.status(403).json({ message: 'Account has been rejected. Contact support.' });
+    }
+
+    const loginData = await handleLoginSuccess(user, res);
+    res.json(loginData);
+  } catch (err) {
+    console.error('Admin login error:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
+// Register Route (requires company code)
+router.post('/register', async (req, res) => {
+  const { name, userId, email, password, companyCode } = req.body;
+  try {
+    console.log('📝 Registration attempt:', { name, userId, email, companyCode });
+    
+    if (!name || !userId || !email || !password || !companyCode) {
+      console.log('❌ Missing fields');
+      return res.status(400).json({ message: 'All fields including company code are required.' });
+    }
+    
+    // Verify company code exists
+    const { data: companyUsers, error: companyError } = await supabase
+      .from('users')
+      .select('company')
+      .eq('company', companyCode)
+      .limit(1);
+    
+    if (companyError || !companyUsers || companyUsers.length === 0) {
+      return res.status(400).json({ message: 'Invalid company code.' });
     }
     
     console.log('🔍 Checking existing user...');
@@ -144,8 +263,9 @@ router.post('/register', async (req, res) => {
       name, 
       userId, 
       email, 
-      password: password, // User.create will handle hashing
-      authProvider: 'local'
+      password: password,
+      authProvider: 'local',
+      company: companyCode
     });
     
     console.log('✅ User registered successfully');
@@ -220,9 +340,34 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// Get users
+// Get users (filtered by company unless super admin)
 router.get('/users', authenticateToken, async (req, res) => {
   try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Super admin sees all users
+    if (currentUser.is_super_admin) {
+      const users = await User.findAll();
+      return res.json(users);
+    }
+    
+    // Admin sees all users in their company
+    if (currentUser.role === 'admin' && currentUser.company) {
+      const users = await User.findByCompany(currentUser.company);
+      return res.json(users);
+    }
+    
+    // Regular users with company see company users
+    if (currentUser.company) {
+      const users = await User.findByCompany(currentUser.company);
+      return res.json(users);
+    }
+    
+    // Users without company see all users (for now)
     const users = await User.findAll();
     res.json(users);
   } catch (err) {
@@ -328,6 +473,9 @@ router.get('/profile', authenticateToken, async (req, res) => {
       email: user.email,
       userId: user.user_id,
       authProvider: user.auth_provider,
+      role: user.role || 'user',
+      company: user.company,
+      isSuperAdmin: user.is_super_admin || false,
       emailVerified: user.email_verified,
       canUsePasswordLogin: !!user.password,
       loginMethods: {
@@ -340,6 +488,161 @@ router.get('/profile', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Profile fetch error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Super Admin: Create Company Admin
+router.post('/superadmin/create-company-admin', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser || !currentUser.is_super_admin) {
+      return res.status(403).json({ message: 'Access denied. Super admin privileges required.' });
+    }
+    
+    const { name, userId, email, password, company, companyCode } = req.body;
+    
+    if (!name || !userId || !email || !password || !company) {
+      return res.status(400).json({ message: 'All fields are required.' });
+    }
+    
+    const existingUser = await User.findByUserId(userId);
+    if (existingUser) {
+      return res.status(400).json({ message: 'User ID already in use.' });
+    }
+
+    const existingEmail = await User.findByEmail(email);
+    if (existingEmail) {
+      return res.status(400).json({ message: 'Email already in use.' });
+    }
+
+    const user = await User.create({ 
+      name, 
+      userId, 
+      email, 
+      password,
+      authProvider: 'local',
+      role: 'admin',
+      company: companyCode || company
+    });
+    
+    res.status(201).json({ 
+      message: 'Company admin created successfully.',
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        userId: user.user_id,
+        company: user.company,
+        role: user.role
+      }
+    });
+  } catch (err) {
+    console.error('Create company admin error:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
+// Super Admin: Get All Companies with Stats
+router.get('/superadmin/companies', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser || !currentUser.is_super_admin) {
+      return res.status(403).json({ message: 'Access denied. Super admin privileges required.' });
+    }
+    
+    const { data, error } = await supabase
+      .from('users')
+      .select('company, role, account_status')
+      .not('company', 'is', null)
+      .order('company');
+    
+    if (error) throw error;
+    
+    // Group by company and count users/admins
+    const companyStats = data.reduce((acc, user) => {
+      if (!acc[user.company]) {
+        acc[user.company] = { name: user.company, userCount: 0, adminCount: 0 };
+      }
+      if (user.role === 'admin' && user.account_status === 'active') {
+        acc[user.company].adminCount++;
+      } else if (user.role !== 'admin') {
+        acc[user.company].userCount++;
+      }
+      return acc;
+    }, {});
+    
+    res.json(Object.values(companyStats));
+  } catch (err) {
+    console.error('Get companies error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Super Admin: Get Pending Admin Requests
+router.get('/superadmin/pending-admins', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser || !currentUser.is_super_admin) {
+      return res.status(403).json({ message: 'Access denied. Super admin privileges required.' });
+    }
+    
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, email, user_id, company, created_at')
+      .eq('role', 'admin')
+      .eq('account_status', 'pending')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    res.json(data || []);
+  } catch (err) {
+    console.error('Get pending admins error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Super Admin: Approve/Reject Admin
+router.post('/superadmin/admin-action', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser || !currentUser.is_super_admin) {
+      return res.status(403).json({ message: 'Access denied. Super admin privileges required.' });
+    }
+    
+    const { adminId, action } = req.body;
+    
+    if (!adminId || !['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ message: 'Admin ID and valid action (approve/reject) required.' });
+    }
+    
+    const admin = await User.findById(adminId);
+    if (!admin || admin.role !== 'admin') {
+      return res.status(404).json({ message: 'Admin not found.' });
+    }
+    
+    const newStatus = action === 'approve' ? 'active' : 'rejected';
+    
+    await User.updateById(adminId, {
+      account_status: newStatus
+    });
+    
+    res.json({ 
+      message: `Admin ${action}d successfully.`,
+      admin: {
+        id: admin.id,
+        name: admin.name,
+        email: admin.email,
+        status: newStatus
+      }
+    });
+  } catch (err) {
+    console.error('Admin action error:', err);
+    res.status(500).json({ message: 'Server error.' });
   }
 });
 

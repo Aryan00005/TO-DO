@@ -1,5 +1,4 @@
 const { createClient } = require('@supabase/supabase-js');
-const bcrypt = require('bcryptjs');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -8,9 +7,10 @@ const supabase = createClient(
 
 class Task {
   static async create(taskData) {
-    const { title, description, assignedBy, assignedTo, priority = 3, dueDate, company } = taskData;
+    const { title, description, assignedBy, assignedTo, priority = 3, dueDate, company, createdByAdmin = false } = taskData;
     
-    // Create task
+    console.log('Creating task with data:', taskData);
+    
     const { data: task, error: taskError } = await supabase
       .from('tasks')
       .insert({
@@ -19,20 +19,24 @@ class Task {
         assigned_by: assignedBy,
         priority,
         due_date: dueDate,
-        company
+        company,
+        created_by_admin: createdByAdmin,
+        status: 'Not Started'
       })
       .select()
       .single();
     
-    if (taskError) throw taskError;
+    if (taskError) {
+      console.error('Task creation error:', taskError);
+      throw taskError;
+    }
     
-    // Create task assignments
+    console.log('Task created:', task);
+    
     if (assignedTo && assignedTo.length > 0) {
-      // Convert usernames to user IDs if needed
       const userIds = [];
       for (const assignee of assignedTo) {
         if (typeof assignee === 'string' && isNaN(assignee)) {
-          // It's a username, convert to user ID
           const { data: user, error: userError } = await supabase
             .from('users')
             .select('id')
@@ -44,93 +48,150 @@ class Task {
           }
           userIds.push(user.id);
         } else {
-          // It's already a user ID
           userIds.push(parseInt(assignee));
         }
       }
       
+      console.log('Creating assignments for users:', userIds);
+      
       const assignments = userIds.map(userId => ({
         task_id: task.id,
-        user_id: userId,
-        status: 'Not Started'
+        user_id: userId
       }));
       
       const { error: assignError } = await supabase
         .from('task_assignments')
         .insert(assignments);
       
-      if (assignError) throw assignError;
+      if (assignError) {
+        console.error('Assignment error:', assignError);
+        throw assignError;
+      }
+      
+      console.log('Assignments created successfully');
     }
     
     return task;
   }
 
   static async findAssignedToUser(userId) {
-    const { data, error } = await supabase
+    console.log('Finding tasks for user ID:', userId);
+    
+    // Get tasks where user is assigned with full details
+    const { data: assignedTasks, error: assignedError } = await supabase
       .from('tasks')
       .select(`
         *,
         task_assignments!inner(
-          user_id,
-          status,
-          completion_remark
+          user_id
         )
       `)
       .eq('task_assignments.user_id', userId)
       .order('created_at', { ascending: false });
     
-    if (error) throw error;
+    if (assignedError) throw assignedError;
     
-    // Transform data to match expected format
-    return data.map(task => ({
-      ...task,
-      _id: task.id,
-      assigneeStatuses: task.task_assignments.map(ta => ({
-        user: ta.user_id,
-        status: ta.status,
-        completionRemark: ta.completion_remark
-      }))
+    // Get tasks created by user
+    const { data: createdTasks, error: createdError } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('assigned_by', userId)
+      .order('created_at', { ascending: false });
+    
+    if (createdError) throw createdError;
+    
+    // Combine and deduplicate
+    const taskMap = new Map();
+    [...(assignedTasks || []), ...(createdTasks || [])].forEach(task => {
+      taskMap.set(task.id, task);
+    });
+    
+    const tasks = Array.from(taskMap.values());
+    
+    // Populate assignee and creator details
+    const populatedTasks = await Promise.all(tasks.map(async (task) => {
+      // Get creator details
+      const { data: creator } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('id', task.assigned_by)
+        .single();
+      
+      // Get assignees details
+      const { data: assignments } = await supabase
+        .from('task_assignments')
+        .select(`
+          user_id,
+          users(id, name, email)
+        `)
+        .eq('task_id', task.id);
+      
+      const assignees = assignments?.map(a => a.users) || [];
+      
+      return {
+        ...task,
+        _id: task.id.toString(),
+        dueDate: task.due_date,
+        stuckReason: task.stuck_reason,
+        assignedBy: creator ? { _id: creator.id.toString(), name: creator.name, email: creator.email } : null,
+        assignedTo: assignees.length === 1 ? 
+          { _id: assignees[0].id.toString(), name: assignees[0].name, email: assignees[0].email } : 
+          assignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
+      };
     }));
+    
+    return populatedTasks;
   }
 
   static async findAssignedByUser(userId) {
-    const { data, error } = await supabase
+    const { data: tasks, error } = await supabase
       .from('tasks')
-      .select(`
-        *,
-        task_assignments(
-          user_id,
-          status,
-          completion_remark
-        )
-      `)
+      .select('*')
       .eq('assigned_by', userId)
       .order('created_at', { ascending: false });
     
     if (error) throw error;
-    
-    return data.map(task => ({
-      ...task,
-      _id: task.id,
-      assigneeStatuses: task.task_assignments.map(ta => ({
-        user: ta.user_id,
-        status: ta.status,
-        completionRemark: ta.completion_remark
-      }))
+
+    // Populate assignee details for each task
+    const populatedTasks = await Promise.all(tasks.map(async (task) => {
+      const { data: assignments } = await supabase
+        .from('task_assignments')
+        .select(`
+          user_id,
+          users(id, name, email)
+        `)
+        .eq('task_id', task.id);
+      
+      const assignees = assignments?.map(a => a.users) || [];
+      
+      return {
+        ...task,
+        _id: task.id.toString(),
+        dueDate: task.due_date,
+        stuckReason: task.stuck_reason,
+        assignedTo: assignees.length === 1 ? 
+          { _id: assignees[0].id.toString(), name: assignees[0].name, email: assignees[0].email } : 
+          assignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
+      };
     }));
+
+    return populatedTasks;
   }
 
-  static async updateUserStatus(taskId, userId, status, remark = null) {
+  static async updateTaskStatus(taskId, status, remark = null) {
+    console.log('Task.updateTaskStatus called with:', { taskId, status, remark });
+    
     const { data, error } = await supabase
-      .from('task_assignments')
+      .from('tasks')
       .update({
         status,
-        completion_remark: remark
+        stuck_reason: remark
       })
-      .eq('task_id', taskId)
-      .eq('user_id', userId)
+      .eq('id', taskId)
       .select()
       .single();
+    
+    console.log('Supabase update result:', { data, error });
     
     if (error) throw error;
     return data;
