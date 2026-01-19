@@ -22,7 +22,13 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
       sessionStorage.setItem("jwt-token", res.data.token);
       sessionStorage.setItem("user", JSON.stringify(res.data.user));
       setUser(res.data.user);
-      navigate("/dashboard");
+      
+      // Check if user is pending approval
+      if (res.data.user.accountStatus === 'pending') {
+        navigate("/pending-approval");
+      } else {
+        navigate("/dashboard");
+      }
     } catch (err: unknown) {
       console.error('Login error:', err);
       if (

@@ -259,62 +259,112 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   let content = null;
   if (nav === "profile") {
     content = (
-      <ProfileBox style={{
-        background: theme === 'dark' ? "#374151" : "#fff",
-        boxShadow: "0 4px 24px #c7d2fe44",
-        borderRadius: 16,
-        maxWidth: 400,
-        margin: "0 auto"
-      }}>
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 24, flexDirection: "column" }}>
-          <div style={{ position: "relative" }}>
-            <div
-              style={{ cursor: "pointer" }}
-              onClick={() => setShowAvatarEditor(true)}
-              title="Edit profile photo"
-            >
-              {avatar
-                ? <img src={avatar} alt="avatar" style={{ width: 80, height: 80, borderRadius: "50%", border: "3px solid #2563eb" }} />
-                : defaultLogo}
-            </div>
-            <Button
-              type="button"
-              style={{
-                position: "absolute",
-                bottom: -10,
-                left: "50%",
-                transform: "translateX(-50%)",
-                fontSize: 12,
-                padding: "2px 10px",
-                background: "#2563eb"
-              }}
-              onClick={() => setShowAvatarEditor(true)}
-            >Edit</Button>
-          </div>
-          <div style={{ fontWeight: 700, fontSize: 22, marginTop: 10, color: theme === 'dark' ? '#ffffff' : '#000000' }}>{user.name}</div>
-          <div style={{ color: "#64748b" }}>{user.email}</div>
-        </div>
-        {showAvatarEditor && (
-          <div style={{
-            position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh",
-            background: "#0008", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center"
-          }}>
-            <div style={{ background: "#fff", padding: 32, borderRadius: 16, boxShadow: "0 4px 24px #0004" }}>
-              <AvatarEdit
-                width={320}
-                height={320}
-                onCrop={(img) => { setAvatar(img); setShowAvatarEditor(false); }}
-                onClose={() => setShowAvatarEditor(false)}
-                src={avatar || undefined}
-                label="Upload new profile photo"
-              />
-              <div style={{ textAlign: "center", marginTop: 12 }}>
-                <Button style={{ background: "#b5179e" }} onClick={() => setShowAvatarEditor(false)}>Cancel</Button>
+      <div style={{ maxWidth: 600, margin: "0 auto" }}>
+        {/* Profile Card */}
+        <ProfileBox style={{
+          background: theme === 'dark' ? "#374151" : "#fff",
+          boxShadow: "0 4px 24px #c7d2fe44",
+          borderRadius: 16,
+          marginBottom: 24
+        }}>
+          <div style={{ display: "flex", alignItems: "center", marginBottom: 24, flexDirection: "column" }}>
+            <div style={{ position: "relative" }}>
+              <div
+                style={{ cursor: "pointer" }}
+                onClick={() => setShowAvatarEditor(true)}
+                title="Edit profile photo"
+              >
+                {avatar
+                  ? <img src={avatar} alt="avatar" style={{ width: 80, height: 80, borderRadius: "50%", border: "3px solid #2563eb" }} />
+                  : defaultLogo}
               </div>
+              <Button
+                type="button"
+                style={{
+                  position: "absolute",
+                  bottom: -10,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  fontSize: 12,
+                  padding: "2px 10px",
+                  background: "#2563eb"
+                }}
+                onClick={() => setShowAvatarEditor(true)}
+              >Edit</Button>
+            </div>
+            <div style={{ fontWeight: 700, fontSize: 22, marginTop: 10, color: theme === 'dark' ? '#ffffff' : '#000000' }}>{user.name}</div>
+            <div style={{ color: "#64748b" }}>{user.email}</div>
+            <div style={{ color: "#2563eb", fontSize: 14, marginTop: 4 }}>
+              {user.role === 'admin' ? '👑 Admin' : '👤 User'} • {user.organization?.name || 'No Organization'}
             </div>
           </div>
-        )}
-      </ProfileBox>
+          
+          {/* Profile Stats */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 16, marginBottom: 20 }}>
+            <div style={{ textAlign: "center", padding: 12, background: theme === 'dark' ? "#4b5563" : "#f8fafc", borderRadius: 8 }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#2563eb" }}>{totalTasks}</div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>Total Tasks</div>
+            </div>
+            <div style={{ textAlign: "center", padding: 12, background: theme === 'dark' ? "#4b5563" : "#f8fafc", borderRadius: 8 }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#22c55e" }}>{doneTasks}</div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>Completed</div>
+            </div>
+            <div style={{ textAlign: "center", padding: 12, background: theme === 'dark' ? "#4b5563" : "#f8fafc", borderRadius: 8 }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#fbbf24" }}>{inProgressTasks}</div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>In Progress</div>
+            </div>
+            <div style={{ textAlign: "center", padding: 12, background: theme === 'dark' ? "#4b5563" : "#f8fafc", borderRadius: 8 }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#ef4444" }}>{stuckTasks}</div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>Stuck</div>
+            </div>
+          </div>
+          
+          {/* Profile Details */}
+          <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 20 }}>
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ fontWeight: 600, color: theme === 'dark' ? '#ffffff' : '#000000' }}>User ID:</span>
+              <span style={{ marginLeft: 8, color: "#64748b" }}>{user._id}</span>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ fontWeight: 600, color: theme === 'dark' ? '#ffffff' : '#000000' }}>Role:</span>
+              <span style={{ marginLeft: 8, color: "#64748b" }}>{user.role || 'User'}</span>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ fontWeight: 600, color: theme === 'dark' ? '#ffffff' : '#000000' }}>Organization:</span>
+              <span style={{ marginLeft: 8, color: "#64748b" }}>{user.organization?.name || 'Not assigned'}</span>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <span style={{ fontWeight: 600, color: theme === 'dark' ? '#ffffff' : '#000000' }}>Completion Rate:</span>
+              <span style={{ marginLeft: 8, color: totalTasks > 0 && (doneTasks / totalTasks) > 0.7 ? "#22c55e" : "#64748b" }}>
+                {totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0}%
+              </span>
+            </div>
+          </div>
+        </ProfileBox>
+        
+        {/* Recent Activity */}
+        <div style={{
+          background: theme === 'dark' ? "#374151" : "#fff",
+          boxShadow: "0 4px 24px #c7d2fe44",
+          borderRadius: 16,
+          padding: 24
+        }}>
+          <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 16, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
+            📊 Recent Activity
+          </div>
+          <div style={{ color: "#64748b" }}>
+            {tasks.length > 0 ? (
+              <div>
+                <div>• Last task: {tasks[tasks.length - 1]?.title}</div>
+                <div>• Most recent status: {tasks[tasks.length - 1]?.status}</div>
+                <div>• Tasks this month: {tasks.filter(t => new Date(t.dueDate || '').getMonth() === new Date().getMonth()).length}</div>
+              </div>
+            ) : (
+              <div>No recent activity. Start by creating your first task!</div>
+            )}
+          </div>
+        </div>
+      </div>
     );
   } else if (nav === "analytics") {
     content = (
@@ -545,7 +595,168 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </Button>
       </Form>
     );
-  } else if (nav === "assignedtasks") {
+  } else if (nav === "list") {
+    // Task List View
+    content = (
+      <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 1200, margin: "0 auto" }}>
+        <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
+          <FaTasks style={{ marginRight: 8 }} /> All Tasks ({tasks.length})
+        </div>
+        
+        {/* Filter and Sort Controls */}
+        <div style={{ display: "flex", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
+          <select
+            value={kanbanSort}
+            onChange={e => setKanbanSort(e.target.value as "none" | "priority" | "date")}
+            style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #dbeafe", background: theme === 'dark' ? "#4b5563" : "#fff", color: theme === 'dark' ? '#ffffff' : '#000000' }}
+          >
+            <option value="none">Sort: None</option>
+            <option value="priority">Sort: Priority</option>
+            <option value="date">Sort: Due Date</option>
+          </select>
+        </div>
+
+        {/* Tasks Grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+          {sortTasks(tasks, kanbanSort).map(task => (
+            <TaskCard key={task._id} style={{
+              background: isOverdue(task) ? "#fff0f0" : theme === 'dark' ? "#4b5563" : "#fff",
+              border: isOverdue(task) ? "2px solid #ef4444" : "1.5px solid #dbeafe",
+              borderRadius: 10,
+              boxShadow: "0 1px 4px #c7d2fe22",
+              position: "relative"
+            }}>
+              <TaskTitle style={{ fontWeight: 600, fontSize: 16, color: theme === 'dark' ? '#ffffff' : '#22223b' }}>
+                {task.title}
+                <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
+              </TaskTitle>
+              <TaskDesc style={{ color: theme === 'dark' ? '#e5e7eb' : '#475569', marginBottom: 8 }}>{task.description}</TaskDesc>
+              {task.company && (
+                <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 3 }}>
+                  <b>Company:</b> {task.company}
+                </div>
+              )}
+              {task.assignedBy && (
+                <div style={{ color: "#64748b", fontSize: 13, marginBottom: 4 }}>
+                  <b>Assigned By:</b>{" "}
+                  {typeof task.assignedBy === "object" && task.assignedBy !== null
+                    ? (task.assignedBy as User).name
+                    : users.find(u => u._id === task.assignedBy)?.name || "Unknown"}
+                </div>
+              )}
+              {task.dueDate && (
+                <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
+                  <FaCalendar style={{ marginRight: 4 }} />
+                  Due: {new Date(task.dueDate).toLocaleDateString()}
+                </div>
+              )}
+              {isOverdue(task) && (
+                <div style={{ color: "#ef4444", fontWeight: 700, marginBottom: 4 }}>
+                  Overdue!
+                </div>
+              )}
+              <Status $status={task.status} style={{
+                fontWeight: 600,
+                background: statusColors[task.status] + "22",
+                color: statusColors[task.status],
+                borderRadius: 8,
+                padding: "2px 10px",
+                display: "inline-block",
+                marginBottom: 8
+              }}>
+                {task.status}
+              </Status>
+            </TaskCard>
+          ))}
+        </div>
+        
+        {tasks.length === 0 && (
+          <div style={{ textAlign: "center", color: "#64748b", fontSize: 16, marginTop: 40 }}>
+            No tasks found. Create your first task!
+          </div>
+        )}
+      </div>
+    );
+  } else if (nav === "completed") {
+    // Completed Tasks View
+    const completedTasks = tasks.filter(t => t.status === "Done");
+    content = (
+      <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 1200, margin: "0 auto" }}>
+        <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
+          ✅ Completed Tasks ({completedTasks.length})
+        </div>
+        
+        {/* Completion Stats */}
+        <div style={{ background: theme === 'dark' ? "#22c55e22" : "#f0fdf4", border: "1px solid #22c55e", borderRadius: 8, padding: 16, marginBottom: 20 }}>
+          <div style={{ color: "#22c55e", fontWeight: 600 }}>
+            🎉 Great job! You've completed {completedTasks.length} out of {totalTasks} tasks 
+            ({totalTasks > 0 ? Math.round((completedTasks.length / totalTasks) * 100) : 0}% completion rate)
+          </div>
+        </div>
+
+        {/* Completed Tasks Grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+          {completedTasks.map(task => (
+            <TaskCard key={task._id} style={{
+              background: theme === 'dark' ? "#4b5563" : "#f9fafb",
+              border: "1.5px solid #22c55e",
+              borderRadius: 10,
+              boxShadow: "0 1px 4px #22c55e22",
+              position: "relative",
+              opacity: 0.9
+            }}>
+              <div style={{ position: "absolute", top: 8, right: 8, background: "#22c55e", color: "white", borderRadius: "50%", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>✓</div>
+              <TaskTitle style={{ fontWeight: 600, fontSize: 16, color: theme === 'dark' ? '#ffffff' : '#22223b', paddingRight: 30 }}>
+                {task.title}
+                <span style={{ float: "right", marginRight: 30 }}>{renderStars(task.priority)}</span>
+              </TaskTitle>
+              <TaskDesc style={{ color: theme === 'dark' ? '#e5e7eb' : '#475569', marginBottom: 8 }}>{task.description}</TaskDesc>
+              {task.company && (
+                <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 3 }}>
+                  <b>Company:</b> {task.company}
+                </div>
+              )}
+              {task.assignedBy && (
+                <div style={{ color: "#64748b", fontSize: 13, marginBottom: 4 }}>
+                  <b>Assigned By:</b>{" "}
+                  {typeof task.assignedBy === "object" && task.assignedBy !== null
+                    ? (task.assignedBy as User).name
+                    : users.find(u => u._id === task.assignedBy)?.name || "Unknown"}
+                </div>
+              )}
+              {task.dueDate && (
+                <div style={{ color: "#22c55e", fontSize: 13, marginBottom: 4 }}>
+                  <FaCalendar style={{ marginRight: 4 }} />
+                  Completed: {new Date(task.dueDate).toLocaleDateString()}
+                </div>
+              )}
+              {task.completionRemark && (
+                <div style={{ fontSize: 13, color: theme === 'dark' ? '#d1d5db' : "#666", marginTop: 8, background: theme === 'dark' ? "#374151" : "#f8fafc", padding: 8, borderRadius: 6 }}>
+                  <b>Completion Note:</b> {task.completionRemark}
+                </div>
+              )}
+              <Status $status={task.status} style={{
+                fontWeight: 600,
+                background: "#22c55e22",
+                color: "#22c55e",
+                borderRadius: 8,
+                padding: "2px 10px",
+                display: "inline-block",
+                marginTop: 8
+              }}>
+                ✅ {task.status}
+              </Status>
+            </TaskCard>
+          ))}
+        </div>
+        
+        {completedTasks.length === 0 && (
+          <div style={{ textAlign: "center", color: "#64748b", fontSize: 16, marginTop: 40 }}>
+            No completed tasks yet. Keep working! 💪
+          </div>
+        )}
+      </div>
+    );
     // Kanban columns for assigned tasks
     const assignedKanbanColumns = ["Not Started", "Working on it", "Stuck", "Done"];
     const assignedKanbanTasks: Record<string, Task[]> = {
@@ -859,6 +1070,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         <NavItem $active={nav === "list"} onClick={() => setNav("list")} style={{ color: nav === "list" ? "#2563eb" : theme === 'dark' ? '#ffffff' : "#22223b" }}>
           <FaTasks /> Task List
         </NavItem>
+        <NavItem $active={nav === "completed"} onClick={() => setNav("completed")} style={{ color: nav === "completed" ? "#2563eb" : theme === 'dark' ? '#ffffff' : "#22223b" }}>
+          ✅ Completed Tasks
+        </NavItem>
         <NavItem $active={nav === "assignedtasks"} onClick={() => setNav("assignedtasks")} style={{ color: nav === "assignedtasks" ? "#2563eb" : theme === 'dark' ? '#ffffff' : "#22223b" }}>
           <FaUser /> Tasks Assigned
         </NavItem>
@@ -983,6 +1197,28 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         
         <FloatingActionButton onAction={handleFABAction} />
         <ToastContainer />
+        
+        {/* Avatar Editor Modal */}
+        {showAvatarEditor && (
+          <div style={{
+            position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh",
+            background: "#0008", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center"
+          }}>
+            <div style={{ background: "#fff", padding: 32, borderRadius: 16, boxShadow: "0 4px 24px #0004" }}>
+              <AvatarEdit
+                width={320}
+                height={320}
+                onCrop={(img) => { setAvatar(img); setShowAvatarEditor(false); }}
+                onClose={() => setShowAvatarEditor(false)}
+                src={avatar || undefined}
+                label="Upload new profile photo"
+              />
+              <div style={{ textAlign: "center", marginTop: 12 }}>
+                <Button style={{ background: "#b5179e" }} onClick={() => setShowAvatarEditor(false)}>Cancel</Button>
+              </div>
+            </div>
+          </div>
+        )}
       </Main>
     </Layout>
   );

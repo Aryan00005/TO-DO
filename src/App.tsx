@@ -7,6 +7,7 @@ import AdminRegister from "./pages/AdminRegister";
 import SuperAdminLogin from "./pages/SuperAdminLogin";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import Dashboard from "./pages/dashboard-new";
+import PendingApproval from "./pages/PendingApproval";
 import AuthCallback from "./pages/AuthCallback";
 import SetPassword from "./pages/SetPassword";
 import SetCredentials from "./pages/SetCredentials";
@@ -19,6 +20,7 @@ interface User {
   email: string;
   role?: string;
   company?: string;
+  accountStatus?: string;
 }
 
 // 1. Load user from localStorage
@@ -92,6 +94,7 @@ function App() {
         <Route path="/complete-account" element={<CompleteAccount setUser={setUser} />} />
         <Route path="/setup-password" element={<SetPassword />} />
         <Route path="/setup-credentials" element={<SetCredentials />} />
+        <Route path="/pending-approval" element={<PendingApproval user={user || {_id: 'loading', name: 'Loading...', email: '', accountStatus: 'pending'}} onLogout={handleLogout} />} />
         <Route path="/" element={<Navigate to="/dashboard" />} />
         <Route element={<ProtectedRoute />}>
           <Route

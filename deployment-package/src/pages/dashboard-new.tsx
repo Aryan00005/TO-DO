@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { FaBell, FaCalendar, FaCalendarAlt, FaChartBar, FaColumns, FaMoon, FaPlus, FaSignOutAlt, FaStar, FaSun, FaTasks, FaUser, FaEdit, FaTrash, FaQuestionCircle, FaCheckCircle } from "react-icons/fa";
 import { useTheme } from "../hooks/useTheme";
 import { useToast } from "../components/Toast";
@@ -42,8 +41,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [priority, setPriority] = useState(5);
   const [dueDate, setDueDate] = useState("");
   const [loading, setLoading] = useState(false);
-  const [assignedTasks, setAssignedTasks] = useState<Task[]>([]);
-  const [selectedDate, setSelectedDate] = useState(new Date().getDate().toString());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -65,7 +62,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
   const firstDayOfMonth = new Date(selectedYear, selectedMonth, 1).getDay();
   const calendarDates = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const emptyDays = Array.from({ length: firstDayOfMonth }, (_, i) => null);
+  const emptyDays = Array.from({ length: firstDayOfMonth }, () => null);
   
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -88,7 +85,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     if (nav === "assignedtasks") {
       axios.get(`/tasks/assignedBy/${user._id}`)
         .then(res => {
-          const processedTasks = res.data.map((task: any) => {
+          res.data.map((task: any) => {
             const firstAssigneeId = Array.isArray(task.assignedTo) ? task.assignedTo[0]._id || task.assignedTo[0] : task.assignedTo._id || task.assignedTo;
             const assigneeStatus = task.assigneeStatuses?.find((s: any) => s.user.toString() === firstAssigneeId || s.user._id === firstAssigneeId);
             return {
@@ -97,26 +94,39 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               stuckReason: assigneeStatus?.completionRemark || task.stuckReason || ''
             };
           });
-          setAssignedTasks(processedTasks);
         })
         .catch(err => console.error(err));
     }
   }, [nav, user._id]);
 
   useEffect(() => {
-    axios.get(`/tasks/assignedTo/${user._id}`)
-      .then(res => {
+    const fetchTasks = async () => {
+      try {
+        const token = sessionStorage.getItem("jwt-token");
+        if (!token) {
+          console.error('No token found');
+          return;
+        }
+        
+        const res = await axios.get(`/tasks/assignedTo/${user._id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
         const processedTasks = res.data.map((task: any) => {
           const userAssignment = task.assigneeStatuses?.find((s: any) => s.user.toString() === user._id || s.user === user._id);
           return {
             ...task,
-            status: userAssignment?.status || 'Not Started',
-            stuckReason: userAssignment?.completionRemark || ''
+            status: userAssignment?.status || task.status || 'Not Started',
+            stuckReason: userAssignment?.completionRemark || task.stuckReason || ''
           };
         });
         setTasks(processedTasks);
-      })
-      .catch(err => console.error(err));
+      } catch (err) {
+        console.error('Failed to fetch tasks:', err);
+      }
+    };
+    
+    fetchTasks();
   }, [user._id]);
 
   useEffect(() => {
@@ -250,26 +260,24 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Force refresh tasks from server
-      const res = await axios.get(`/tasks/assignedTo/${user._id}`);
-      const processedTasks = res.data.map((task: any) => {
-        const userAssignment = task.assigneeStatuses?.find((s: any) => s.user.toString() === user._id || s.user === user._id);
-        return {
-          ...task,
-          status: userAssignment?.status || 'Not Started',
-          stuckReason: userAssignment?.completionRemark || ''
-        };
-      });
-      setTasks(processedTasks);
+      // Immediately update local state
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task._id === taskId 
+            ? { ...task, status: newStatus, stuckReason: remark || task.stuckReason }
+            : task
+        )
+      );
       
-      setRefreshKey(prev => prev + 1);
       showToast(`Task moved to ${newStatus}!`, "success");
     } catch (err) {
+      console.error('Update failed:', err);
       showToast("Failed to update task", "error");
     }
   };
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    console.log('Drag started:', taskId);
     setDraggedTask(taskId);
     e.dataTransfer.setData('text/plain', taskId);
   };
@@ -280,15 +288,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   const handleDrop = (e: React.DragEvent, newStatus: string) => {
     e.preventDefault();
-    const taskId = e.dataTransfer.getData('text/plain');
+    const taskId = draggedTask || e.dataTransfer.getData('text/plain');
+    console.log('Drop:', { taskId, newStatus, draggedTask });
     
-    if (taskId) {
+    if (taskId && taskId !== '') {
+      console.log('Updating task status...');
       if (newStatus === 'Stuck') {
         setStuckTaskId(taskId);
         setShowStuckModal(true);
       } else {
         updateTaskStatus(taskId, newStatus);
       }
+    } else {
+      console.log('No taskId found');
     }
     setDraggedTask(null);
   };
@@ -594,7 +606,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     task.description.toLowerCase().includes(searchTerm.toLowerCase())
                   );
                 
-                return filteredTasks.map((task, index) => (
+                return filteredTasks.map((task, _index) => (
                 <div
                   key={task._id}
                   style={{
@@ -602,7 +614,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     gridTemplateColumns: '2fr 1fr 120px 120px 100px',
                     gap: '16px',
                     padding: '16px 24px',
-                    borderBottom: index < filteredTasks.length - 1 ? '1px solid #e5e7eb' : 'none',
+                    borderBottom: _index < filteredTasks.length - 1 ? '1px solid #e5e7eb' : 'none',
                     background: theme === 'dark' ? '#374151' : '#fff',
                     alignItems: 'center'
                   }}

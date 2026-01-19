@@ -14,12 +14,8 @@ app.use(cors({
   origin: [
     process.env.FRONTEND_URL || 'http://localhost:3000',
     'https://dulcet-custard-82202d.netlify.app',
-    'https://stupendous-nougat-5e23b1.netlify.app',
     'http://localhost:3000',
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:5175',
-    'http://localhost:5176'
+    'http://localhost:5173'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -98,5 +94,5 @@ app.use((err, req, res, next) => {
   }
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5500;
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));

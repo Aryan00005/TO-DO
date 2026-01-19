@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const passport = require('passport');
 const User = require('../models/user');
 // const Organization = require('../models/organization');
-const { sendLoginEmail, sendAdminRequestNotification } = require('../utils/emailService');
+const { sendLoginEmail } = require('../utils/emailService');
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -49,16 +49,16 @@ router.get('/test', (req, res) => {
 });
 
 // Google OAuth Routes
-router.get('/google', 
-  passport.authenticate('google', { 
+router.get('/google',
+  passport.authenticate('google', {
     scope: ['profile', 'email'],
-    session: false 
+    session: false
   })
 );
 
 router.get('/google/callback',
   (req, res, next) => {
-    passport.authenticate('google', { 
+    passport.authenticate('google', {
       session: false,
       failureRedirect: `${process.env.FRONTEND_URL}/login?error=oauth_failed`
     })(req, res, (err) => {
@@ -72,12 +72,12 @@ router.get('/google/callback',
   async (req, res) => {
     try {
       const user = req.user;
-      
+
       if (!user) {
         console.error('❌ No user returned from Google OAuth');
         return res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
       }
-      
+
       console.log('🔍 Google callback - User data:', {
         id: user.id,
         email: user.email,
@@ -86,11 +86,11 @@ router.get('/google/callback',
         userId: user.user_id,
         hasPassword: !!user.password
       });
-      
+
       // FORCE all Google users to complete account setup
       // Check if user has no userId or password (needs completion)
       const needsCompletion = !user.user_id || !user.password || user.account_status === 'incomplete';
-      
+
       if (needsCompletion) {
         console.log('🔄 User needs to complete account setup');
         // Create temporary token for account completion (short-lived)
@@ -99,7 +99,7 @@ router.get('/google/callback',
           process.env.JWT_SECRET,
           { expiresIn: '30m' } // 30 minutes to complete account
         );
-        
+
         // Redirect to account completion page (NOT logged in)
         const redirectUrl = `${process.env.FRONTEND_URL}/complete-account?token=${tempToken}`;
         console.log('🔗 Redirect URL:', redirectUrl);
@@ -123,12 +123,12 @@ router.post('/admin/register', async (req, res) => {
   const { name, userId, email, password, company } = req.body;
   try {
     console.log('📝 Admin registration attempt:', { name, userId, email, company });
-    
+
     if (!name || !userId || !email || !password || !company) {
       console.log('❌ Missing fields');
       return res.status(400).json({ message: 'All fields including company are required.' });
     }
-    
+
     console.log('🔍 Checking existing user...');
     const existingUser = await User.findByUserId(userId);
     if (existingUser) {
@@ -153,20 +153,6 @@ router.post('/admin/register', async (req, res) => {
       company,
       accountStatus: 'pending'
     });
-    
-    // Send email notification to super admin
-    if (process.env.SEND_LOGIN_EMAILS === 'true') {
-      sendAdminRequestNotification(user).catch(err => 
-        console.error('Admin notification email failed:', err.message)
-      );
-    }
-    
-    // Send email notification to super admin
-    if (process.env.SEND_LOGIN_EMAILS === 'true') {
-      sendAdminRequestNotification(user).catch(err => 
-        console.error('Admin notification email failed:', err.message)
-      );
-    }
     
     console.log('✅ Admin registered successfully - PENDING APPROVAL');
     res.status(201).json({ message: 'Admin registration submitted. Awaiting super admin approval.' });
@@ -514,21 +500,10 @@ router.post('/superadmin/create-company-admin', authenticateToken, async (req, r
       return res.status(403).json({ message: 'Access denied. Super admin privileges required.' });
     }
     
-    const { name, userId, email, password, companyCode } = req.body;
+    const { name, userId, email, password, company, companyCode } = req.body;
     
-    if (!name || !userId || !email || !password || !companyCode) {
-      return res.status(400).json({ message: 'All fields including existing company code are required.' });
-    }
-    
-    // Verify company code exists
-    const { data: existingCompany, error: companyError } = await supabase
-      .from('users')
-      .select('company')
-      .eq('company', companyCode)
-      .limit(1);
-    
-    if (companyError || !existingCompany || existingCompany.length === 0) {
-      return res.status(400).json({ message: 'Company code does not exist. Please use an existing company code.' });
+    if (!name || !userId || !email || !password || !company) {
+      return res.status(400).json({ message: 'All fields are required.' });
     }
     
     const existingUser = await User.findByUserId(userId);
@@ -548,7 +523,7 @@ router.post('/superadmin/create-company-admin', authenticateToken, async (req, r
       password,
       authProvider: 'local',
       role: 'admin',
-      company: companyCode
+      company: companyCode || company
     });
     
     res.status(201).json({ 

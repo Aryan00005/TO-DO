@@ -11,6 +11,8 @@ interface SuperAdminDashboardProps {
 const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogout }) => {
   const [companies, setCompanies] = useState<any[]>([]);
   const [pendingAdmins, setPendingAdmins] = useState<any[]>([]);
+  const [selectedCompany, setSelectedCompany] = useState<any>(null);
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [companyCode, setCompanyCode] = useState("");
@@ -46,6 +48,20 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
       setPendingAdmins(pendingRes.data);
     } catch (err) {
       console.error("Error fetching data:", err);
+    }
+  };
+
+  const handleViewCompany = async (companyCode: string) => {
+    try {
+      const token = sessionStorage.getItem("jwt-token");
+      const res = await axios.get(`/auth/superadmin/company/${companyCode}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSelectedCompany(res.data);
+      setShowCompanyModal(true);
+    } catch (err) {
+      console.error("Error fetching company details:", err);
+      setError("Failed to load company details");
     }
   };
 
@@ -434,7 +450,17 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
               </thead>
               <tbody>
                 {companies.map((company, index) => (
-                  <tr key={index} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                  <tr 
+                    key={index} 
+                    onClick={() => handleViewCompany(company.name)}
+                    style={{ 
+                      borderBottom: '1px solid #e5e7eb',
+                      cursor: 'pointer',
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
                     <td style={{ padding: '16px 24px', fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>
                       <span style={{ 
                         background: '#f3f4f6', 
@@ -623,57 +649,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
           </div>
         </div>
       )}
-    </div>
-  );
-};
 
-export default SuperAdminDashboard;Align: 'left', fontSize: '14px', fontWeight: '600', color: '#6b7280' }}>Company Name</th>
-                  <th style={{ padding: '16px 24px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#6b7280' }}>Company Code</th>
-                  <th style={{ padding: '16px 24px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#6b7280' }}>Admins</th>
-                  <th style={{ padding: '16px 24px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#6b7280' }}>Users</th>
-                </tr>
-              </thead>
-              <tbody>
-                {companies.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
-                      No companies yet. Create your first company admin to get started.
-                    </td>
-                  </tr>
-                ) : (
-                  companies.map((company, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                      <td style={{ padding: '16px 24px', fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>
-                        {company.company}
-                      </td>
-                      <td style={{ padding: '16px 24px', fontSize: '14px', color: '#6b7280' }}>
-                        <code style={{
-                          background: '#f3f4f6',
-                          padding: '4px 8px',
-                          borderRadius: '4px',
-                          fontSize: '13px',
-                          fontFamily: 'monospace'
-                        }}>
-                          {company.companyCode}
-                        </code>
-                      </td>
-                      <td style={{ padding: '16px 24px', fontSize: '14px', color: '#6b7280' }}>
-                        {company.adminCount}
-                      </td>
-                      <td style={{ padding: '16px 24px', fontSize: '14px', color: '#6b7280' }}>
-                        {company.userCount}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      {/* Create Company Admin Modal */}
-      {showCreateModal && (
+      {/* Company Details Modal */}
+      {showCompanyModal && selectedCompany && (
         <div style={{
           position: 'fixed',
           top: 0,
@@ -685,211 +663,86 @@ export default SuperAdminDashboard;Align: 'left', fontSize: '14px', fontWeight: 
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 1000
-        }} onClick={() => setShowCreateModal(false)}>
+        }}>
           <div style={{
             background: '#fff',
-            borderRadius: '16px',
             padding: '32px',
-            maxWidth: '500px',
+            borderRadius: '12px',
+            maxWidth: '800px',
             width: '90%',
             maxHeight: '90vh',
-            overflowY: 'auto',
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)'
-          }} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937', marginBottom: '24px' }}>
-              Create Company Admin
-            </h2>
-            <form onSubmit={handleCreateCompanyAdmin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            overflowY: 'auto'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
-                  Company Name *
-                </label>
-                <input
-                  type="text"
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '2px solid #e5e7eb',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    outline: 'none'
-                  }}
-                  onFocus={(e) => e.target.style.borderColor = '#667eea'}
-                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-                />
+                <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937', margin: 0 }}>
+                  Company Details
+                </h2>
+                <p style={{ fontSize: '14px', color: '#6b7280', margin: '4px 0 0 0' }}>
+                  Code: <code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{selectedCompany.companyCode}</code>
+                </p>
               </div>
+              <button
+                onClick={() => setShowCompanyModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#6b7280'
+                }}
+              >
+                ×
+              </button>
+            </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
-                  Company Code *
-                </label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input
-                    type="text"
-                    value={companyCode}
-                    onChange={(e) => setCompanyCode(e.target.value.toUpperCase())}
-                    required
-                    style={{
-                      flex: 1,
-                      padding: '10px 12px',
-                      border: '2px solid #e5e7eb',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      outline: 'none',
-                      fontFamily: 'monospace'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#667eea'}
-                    onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-                  />
-                  <button
-                    type="button"
-                    onClick={generateCompanyCode}
-                    style={{
-                      background: '#f3f4f6',
-                      border: '2px solid #e5e7eb',
-                      padding: '10px 16px',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      color: '#374151'
-                    }}
-                  >
-                    Generate
-                  </button>
-                </div>
+            <div style={{ marginBottom: '24px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#1f2937', marginBottom: '12px' }}>
+                Admins ({selectedCompany.users.filter((u: any) => u.role === 'admin').length})
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {selectedCompany.users.filter((u: any) => u.role === 'admin').map((admin: any) => (
+                  <div key={admin.id} style={{
+                    background: '#f9fafb',
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    border: '1px solid #e5e7eb'
+                  }}>
+                    <div style={{ fontWeight: '600', color: '#1f2937', marginBottom: '4px' }}>{admin.name}</div>
+                    <div style={{ fontSize: '14px', color: '#6b7280' }}>{admin.email} • {admin.user_id}</div>
+                    <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                      Status: <span style={{
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        background: admin.account_status === 'active' ? '#d1fae5' : admin.account_status === 'pending' ? '#fef3c7' : '#fee2e2',
+                        color: admin.account_status === 'active' ? '#065f46' : admin.account_status === 'pending' ? '#92400e' : '#991b1b'
+                      }}>
+                        {admin.account_status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
+            </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
-                  Admin Name *
-                </label>
-                <input
-                  type="text"
-                  value={adminName}
-                  onChange={(e) => setAdminName(e.target.value)}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '2px solid #e5e7eb',
+            <div>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#1f2937', marginBottom: '12px' }}>
+                Users ({selectedCompany.users.filter((u: any) => u.role !== 'admin').length})
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {selectedCompany.users.filter((u: any) => u.role !== 'admin').map((user: any) => (
+                  <div key={user.id} style={{
+                    background: '#f9fafb',
+                    padding: '12px 16px',
                     borderRadius: '8px',
-                    fontSize: '14px',
-                    outline: 'none'
-                  }}
-                  onFocus={(e) => e.target.style.borderColor = '#667eea'}
-                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-                />
+                    border: '1px solid #e5e7eb'
+                  }}>
+                    <div style={{ fontWeight: '600', color: '#1f2937', marginBottom: '4px' }}>{user.name}</div>
+                    <div style={{ fontSize: '14px', color: '#6b7280' }}>{user.email} • {user.user_id}</div>
+                  </div>
+                ))}
               </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
-                  Admin Email *
-                </label>
-                <input
-                  type="email"
-                  value={adminEmail}
-                  onChange={(e) => setAdminEmail(e.target.value)}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '2px solid #e5e7eb',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    outline: 'none'
-                  }}
-                  onFocus={(e) => e.target.style.borderColor = '#667eea'}
-                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
-                  Admin User ID *
-                </label>
-                <input
-                  type="text"
-                  value={adminUserId}
-                  onChange={(e) => setAdminUserId(e.target.value)}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '2px solid #e5e7eb',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    outline: 'none'
-                  }}
-                  onFocus={(e) => e.target.style.borderColor = '#667eea'}
-                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
-                  Admin Password *
-                </label>
-                <input
-                  type="password"
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '2px solid #e5e7eb',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    outline: 'none'
-                  }}
-                  onFocus={(e) => e.target.style.borderColor = '#667eea'}
-                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  style={{
-                    flex: 1,
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    color: '#fff',
-                    border: 'none',
-                    padding: '12px 24px',
-                    borderRadius: '8px',
-                    fontSize: '16px',
-                    fontWeight: '600',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    opacity: loading ? 0.7 : 1
-                  }}
-                >
-                  {loading ? 'Creating...' : 'Create Admin'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  style={{
-                    flex: 1,
-                    background: '#f3f4f6',
-                    color: '#374151',
-                    border: 'none',
-                    padding: '12px 24px',
-                    borderRadius: '8px',
-                    fontSize: '16px',
-                    fontWeight: '600',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

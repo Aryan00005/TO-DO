@@ -11,7 +11,10 @@ interface SuperAdminDashboardProps {
 const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogout }) => {
   const [companies, setCompanies] = useState<any[]>([]);
   const [pendingAdmins, setPendingAdmins] = useState<any[]>([]);
+  const [selectedCompany, setSelectedCompany] = useState<any>(null);
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [companyName, setCompanyName] = useState("");
   const [companyCode, setCompanyCode] = useState("");
   const [adminName, setAdminName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
@@ -48,6 +51,20 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
     }
   };
 
+  const handleViewCompany = async (companyCode: string) => {
+    try {
+      const token = sessionStorage.getItem("jwt-token");
+      const res = await axios.get(`/auth/superadmin/company/${companyCode}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSelectedCompany(res.data);
+      setShowCompanyModal(true);
+    } catch (err) {
+      console.error("Error fetching company details:", err);
+      setError("Failed to load company details");
+    }
+  };
+
   const handleAdminAction = async (adminId: string, action: 'approve' | 'reject') => {
     try {
       const token = sessionStorage.getItem("jwt-token");
@@ -59,7 +76,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
       });
       
       setSuccess(`Admin ${action}d successfully!`);
-      fetchData();
+      fetchData(); // Refresh data
     } catch (err: any) {
       setError(err.response?.data?.message || `Failed to ${action} admin`);
     }
@@ -78,12 +95,14 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
         email: adminEmail,
         userId: adminUserId,
         password: adminPassword,
+        company: companyName,
         companyCode: companyCode
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      setSuccess(`Company admin created successfully for company: ${companyCode}`);
+      setSuccess(`Company admin created successfully! Company Code: ${companyCode}`);
+      setCompanyName("");
       setCompanyCode("");
       setAdminName("");
       setAdminEmail("");
@@ -98,9 +117,14 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
     }
   };
 
+  const generateCompanyCode = () => {
+    const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+    setCompanyCode(code);
+  };
+
   const handleLogout = () => {
     onLogout();
-    navigate("/system-admin-access");
+    navigate("/super-admin-login");
   };
 
   if (!user) return <div>Loading...</div>;
@@ -392,7 +416,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
             onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
             onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
           >
-            <FaPlus /> Create Admin for Existing Company
+            <FaPlus /> Create Company Admin
           </button>
         </div>
 
@@ -426,7 +450,17 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
               </thead>
               <tbody>
                 {companies.map((company, index) => (
-                  <tr key={index} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                  <tr 
+                    key={index} 
+                    onClick={() => handleViewCompany(company.name)}
+                    style={{ 
+                      borderBottom: '1px solid #e5e7eb',
+                      cursor: 'pointer',
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
                     <td style={{ padding: '16px 24px', fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>
                       <span style={{ 
                         background: '#f3f4f6', 
@@ -476,7 +510,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
             overflowY: 'auto'
           }}>
             <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937', marginBottom: '24px' }}>
-              Create Admin for Existing Company
+              Create Company Admin
             </h2>
             <form onSubmit={handleCreateCompanyAdmin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <input
@@ -533,9 +567,9 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
               />
               <input
                 type="text"
-                placeholder="Existing Company Code"
-                value={companyCode}
-                onChange={(e) => setCompanyCode(e.target.value)}
+                placeholder="Company Name"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
                 required
                 style={{
                   padding: '12px 16px',
@@ -544,6 +578,37 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                   fontSize: '16px'
                 }}
               />
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="text"
+                  placeholder="Company Code"
+                  value={companyCode}
+                  onChange={(e) => setCompanyCode(e.target.value)}
+                  required
+                  style={{
+                    flex: 1,
+                    padding: '12px 16px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '8px',
+                    fontSize: '16px'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={generateCompanyCode}
+                  style={{
+                    background: '#6b7280',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '14px'
+                  }}
+                >
+                  Generate
+                </button>
+              </div>
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
                 <button
                   type="submit"
@@ -581,6 +646,103 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Company Details Modal */}
+      {showCompanyModal && selectedCompany && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#fff',
+            padding: '32px',
+            borderRadius: '12px',
+            maxWidth: '800px',
+            width: '90%',
+            maxHeight: '90vh',
+            overflowY: 'auto'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <div>
+                <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937', margin: 0 }}>
+                  Company Details
+                </h2>
+                <p style={{ fontSize: '14px', color: '#6b7280', margin: '4px 0 0 0' }}>
+                  Code: <code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{selectedCompany.companyCode}</code>
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCompanyModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#6b7280'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#1f2937', marginBottom: '12px' }}>
+                Admins ({selectedCompany.users.filter((u: any) => u.role === 'admin').length})
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {selectedCompany.users.filter((u: any) => u.role === 'admin').map((admin: any) => (
+                  <div key={admin.id} style={{
+                    background: '#f9fafb',
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    border: '1px solid #e5e7eb'
+                  }}>
+                    <div style={{ fontWeight: '600', color: '#1f2937', marginBottom: '4px' }}>{admin.name}</div>
+                    <div style={{ fontSize: '14px', color: '#6b7280' }}>{admin.email} • {admin.user_id}</div>
+                    <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                      Status: <span style={{
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        background: admin.account_status === 'active' ? '#d1fae5' : admin.account_status === 'pending' ? '#fef3c7' : '#fee2e2',
+                        color: admin.account_status === 'active' ? '#065f46' : admin.account_status === 'pending' ? '#92400e' : '#991b1b'
+                      }}>
+                        {admin.account_status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#1f2937', marginBottom: '12px' }}>
+                Users ({selectedCompany.users.filter((u: any) => u.role !== 'admin').length})
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {selectedCompany.users.filter((u: any) => u.role !== 'admin').map((user: any) => (
+                  <div key={user.id} style={{
+                    background: '#f9fafb',
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    border: '1px solid #e5e7eb'
+                  }}>
+                    <div style={{ fontWeight: '600', color: '#1f2937', marginBottom: '4px' }}>{user.name}</div>
+                    <div style={{ fontSize: '14px', color: '#6b7280' }}>{user.email} • {user.user_id}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
