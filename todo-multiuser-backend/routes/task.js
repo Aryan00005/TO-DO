@@ -109,14 +109,29 @@ router.patch('/:taskId', auth, async (req, res) => {
     const { status, remark, title, description, assignedTo, priority, dueDate, company } = req.body;
     console.log('Updating task:', req.params.taskId, 'with data:', req.body);
     
+    const currentUser = await User.findById(req.user.id);
+    if (!currentUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Check if user can update this task
+    const canUpdate = await Task.canUserUpdateTask(req.params.taskId, currentUser.id, currentUser.role);
+    if (!canUpdate) {
+      return res.status(403).json({ message: 'Access denied. You cannot update this task.' });
+    }
+    
     // If it's just a status update
     if (status && !title) {
       const result = await Task.updateTaskStatus(req.params.taskId, status, remark);
       return res.json({ message: 'Task status updated', result });
     }
     
-    // If it's a full task update
+    // If it's a full task update (admin only)
     if (title && description) {
+      if (currentUser.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied. Only admins can edit task details.' });
+      }
+      
       const { createClient } = require('@supabase/supabase-js');
       const supabase = createClient(
         process.env.SUPABASE_URL,
@@ -235,6 +250,70 @@ router.delete('/:taskId', auth, async (req, res) => {
     res.json({ message: 'Task deleted' });
   } catch (err) {
     console.error(err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
+// Get pending task approvals (Admin only)
+router.get('/pending-approvals', auth, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    if (!currentUser || currentUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Only admins can view pending approvals.' });
+    }
+
+    const pendingTasks = await Task.getPendingApprovals(currentUser.id);
+    res.json(pendingTasks);
+  } catch (err) {
+    console.error('Error fetching pending approvals:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
+// Approve task (Admin only)
+router.post('/:taskId/approve', auth, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    if (!currentUser || currentUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Only admins can approve tasks.' });
+    }
+
+    const task = await Task.approveTask(req.params.taskId, currentUser.id);
+    res.json({ message: 'Task approved successfully', task });
+  } catch (err) {
+    console.error('Error approving task:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
+// Reject task (Admin only)
+router.post('/:taskId/reject', auth, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    if (!currentUser || currentUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Only admins can reject tasks.' });
+    }
+
+    const task = await Task.rejectTask(req.params.taskId, currentUser.id);
+    res.json({ message: 'Task rejected successfully', task });
+  } catch (err) {
+    console.error('Error rejecting task:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
+// Check if user can update task
+router.get('/:taskId/can-update', auth, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    if (!currentUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const canUpdate = await Task.canUserUpdateTask(req.params.taskId, currentUser.id, currentUser.role);
+    res.json({ canUpdate });
+  } catch (err) {
+    console.error('Error checking update permission:', err);
     res.status(500).json({ message: 'Server error: ' + err.message });
   }
 });
