@@ -605,6 +605,36 @@ router.get('/superadmin/pending-admins', authenticateToken, async (req, res) => 
   }
 });
 
+// Super Admin: Get Company Details with Users
+router.get('/superadmin/company/:companyCode', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser || !currentUser.is_super_admin) {
+      return res.status(403).json({ message: 'Access denied. Super admin privileges required.' });
+    }
+    
+    const { companyCode } = req.params;
+    
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, email, user_id, role, account_status, created_at')
+      .eq('company', companyCode)
+      .order('role', { ascending: false }) // Admins first
+      .order('name');
+    
+    if (error) throw error;
+    
+    res.json({
+      companyCode,
+      users: data || []
+    });
+  } catch (err) {
+    console.error('Get company details error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
 // Super Admin: Approve/Reject Admin
 router.post('/superadmin/admin-action', authenticateToken, async (req, res) => {
   try {
