@@ -1018,6 +1018,172 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
       </div>
     );
+  } else if (nav === "approvals" && user.role === 'admin') {
+    // Task Approvals for Admin
+    const [pendingTasks, setPendingTasks] = useState<Task[]>([]);
+    
+    useEffect(() => {
+      if (nav === "approvals") {
+        const token = sessionStorage.getItem("jwt-token");
+        axios.get("/tasks/pending-approvals", {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        .then(res => setPendingTasks(res.data))
+        .catch(err => {
+          console.error("Error fetching pending approvals:", err);
+          showToast("Note: Approval system requires database update", "info");
+        });
+      }
+    }, [nav]);
+    
+    const handleApproval = async (taskId: string, action: 'approve' | 'reject') => {
+      try {
+        const token = sessionStorage.getItem("jwt-token");
+        await axios.post(`/tasks/${taskId}/${action}`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        // Refresh pending tasks
+        const res = await axios.get("/tasks/pending-approvals", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setPendingTasks(res.data);
+        
+        showToast(`Task ${action}d successfully! 🎉`, "success");
+      } catch (err: any) {
+        showToast("Error: " + (err.response?.data?.message || err.message), "error");
+      }
+    };
+    
+    content = (
+      <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 1000, margin: "0 auto" }}>
+        <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
+          🔔 Task Approval Requests ({pendingTasks.length})
+        </div>
+        
+        {pendingTasks.length === 0 ? (
+          <div style={{ 
+            textAlign: "center", 
+            color: "#64748b", 
+            fontSize: 16, 
+            marginTop: 40,
+            background: theme === 'dark' ? "#4b5563" : "#f8fafc",
+            padding: 32,
+            borderRadius: 12
+          }}>
+            🎉 No pending task approvals! All tasks are up to date.
+            <div style={{ fontSize: 14, marginTop: 8 }}>
+              When users assign tasks to you, they'll appear here for approval.
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: 16 }}>
+            {pendingTasks.map(task => (
+              <TaskCard key={task._id} style={{
+                background: theme === 'dark' ? "#4b5563" : "#fff5f5",
+                border: "2px solid #fbbf24",
+                borderRadius: 10,
+                boxShadow: "0 2px 8px #fbbf2444",
+                position: "relative"
+              }}>
+                <div style={{ 
+                  position: "absolute", 
+                  top: 8, 
+                  right: 8, 
+                  background: "#fbbf24", 
+                  color: "white", 
+                  padding: "2px 8px", 
+                  borderRadius: 12, 
+                  fontSize: 11, 
+                  fontWeight: 600 
+                }}>
+                  PENDING APPROVAL
+                </div>
+                
+                <TaskTitle style={{ fontWeight: 600, fontSize: 16, color: theme === 'dark' ? '#ffffff' : '#22223b', paddingRight: 120 }}>
+                  {task.title}
+                  <span style={{ float: "right", marginRight: 120 }}>{renderStars(task.priority)}</span>
+                </TaskTitle>
+                
+                <TaskDesc style={{ color: theme === 'dark' ? '#e5e7eb' : '#475569', marginBottom: 8 }}>
+                  {task.description}
+                </TaskDesc>
+                
+                {task.company && (
+                  <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 8 }}>
+                    <b>Company:</b> {task.company}
+                  </div>
+                )}
+                
+                <div style={{ fontSize: 14, color: "#2563eb", marginBottom: 8 }}>
+                  <b>Requested by:</b> {typeof task.assignedBy === "object" ? (task.assignedBy as User).name : "User"}
+                </div>
+                
+                {task.dueDate && (
+                  <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 12 }}>
+                    <FaCalendar style={{ marginRight: 4 }} />
+                    Due: {new Date(task.dueDate).toLocaleDateString()}
+                  </div>
+                )}
+                
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <Button
+                    onClick={() => handleApproval(task._id, 'approve')}
+                    style={{
+                      background: "#22c55e",
+                      color: "white",
+                      border: "none",
+                      padding: "8px 16px",
+                      borderRadius: 6,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      flex: 1
+                    }}
+                  >
+                    ✅ Accept Task
+                  </Button>
+                  <Button
+                    onClick={() => handleApproval(task._id, 'reject')}
+                    style={{
+                      background: "#ef4444",
+                      color: "white",
+                      border: "none",
+                      padding: "8px 16px",
+                      borderRadius: 6,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      flex: 1
+                    }}
+                  >
+                    ❌ Reject Task
+                  </Button>
+                </div>
+              </TaskCard>
+            ))}
+          </div>
+        )}
+        
+        <div style={{ 
+          marginTop: 24, 
+          padding: 16, 
+          background: theme === 'dark' ? "#1f2937" : "#f0f9ff", 
+          borderRadius: 8, 
+          border: "1px solid #3b82f6" 
+        }}>
+          <div style={{ color: "#3b82f6", fontWeight: 600, marginBottom: 8 }}>
+            📝 How Task Approval Works:
+          </div>
+          <div style={{ color: theme === 'dark' ? '#d1d5db' : "#64748b", fontSize: 14 }}>
+            • When users assign tasks to you (admin), they require your approval<br/>
+            • Accept tasks you agree to work on<br/>
+            • Reject tasks you cannot handle<br/>
+            • Approved tasks will appear in your regular task board
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
@@ -1076,6 +1242,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         <NavItem $active={nav === "assignedtasks"} onClick={() => setNav("assignedtasks")} style={{ color: nav === "assignedtasks" ? "#2563eb" : theme === 'dark' ? '#ffffff' : "#22223b" }}>
           <FaUser /> Tasks Assigned
         </NavItem>
+        {user.role === 'admin' && (
+          <NavItem $active={nav === "approvals"} onClick={() => setNav("approvals")} style={{ color: nav === "approvals" ? "#2563eb" : theme === 'dark' ? '#ffffff' : "#22223b" }}>
+            🔔 Task Approvals
+          </NavItem>
+        )}
         <NavItem $active={nav === "calendar"} onClick={() => setNav("calendar")} style={{ color: nav === "calendar" ? "#2563eb" : theme === 'dark' ? '#ffffff' : "#22223b" }}>
           <FaCalendarAlt /> Calendar
         </NavItem>
