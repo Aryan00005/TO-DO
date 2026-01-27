@@ -15,6 +15,7 @@ app.use(cors({
     process.env.FRONTEND_URL || 'http://localhost:3000',
     'https://dulcet-custard-82202d.netlify.app',
     'https://tubular-concha-16bda1.netlify.app',
+    'https://multiuser-todo.vercel.app',
     'http://localhost:3000',
     'http://localhost:5173'
   ],
