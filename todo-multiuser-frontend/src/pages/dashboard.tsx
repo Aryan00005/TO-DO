@@ -8,7 +8,7 @@ import {
 } from "@hello-pangea/dnd";
 import React, { useEffect, useState } from "react";
 import AvatarEdit from "react-avatar-edit";
-import { FaBell, FaCalendar, FaCalendarAlt, FaChartBar, FaColumns, FaMoon, FaPlus, FaSignOutAlt, FaStar, FaSun, FaTasks, FaUser } from "react-icons/fa";
+import { FaBell, FaCalendar, FaCalendarAlt, FaChartBar, FaClock, FaColumns, FaMoon, FaPlus, FaSignOutAlt, FaStar, FaSun, FaTasks, FaUser, FaCheck, FaTimes } from "react-icons/fa";
 import { useTheme } from "../hooks/useTheme";
 import { useToast } from "../components/Toast";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -86,6 +86,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [showAvatarEditor, setShowAvatarEditor] = useState(false);
   const [kanbanSort, setKanbanSort] = useState<"none" | "priority" | "date">("none");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [pendingUsers, setPendingUsers] = useState<User[]>([]);
 
   const today = new Date();
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
@@ -137,6 +138,38 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         .catch(err => console.error("Error fetching assigned tasks:", err));
     }
   }, [nav, user._id]);
+
+  useEffect(() => {
+    if (nav === "pendingusers" && user.role === 'admin') {
+      const token = sessionStorage.getItem("jwt-token");
+      axios.get("/auth/admin/pending-users", {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(res => setPendingUsers(res.data))
+        .catch(err => console.error("Error fetching pending users:", err));
+    }
+  }, [nav, user.role]);
+
+  const handleUserAction = async (userId: string, action: 'approve' | 'reject') => {
+    try {
+      const token = sessionStorage.getItem("jwt-token");
+      await axios.post("/auth/admin/user-action", {
+        userId,
+        action
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      showToast(`User ${action}d successfully!`, "success");
+      // Refresh pending users
+      const res = await axios.get("/auth/admin/pending-users", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPendingUsers(res.data);
+    } catch (err: any) {
+      showToast(err.response?.data?.message || `Failed to ${action} user`, "error");
+    }
+  };
 
   useEffect(() => {
     axios.get(`/notifications/${user._id}`)
@@ -735,6 +768,117 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
       </div>
     );
+  } else if (nav === "pendingusers" && user.role === 'admin') {
+    content = (
+      <div style={{
+        background: theme === 'dark' ? "#374151" : "#fff",
+        borderRadius: 12,
+        padding: 24,
+        boxShadow: "0 2px 12px #c7d2fe22",
+        maxWidth: 800,
+        margin: "0 auto"
+      }}>
+        <div style={{
+          fontWeight: 700,
+          fontSize: 20,
+          marginBottom: 18,
+          color: theme === 'dark' ? '#ffffff' : '#000000',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <FaClock /> Pending User Approvals ({pendingUsers.length})
+        </div>
+        
+        {pendingUsers.length === 0 ? (
+          <div style={{
+            textAlign: 'center',
+            color: '#64748b',
+            padding: '40px 20px',
+            fontSize: 16
+          }}>
+            No pending user approvals
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {pendingUsers.map(user => (
+              <div key={user.id} style={{
+                background: theme === 'dark' ? "#4b5563" : "#f9fafb",
+                border: "1px solid #e5e7eb",
+                borderRadius: 12,
+                padding: 20,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <h3 style={{
+                    fontSize: 18,
+                    fontWeight: 600,
+                    color: theme === 'dark' ? '#ffffff' : '#1f2937',
+                    margin: '0 0 8px 0'
+                  }}>
+                    {user.name}
+                  </h3>
+                  <p style={{
+                    fontSize: 14,
+                    color: '#6b7280',
+                    margin: '0 0 4px 0'
+                  }}>
+                    {user.email} • {user.user_id}
+                  </p>
+                  <p style={{
+                    fontSize: 12,
+                    color: '#9ca3af',
+                    margin: 0
+                  }}>
+                    Requested: {new Date(user.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button
+                    onClick={() => handleUserAction(user.id, 'approve')}
+                    style={{
+                      background: '#10b981',
+                      color: '#fff',
+                      border: 'none',
+                      padding: '10px 20px',
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 14,
+                      fontWeight: 600
+                    }}
+                  >
+                    <FaCheck size={12} /> Approve
+                  </button>
+                  <button
+                    onClick={() => handleUserAction(user.id, 'reject')}
+                    style={{
+                      background: '#ef4444',
+                      color: '#fff',
+                      border: 'none',
+                      padding: '10px 20px',
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 14,
+                      fontWeight: 600
+                    }}
+                  >
+                    <FaTimes size={12} /> Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   } else if (nav === "calendar") {
     content = (
       <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 700, margin: "0 auto" }}>
@@ -868,6 +1012,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         <NavItem $active={nav === "analytics"} onClick={() => setNav("analytics")} style={{ color: nav === "analytics" ? "#2563eb" : theme === 'dark' ? '#ffffff' : "#22223b" }}>
           <FaChartBar /> Analytics
         </NavItem>
+        {user.role === 'admin' && (
+          <NavItem $active={nav === "pendingusers"} onClick={() => setNav("pendingusers")} style={{ color: nav === "pendingusers" ? "#2563eb" : theme === 'dark' ? '#ffffff' : "#22223b" }}>
+            <FaClock /> Pending Users
+          </NavItem>
+        )}
         <NavItem onClick={onLogout} style={{ color: "#b5179e" }}>
           <FaSignOutAlt /> Logout
         </NavItem>
