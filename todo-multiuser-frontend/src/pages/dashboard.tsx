@@ -8,7 +8,7 @@ import {
 } from "@hello-pangea/dnd";
 import React, { useEffect, useState } from "react";
 import AvatarEdit from "react-avatar-edit";
-import { FaBell, FaCalendar, FaCalendarAlt, FaChartBar, FaClock, FaColumns, FaMoon, FaPlus, FaSignOutAlt, FaStar, FaSun, FaTasks, FaUser, FaCheck, FaTimes } from "react-icons/fa";
+import { FaBell, FaCalendar, FaCalendarAlt, FaChartBar, FaClock, FaColumns, FaMoon, FaPlus, FaSignOutAlt, FaStar, FaSun, FaTasks, FaUser, FaCheck, FaTimes, FaTrash } from "react-icons/fa";
 import { useTheme } from "../hooks/useTheme";
 import { useToast } from "../components/Toast";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -168,6 +168,28 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       setPendingUsers(res.data);
     } catch (err: any) {
       showToast(err.response?.data?.message || `Failed to ${action} user`, "error");
+    }
+  };
+
+  const handleDeleteCompany = async (companyCode: string) => {
+    if (!window.confirm(`Are you sure you want to delete company '${companyCode}' and ALL its users? This action cannot be undone!`)) {
+      return;
+    }
+    
+    try {
+      const token = sessionStorage.getItem("jwt-token");
+      const res = await axios.delete(`/auth/superadmin/delete-company/${companyCode}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      showToast(`Company '${companyCode}' deleted successfully! ${res.data.deletedUsers} users removed.`, "success");
+      // Refresh companies list
+      const companiesRes = await axios.get("/auth/superadmin/companies", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setCompanies(companiesRes.data);
+    } catch (err: any) {
+      showToast(err.response?.data?.message || "Failed to delete company", "error");
     }
   };
 

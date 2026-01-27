@@ -446,6 +446,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                   <th style={{ padding: '16px 24px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Company Code</th>
                   <th style={{ padding: '16px 24px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Admins</th>
                   <th style={{ padding: '16px 24px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Users</th>
+                  <th style={{ padding: '16px 24px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -477,6 +478,38 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                     </td>
                     <td style={{ padding: '16px 24px', fontSize: '14px', color: '#6b7280' }}>
                       {company.userCount}
+                    </td>
+                    <td style={{ padding: '16px 24px', fontSize: '14px' }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`Delete company '${company.name}' and all its users?`)) {
+                            const token = sessionStorage.getItem("jwt-token");
+                            axios.delete(`/auth/superadmin/delete-company/${company.name}`, {
+                              headers: { Authorization: `Bearer ${token}` }
+                            })
+                            .then(() => {
+                              setSuccess(`Company '${company.name}' deleted successfully!`);
+                              fetchData();
+                            })
+                            .catch(err => {
+                              setError(err.response?.data?.message || 'Failed to delete company');
+                            });
+                          }
+                        }}
+                        style={{
+                          background: '#ef4444',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '6px 12px',
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: 600
+                        }}
+                      >
+                        Delete
+                      </button>
                     </td>
                   </tr>
                 ))}
