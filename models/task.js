@@ -11,6 +11,48 @@ class Task {
     
     console.log('Creating task with data:', taskData);
     
+    // Get creator and assignee roles for approval logic
+    const { data: creator } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', assignedBy)
+      .single();
+    
+    let approvalStatus = 'approved'; // Default for most cases
+    let assignedByRole = creator?.role || 'user';
+    let assignedToRole = 'user';
+    
+    // Check if any assignee is an admin (for user->admin approval)
+    if (assignedTo && assignedTo.length > 0) {
+      for (const assignee of assignedTo) {
+        let userId = assignee;
+        if (typeof assignee === 'string' && isNaN(assignee)) {
+          const { data: user } = await supabase
+            .from('users')
+            .select('id, role')
+            .eq('name', assignee)
+            .single();
+          if (user) {
+            userId = user.id;
+            if (user.role === 'admin' && creator?.role !== 'admin') {
+              approvalStatus = 'pending'; // User assigning to admin needs approval
+              assignedToRole = 'admin';
+            }
+          }
+        } else {
+          const { data: user } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', parseInt(assignee))
+            .single();
+          if (user?.role === 'admin' && creator?.role !== 'admin') {
+            approvalStatus = 'pending'; // User assigning to admin needs approval
+            assignedToRole = 'admin';
+          }
+        }
+      }
+    }
+    
     const { data: task, error: taskError } = await supabase
       .from('tasks')
       .insert({
@@ -21,7 +63,10 @@ class Task {
         due_date: dueDate,
         company,
         created_by_admin: createdByAdmin,
-        status: 'Not Started'
+        status: 'Not Started',
+        approval_status: approvalStatus,
+        assigned_by_role: assignedByRole,
+        assigned_to_role: assignedToRole
       })
       .select()
       .single();
@@ -207,6 +252,137 @@ class Task {
     
     if (error) throw error;
     return data;
+  }
+
+  // New methods for approval system
+  static async approveTask(taskId, adminId) {
+    const { data, error } = await supabase
+      .from('tasks')
+      .update({ approval_status: 'approved' })
+      .eq('id', taskId)
+      .eq('approval_status', 'pending')
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  }
+
+  static async rejectTask(taskId, adminId) {
+    const { data, error } = await supabase
+      .from('tasks')
+      .update({ approval_status: 'rejected' })
+      .eq('id', taskId)
+      .eq('approval_status', 'pending')
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  }
+
+  static async getPendingApprovals(adminId) {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        task_assignments(
+          user_id,
+          users(id, name, email)
+        )
+      `)
+      .eq('approval_status', 'pending')
+      .in('id', 
+        supabase
+          .from('task_assignments')
+          .select('task_id')
+          .eq('user_id', adminId)
+      )
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    return data || [];
+  }
+
+  static async findVisibleToUser(userId, userRole, userCompany) {
+    let query = supabase.from('tasks').select(`
+      *,
+      task_assignments(
+        user_id,
+        users(id, name, email, role)
+      )
+    `);
+
+    // Admin sees all tasks in their company
+    if (userRole === 'admin') {
+      query = query.eq('company', userCompany);
+    } else {
+      // Regular users see:
+      // 1. Tasks assigned to them
+      // 2. Tasks they created
+      // 3. User-to-user tasks where they are sender or receiver
+      query = query.or(`
+        assigned_by.eq.${userId},
+        id.in.(${supabase.from('task_assignments').select('task_id').eq('user_id', userId)})
+      `);
+    }
+
+    // Only show approved tasks (hide pending approvals from regular users)
+    if (userRole !== 'admin') {
+      query = query.eq('approval_status', 'approved');
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    // Filter user-to-user tasks for visibility
+    const filteredTasks = data.filter(task => {
+      // Admin sees all
+      if (userRole === 'admin') return true;
+      
+      // User created the task
+      if (task.assigned_by === userId) return true;
+      
+      // User is assigned to the task
+      const isAssigned = task.task_assignments.some(a => a.user_id === userId);
+      if (isAssigned) return true;
+      
+      // For user-to-user tasks, check if both creator and assignee are users
+      if (task.assigned_by_role === 'user' && task.assigned_to_role === 'user') {
+        // Only visible to admin, creator, and assignee
+        const isCreator = task.assigned_by === userId;
+        const isAssignee = task.task_assignments.some(a => a.user_id === userId);
+        return isCreator || isAssignee;
+      }
+      
+      return false;
+    });
+    
+    return filteredTasks;
+  }
+
+  static async canUserUpdateTask(taskId, userId, userRole) {
+    const { data: task, error } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        task_assignments(user_id)
+      `)
+      .eq('id', taskId)
+      .single();
+    
+    if (error) throw error;
+    
+    // Admin can update any task in their company
+    if (userRole === 'admin') return true;
+    
+    // Task creator can update
+    if (task.assigned_by === userId) return true;
+    
+    // Assigned user can update status only
+    const isAssigned = task.task_assignments.some(a => a.user_id === userId);
+    return isAssigned;
   }
 }
 

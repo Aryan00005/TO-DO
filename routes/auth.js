@@ -265,11 +265,15 @@ router.post('/register', async (req, res) => {
       email, 
       password: password,
       authProvider: 'local',
-      company: companyCode
+      company: companyCode,
+      accountStatus: 'pending' // Users need admin approval
     });
     
-    console.log('✅ User registered successfully');
-    res.status(201).json({ message: 'User registered successfully.' });
+    console.log('✅ User registered successfully - PENDING ADMIN APPROVAL');
+    res.status(201).json({ 
+      message: 'Registration successful! Your account is pending approval from your company admin. You will be notified once approved.',
+      status: 'pending_approval'
+    });
   } catch (err) {
     console.error('❌ Registration error:', err);
     res.status(500).json({ message: 'Server error: ' + err.message });
@@ -312,6 +316,21 @@ router.post('/login', async (req, res) => {
     if (!isMatch) {
       console.log('❌ Password mismatch');
       return res.status(400).json({ message: 'Invalid credentials.' });
+    }
+
+    // Check account status for regular users
+    if (user.account_status === 'pending') {
+      return res.status(403).json({ 
+        message: 'Account pending approval. Please wait for your company admin to approve your account.',
+        status: 'pending_approval'
+      });
+    }
+    
+    if (user.account_status === 'rejected') {
+      return res.status(403).json({ 
+        message: 'Account has been rejected. Please contact your company admin.',
+        status: 'rejected'
+      });
     }
 
     const loginData = await handleLoginSuccess(user, res);
@@ -605,6 +624,36 @@ router.get('/superadmin/pending-admins', authenticateToken, async (req, res) => 
   }
 });
 
+// Super Admin: Get Company Details with Users
+router.get('/superadmin/company/:companyCode', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser || !currentUser.is_super_admin) {
+      return res.status(403).json({ message: 'Access denied. Super admin privileges required.' });
+    }
+    
+    const { companyCode } = req.params;
+    
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, email, user_id, role, account_status, created_at')
+      .eq('company', companyCode)
+      .order('role', { ascending: false }) // Admins first
+      .order('name');
+    
+    if (error) throw error;
+    
+    res.json({
+      companyCode,
+      users: data || []
+    });
+  } catch (err) {
+    console.error('Get company details error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
 // Super Admin: Approve/Reject Admin
 router.post('/superadmin/admin-action', authenticateToken, async (req, res) => {
   try {
@@ -642,6 +691,73 @@ router.post('/superadmin/admin-action', authenticateToken, async (req, res) => {
     });
   } catch (err) {
     console.error('Admin action error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Company Admin: Get Pending Users in Their Company
+router.get('/admin/pending-users', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser || currentUser.role !== 'admin' || !currentUser.company) {
+      return res.status(403).json({ message: 'Access denied. Company admin privileges required.' });
+    }
+    
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, email, user_id, created_at')
+      .eq('company', currentUser.company)
+      .eq('account_status', 'pending')
+      .neq('role', 'admin') // Exclude admin requests
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    res.json(data || []);
+  } catch (err) {
+    console.error('Get pending users error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Company Admin: Approve/Reject User
+router.post('/admin/user-action', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser || currentUser.role !== 'admin' || !currentUser.company) {
+      return res.status(403).json({ message: 'Access denied. Company admin privileges required.' });
+    }
+    
+    const { userId, action } = req.body;
+    
+    if (!userId || !['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ message: 'User ID and valid action (approve/reject) required.' });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user || user.company !== currentUser.company || user.role === 'admin') {
+      return res.status(404).json({ message: 'User not found or access denied.' });
+    }
+    
+    const newStatus = action === 'approve' ? 'active' : 'rejected';
+    
+    await User.updateById(userId, {
+      account_status: newStatus
+    });
+    
+    res.json({ 
+      message: `User ${action}d successfully.`,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        status: newStatus
+      }
+    });
+  } catch (err) {
+    console.error('User action error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 });

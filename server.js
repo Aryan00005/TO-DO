@@ -3,17 +3,25 @@ const express = require('express');
 const cors = require('cors');
 const passport = require('./config/passport');
 const { testConnection } = require('./config/database');
+const { rateLimiters, securityHeaders, sanitizeInput, securityLogger } = require('./middleware/security');
 
 const app = express();
 
 // Trust proxy for Render
 app.set('trust proxy', 1);
 
+// Apply security middleware
+app.use(securityHeaders);
+app.use(securityLogger);
+
 app.use(express.json({ limit: '10mb' }));
+app.use(sanitizeInput);
 app.use(cors({
   origin: [
     process.env.FRONTEND_URL || 'http://localhost:3000',
     'https://dulcet-custard-82202d.netlify.app',
+    'https://tubular-concha-16bda1.netlify.app',
+    'https://multiuser-todo.vercel.app',
     'http://localhost:3000',
     'http://localhost:5173'
   ],
@@ -55,6 +63,14 @@ app.use('/api/superadmin', superadminRoutes);
 // Import and use auth routes
 try {
   const authRoutes = require('./routes/auth.js');
+  // Apply rate limiting to auth routes
+  app.use('/api/auth/login', rateLimiters.auth);
+  app.use('/api/auth/admin/login', rateLimiters.auth);
+  app.use('/api/auth/register', rateLimiters.auth);
+  app.use('/api/auth/admin/register', rateLimiters.auth);
+  app.use('/api/auth/forgot-password', rateLimiters.passwordReset);
+  app.use('/api/auth/reset-password', rateLimiters.passwordReset);
+  
   app.use('/api/auth', authRoutes);
   console.log('✅ Auth routes loaded successfully');
 } catch (error) {
