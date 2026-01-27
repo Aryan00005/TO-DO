@@ -19,7 +19,7 @@ export default defineConfig({
       }
     },
     chunkSizeWarningLimit: 1000,
-    minify: 'terser',
+    minify: 'esbuild',
     sourcemap: false
   }
 });
