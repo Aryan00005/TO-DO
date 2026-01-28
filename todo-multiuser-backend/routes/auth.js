@@ -727,25 +727,56 @@ router.post('/superadmin/admin-action', authenticateToken, async (req, res) => {
 // Company Admin: Get Pending Users in Their Company
 router.get('/admin/pending-users', authenticateToken, async (req, res) => {
   try {
+    console.log('🔍 Admin pending users request from user ID:', req.user.id);
     const currentUser = await User.findById(req.user.id);
+    console.log('👤 Current user details:', {
+      id: currentUser?.id,
+      name: currentUser?.name,
+      email: currentUser?.email,
+      role: currentUser?.role,
+      company: currentUser?.company,
+      account_status: currentUser?.account_status
+    });
     
     if (!currentUser || currentUser.role !== 'admin' || !currentUser.company) {
+      console.log('❌ Access denied - not admin or no company:', {
+        userExists: !!currentUser,
+        role: currentUser?.role,
+        company: currentUser?.company
+      });
       return res.status(403).json({ message: 'Access denied. Company admin privileges required.' });
     }
     
+    console.log('🔍 Searching for pending users in company:', currentUser.company);
     const { data, error } = await supabase
       .from('users')
-      .select('id, name, email, user_id, created_at')
+      .select('id, name, email, user_id, company, account_status, role, created_at')
       .eq('company', currentUser.company)
       .eq('account_status', 'pending')
       .neq('role', 'admin') // Exclude admin requests
       .order('created_at', { ascending: false });
     
-    if (error) throw error;
+    if (error) {
+      console.error('❌ Supabase query error:', error);
+      throw error;
+    }
+    
+    console.log('📊 Found pending users:', data?.length || 0);
+    if (data && data.length > 0) {
+      console.log('👥 Pending users list:', data.map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        user_id: u.user_id,
+        company: u.company,
+        account_status: u.account_status,
+        role: u.role
+      })));
+    }
     
     res.json(data || []);
   } catch (err) {
-    console.error('Get pending users error:', err);
+    console.error('❌ Get pending users error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 });

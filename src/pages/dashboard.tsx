@@ -1190,18 +1190,40 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     
     useEffect(() => {
       if (nav === "userapprovals") {
-        console.log('🔄 Fetching pending users for admin:', user._id, user.company);
+        console.log('🔄 Fetching pending users for admin:', user._id, user.company, user.role);
+        console.log('🔍 Current user details:', {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          company: user.company,
+          organization: user.organization
+        });
         const token = sessionStorage.getItem("jwt-token");
+        console.log('🔑 Using token:', token ? 'Token exists' : 'No token found');
+        
         axios.get("/auth/admin/pending-users", {
           headers: { Authorization: `Bearer ${token}` }
         })
         .then(res => {
-          console.log('📊 Pending users response:', res.data);
+          console.log('📊 Pending users API response:', res.data);
+          console.log('📊 Number of pending users:', res.data?.length || 0);
+          if (res.data && res.data.length > 0) {
+            console.log('👥 Pending users details:', res.data.map(u => ({
+              id: u.id,
+              name: u.name,
+              email: u.email,
+              company: u.company || u.user_id,
+              created_at: u.created_at
+            })));
+          }
           setPendingUsers(res.data);
         })
         .catch(err => {
           console.error("❌ Error fetching pending users:", err);
-          console.error('Error details:', err.response?.data);
+          console.error('❌ Error status:', err.response?.status);
+          console.error('❌ Error details:', err.response?.data);
+          console.error('❌ Full error object:', err);
           showToast("Error loading pending users: " + (err.response?.data?.message || err.message), "error");
         });
       }
