@@ -12,6 +12,7 @@ import AuthCallback from "./pages/AuthCallback";
 import SetPassword from "./pages/SetPassword";
 import SetCredentials from "./pages/SetCredentials";
 import CompleteAccount from "./pages/CompleteAccount";
+import SelectRole from "./pages/SelectRole";
 
 // User type (optional, for TypeScript)
 interface User {
@@ -91,6 +92,7 @@ function App() {
         <Route path="/login" element={<Login setUser={setUser} />} />
         <Route path="/register" element={<Register />} />
         <Route path="/auth/callback" element={<AuthCallback setUser={setUser} />} />
+        <Route path="/select-role" element={<SelectRole />} />
         <Route path="/complete-account" element={<CompleteAccount setUser={setUser} />} />
         <Route path="/setup-password" element={<SetPassword />} />
         <Route path="/setup-credentials" element={<SetCredentials />} />

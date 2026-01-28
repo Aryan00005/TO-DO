@@ -54,8 +54,8 @@ const PendingApproval: React.FC<PendingApprovalProps> = ({ user, onLogout }) => 
           marginBottom: '24px',
           lineHeight: '1.6'
         }}>
-          Hi <strong>{user.name}</strong>, your account is pending approval from your company admin.
-          You'll receive access once approved.
+          Hi <strong>{user.name}</strong>, your account is pending approval.
+          {user.role === 'admin' ? ' A super admin will review your admin request.' : ' Your company admin will review your request.'}
         </p>
         
         <div style={{
@@ -69,9 +69,14 @@ const PendingApproval: React.FC<PendingApprovalProps> = ({ user, onLogout }) => 
           <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '8px' }}>
             <strong>Email:</strong> {user.email}
           </div>
-          <div style={{ fontSize: '14px', color: '#6b7280' }}>
-            <strong>Company:</strong> {user.company}
+          <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '8px' }}>
+            <strong>Role:</strong> {user.role || 'Not set'}
           </div>
+          {user.company && (
+            <div style={{ fontSize: '14px', color: '#6b7280' }}>
+              <strong>Company:</strong> {user.company}
+            </div>
+          )}
         </div>
         
         <button

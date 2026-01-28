@@ -87,20 +87,20 @@ router.get('/google/callback',
         hasPassword: !!user.password
       });
 
-      // NEW USERS: Need to complete account setup (choose company + set password)
-      const needsCompletion = !user.user_id || !user.password || user.account_status === 'incomplete';
+      // NEW USERS: Redirect to role selection instead of account completion
+      const needsRoleSelection = !user.user_id || !user.password || user.account_status === 'incomplete';
 
-      if (needsCompletion) {
-        console.log('🔄 New Google user needs to complete account setup');
-        // Create temporary token for account completion
+      if (needsRoleSelection) {
+        console.log('🔄 New Google user needs to select role');
+        // Create temporary token for role selection
         const tempToken = jwt.sign(
-          { id: user.id, purpose: 'account_completion', email: user.email },
+          { id: user.id, purpose: 'role_selection', email: user.email },
           process.env.JWT_SECRET,
           { expiresIn: '30m' }
         );
 
-        // Redirect to account completion page where they choose company
-        const redirectUrl = `${process.env.FRONTEND_URL}/complete-account?token=${tempToken}&type=google`;
+        // Redirect to role selection page
+        const redirectUrl = `${process.env.FRONTEND_URL}/select-role?token=${tempToken}`;
         console.log('🔗 Redirect URL:', redirectUrl);
         res.redirect(redirectUrl);
       } else {
@@ -887,6 +887,48 @@ router.post('/admin/user-action', authenticateToken, async (req, res) => {
     });
   } catch (err) {
     console.error('User action error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Select role for new Google users
+router.post('/select-role', async (req, res) => {
+  try {
+    const { token, role } = req.body;
+    
+    if (!token || !role || !['user', 'admin'].includes(role)) {
+      return res.status(400).json({ message: 'Token and valid role (user/admin) are required.' });
+    }
+    
+    // Verify temporary token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      if (decoded.purpose !== 'role_selection') {
+        return res.status(403).json({ message: 'Invalid token purpose.' });
+      }
+    } catch (err) {
+      return res.status(403).json({ message: 'Invalid or expired token.' });
+    }
+    
+    // Get user and update with selected role
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    
+    // Update user with selected role and pending status
+    await User.updateById(user.id, {
+      role: role,
+      account_status: 'pending'
+    });
+    
+    res.json({ 
+      message: 'Role selected successfully. Your account is pending approval.',
+      status: 'pending_approval'
+    });
+  } catch (error) {
+    console.error('Select role error:', error);
     res.status(500).json({ message: 'Server error.' });
   }
 });
