@@ -1190,14 +1190,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     
     useEffect(() => {
       if (nav === "userapprovals") {
+        console.log('🔄 Fetching pending users for admin:', user._id, user.company);
         const token = sessionStorage.getItem("jwt-token");
         axios.get("/auth/admin/pending-users", {
           headers: { Authorization: `Bearer ${token}` }
         })
-        .then(res => setPendingUsers(res.data))
+        .then(res => {
+          console.log('📊 Pending users response:', res.data);
+          setPendingUsers(res.data);
+        })
         .catch(err => {
-          console.error("Error fetching pending users:", err);
-          showToast("Error loading pending users", "error");
+          console.error("❌ Error fetching pending users:", err);
+          console.error('Error details:', err.response?.data);
+          showToast("Error loading pending users: " + (err.response?.data?.message || err.message), "error");
         });
       }
     }, [nav]);
