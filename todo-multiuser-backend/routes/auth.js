@@ -653,7 +653,7 @@ router.get('/superadmin/pending-admins', authenticateToken, async (req, res) => 
   }
 });
 
-// Super Admin: Get Company Details with Users
+// Super Admin: Get Company Details with Users (ONLY APPROVED USERS)
 router.get('/superadmin/company/:companyCode', authenticateToken, async (req, res) => {
   try {
     const currentUser = await User.findById(req.user.id);
@@ -668,6 +668,7 @@ router.get('/superadmin/company/:companyCode', authenticateToken, async (req, re
       .from('users')
       .select('id, name, email, user_id, role, account_status, created_at')
       .eq('company', companyCode)
+      .eq('account_status', 'active') // ONLY SHOW APPROVED USERS
       .order('role', { ascending: false }) // Admins first
       .order('name');
     
@@ -777,6 +778,74 @@ router.get('/admin/pending-users', authenticateToken, async (req, res) => {
     res.json(data || []);
   } catch (err) {
     console.error('❌ Get pending users error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Company Admin: Get All Users in Their Company (both pending and approved)
+router.get('/admin/all-users', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser || currentUser.role !== 'admin' || !currentUser.company) {
+      return res.status(403).json({ message: 'Access denied. Company admin privileges required.' });
+    }
+    
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, email, user_id, account_status, created_at')
+      .eq('company', currentUser.company)
+      .neq('role', 'admin') // Exclude admin users
+      .order('account_status', { ascending: false }) // Pending first, then active
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    res.json(data || []);
+  } catch (err) {
+    console.error('Get all users error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Company Admin: Remove User from Company
+router.delete('/admin/remove-user/:userId', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser || currentUser.role !== 'admin' || !currentUser.company) {
+      return res.status(403).json({ message: 'Access denied. Company admin privileges required.' });
+    }
+    
+    const { userId } = req.params;
+    
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required.' });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user || user.company !== currentUser.company || user.role === 'admin') {
+      return res.status(404).json({ message: 'User not found or access denied.' });
+    }
+    
+    // Delete the user
+    const { error } = await supabase
+      .from('users')
+      .delete()
+      .eq('id', userId);
+    
+    if (error) throw error;
+    
+    res.json({ 
+      message: 'User removed successfully.',
+      removedUser: {
+        id: user.id,
+        name: user.name,
+        email: user.email
+      }
+    });
+  } catch (err) {
+    console.error('Remove user error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 });

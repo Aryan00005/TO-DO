@@ -239,18 +239,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   // Fetch pending users for admin
   useEffect(() => {
     if (nav === "userapprovals" && user.role === 'admin') {
-      console.log('🔄 Fetching pending users for admin:', user._id, user.company, user.role);
+      console.log('🔄 Fetching all users for admin:', user._id, user.company, user.role);
       const token = sessionStorage.getItem("jwt-token");
-      axios.get("/auth/admin/pending-users", {
+      axios.get("/auth/admin/all-users", {
         headers: { Authorization: `Bearer ${token}` }
       })
       .then(res => {
-        console.log('📊 Pending users response:', res.data);
+        console.log('📊 All users response:', res.data);
         setPendingUsers(res.data);
       })
       .catch(err => {
-        console.error("❌ Error fetching pending users:", err);
-        showToast("Error loading pending users: " + (err.response?.data?.message || err.message), "error");
+        console.error("❌ Error fetching all users:", err);
+        showToast("Error loading users: " + (err.response?.data?.message || err.message), "error");
       });
     }
   }, [nav, user._id, user.role]);
@@ -315,8 +315,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Refresh pending users
-      const res = await axios.get("/auth/admin/pending-users", {
+      // Refresh all users
+      const res = await axios.get("/auth/admin/all-users", {
         headers: { Authorization: `Bearer ${token}` }
       });
       setPendingUsers(res.data);
@@ -325,6 +325,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     } catch (err: any) {
       console.error('❌ User approval error:', err);
       console.error('❌ Error response:', err.response?.data);
+      showToast("Error: " + (err.response?.data?.message || err.message), "error");
+    }
+  };
+
+  const handleUserRemoval = async (userId: string) => {
+    if (!window.confirm('Are you sure you want to remove this user? This action cannot be undone.')) return;
+    
+    try {
+      console.log('🔄 Attempting user removal:', userId);
+      const token = sessionStorage.getItem("jwt-token");
+      
+      await axios.delete(`/auth/admin/remove-user/${userId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // Refresh all users
+      const res = await axios.get("/auth/admin/all-users", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPendingUsers(res.data);
+      
+      showToast('User removed successfully! 🗑️', "success");
+    } catch (err: any) {
+      console.error('❌ User removal error:', err);
       showToast("Error: " + (err.response?.data?.message || err.message), "error");
     }
   };
@@ -1332,7 +1356,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     content = (
       <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 1000, margin: "0 auto" }}>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
-          👥 User Approval Requests ({pendingUsers.length})
+          👥 User Management ({pendingUsers.length})
         </div>
         
         {pendingUsers.length === 0 ? (
@@ -1345,90 +1369,118 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             padding: 32,
             borderRadius: 12
           }}>
-            🎉 No pending user approvals!
+            🎉 No users in your company yet!
             <div style={{ fontSize: 14, marginTop: 8 }}>
-              When users register with your company code, they'll appear here for approval.
+              When users register with your company code, they'll appear here.
             </div>
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: 16 }}>
-            {pendingUsers.map(pendingUser => (
-              <div key={pendingUser._id} style={{
-                background: theme === 'dark' ? "#4b5563" : "#fff5f5",
-                border: "2px solid #f59e0b",
-                borderRadius: 10,
-                padding: 20,
-                boxShadow: "0 2px 8px #f59e0b44",
-                position: "relative"
-              }}>
-                <div style={{ 
-                  position: "absolute", 
-                  top: 8, 
-                  right: 8, 
-                  background: "#f59e0b", 
-                  color: "white", 
-                  padding: "2px 8px", 
-                  borderRadius: 12, 
-                  fontSize: 11, 
-                  fontWeight: 600 
+            {pendingUsers.map(pendingUser => {
+              const isPending = pendingUser.account_status === 'pending';
+              const isActive = pendingUser.account_status === 'active';
+              
+              return (
+                <div key={pendingUser._id || pendingUser.id} style={{
+                  background: theme === 'dark' ? "#4b5563" : "#fff5f5",
+                  border: isPending ? "2px solid #f59e0b" : isActive ? "2px solid #22c55e" : "2px solid #ef4444",
+                  borderRadius: 10,
+                  padding: 20,
+                  boxShadow: isPending ? "0 2px 8px #f59e0b44" : isActive ? "0 2px 8px #22c55e44" : "0 2px 8px #ef444444",
+                  position: "relative"
                 }}>
-                  PENDING
+                  <div style={{ 
+                    position: "absolute", 
+                    top: 8, 
+                    right: 8, 
+                    background: isPending ? "#f59e0b" : isActive ? "#22c55e" : "#ef4444", 
+                    color: "white", 
+                    padding: "2px 8px", 
+                    borderRadius: 12, 
+                    fontSize: 11, 
+                    fontWeight: 600 
+                  }}>
+                    {isPending ? 'PENDING' : isActive ? 'ACTIVE' : 'REJECTED'}
+                  </div>
+                  
+                  <div style={{ fontWeight: 600, fontSize: 18, color: theme === 'dark' ? '#ffffff' : '#22223b', marginBottom: 8, paddingRight: 80 }}>
+                    {pendingUser.name}
+                  </div>
+                  
+                  <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 8 }}>
+                    <b>Email:</b> {pendingUser.email}
+                  </div>
+                  
+                  <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 8 }}>
+                    <b>User ID:</b> {pendingUser.userId || pendingUser.user_id || pendingUser._id}
+                  </div>
+                  
+                  <div style={{ fontSize: 14, color: "#2563eb", marginBottom: 12 }}>
+                    <b>Status:</b> {pendingUser.account_status || 'Unknown'}
+                  </div>
+                  
+                  <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+                    {isPending && (
+                      <>
+                        <button
+                          onClick={() => handleUserApproval(pendingUser.id || pendingUser._id, 'approve')}
+                          style={{
+                            background: "#22c55e",
+                            color: "white",
+                            border: "none",
+                            padding: "8px 12px",
+                            borderRadius: 6,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            flex: 1
+                          }}
+                        >
+                          ✅ Approve
+                        </button>
+                        <button
+                          onClick={() => handleUserApproval(pendingUser.id || pendingUser._id, 'reject')}
+                          style={{
+                            background: "#ef4444",
+                            color: "white",
+                            border: "none",
+                            padding: "8px 12px",
+                            borderRadius: 6,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            flex: 1
+                          }}
+                        >
+                          ❌ Reject
+                        </button>
+                      </>
+                    )}
+                    
+                    {(isActive || pendingUser.account_status === 'rejected') && (
+                      <button
+                        onClick={() => handleUserRemoval(pendingUser.id || pendingUser._id)}
+                        style={{
+                          background: "#dc2626",
+                          color: "white",
+                          border: "none",
+                          padding: "8px 12px",
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          width: "100%"
+                        }}
+                      >
+                        🗑️ Remove User
+                      </button>
+                    )}
+                  </div>
                 </div>
-                
-                <div style={{ fontWeight: 600, fontSize: 18, color: theme === 'dark' ? '#ffffff' : '#22223b', marginBottom: 8, paddingRight: 80 }}>
-                  {pendingUser.name}
-                </div>
-                
-                <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 8 }}>
-                  <b>Email:</b> {pendingUser.email}
-                </div>
-                
-                <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 8 }}>
-                  <b>User ID:</b> {pendingUser.userId || pendingUser._id}
-                </div>
-                
-                <div style={{ fontSize: 14, color: "#2563eb", marginBottom: 12 }}>
-                  <b>Company:</b> {pendingUser.company || 'Not specified'}
-                </div>
-                
-                <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-                  <button
-                    onClick={() => handleUserApproval(pendingUser.id || pendingUser._id, 'approve')}
-                    style={{
-                      background: "#22c55e",
-                      color: "white",
-                      border: "none",
-                      padding: "10px 16px",
-                      borderRadius: 6,
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      flex: 1
-                    }}
-                  >
-                    ✅ Approve
-                  </button>
-                  <button
-                    onClick={() => handleUserApproval(pendingUser.id || pendingUser._id, 'reject')}
-                    style={{
-                      background: "#ef4444",
-                      color: "white",
-                      border: "none",
-                      padding: "10px 16px",
-                      borderRadius: 6,
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      flex: 1
-                    }}
-                  >
-                    ❌ Reject
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-        )}
+        )}}
       </div>
     );
   }
@@ -1500,7 +1552,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             { key: 'assignedtasks', icon: FaUser, label: 'Tasks Assigned' },
             { key: 'list', icon: FaTasks, label: 'Task List' },
             { key: 'completed', icon: FaCheckCircle, label: 'Completed Tasks' },
-            ...(user.role === 'admin' ? [{ key: 'userapprovals', icon: FaUser, label: '👥 User Approvals' }] : []),
+            ...(user.role === 'admin' ? [{ key: 'userapprovals', icon: FaUser, label: '👥 User Management' }] : []),
             { key: 'calendar', icon: FaCalendarAlt, label: 'Calendar' },
             { key: 'analytics', icon: FaChartBar, label: 'Analytics' }
           ].map(({ key, icon: Icon, label }) => (
