@@ -7,6 +7,9 @@ const auth = require('../middleware/auth');
 // Create a task
 router.post('/', auth, async (req, res) => {
   try {
+    console.log('📝 Creating task with request:', req.body);
+    console.log('👤 User creating task:', req.user.id);
+    
     const { title, description, assignedTo, priority = 3, dueDate, company } = req.body;
     
     if (!title || !description || !assignedTo) {
@@ -14,10 +17,13 @@ router.post('/', auth, async (req, res) => {
     }
 
     const assigneeArray = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
+    console.log('👥 Assignees:', assigneeArray);
     
     // Check if creator is admin
     const creator = await User.findById(req.user.id);
     const createdByAdmin = creator && creator.role === 'admin';
+    
+    console.log('👤 Creator details:', { id: creator?.id, role: creator?.role, company: creator?.company });
     
     const task = await Task.create({
       title,
@@ -30,6 +36,8 @@ router.post('/', auth, async (req, res) => {
       createdByAdmin
     });
     
+    console.log('✅ Task created successfully:', task.id);
+    
     // Return task with proper ID mapping
     const responseTask = {
       ...task,
@@ -39,7 +47,7 @@ router.post('/', auth, async (req, res) => {
     
     res.status(201).json({ message: 'Task created!', task: responseTask });
   } catch (err) {
-    console.error('Task creation error:', err);
+    console.error('❌ Task creation error:', err);
     res.status(500).json({ message: 'Server error: ' + err.message });
   }
 });
@@ -47,15 +55,22 @@ router.post('/', auth, async (req, res) => {
 // Get all visible tasks for user
 router.get('/visible', auth, async (req, res) => {
   try {
+    console.log('🔍 /tasks/visible called for user:', req.user.id);
+    
     const currentUser = await User.findById(req.user.id);
     if (!currentUser) {
+      console.log('❌ User not found:', req.user.id);
       return res.status(404).json({ message: 'User not found' });
     }
+    
+    console.log('👤 Current user:', { id: currentUser.id, role: currentUser.role, company: currentUser.company });
 
     const tasks = await Task.findVisibleToUser(currentUser.id, currentUser.role, currentUser.company);
+    
+    console.log('📋 Tasks returned:', tasks.length);
     res.json(tasks);
   } catch (err) {
-    console.error('Error fetching visible tasks:', err);
+    console.error('❌ Error fetching visible tasks:', err);
     res.status(500).json({ message: 'Server error: ' + err.message });
   }
 });

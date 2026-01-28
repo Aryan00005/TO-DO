@@ -305,62 +305,58 @@ class Task {
   }
 
   static async findVisibleToUser(userId, userRole, userCompany) {
-    let query = supabase.from('tasks').select(`
-      *,
-      task_assignments(
-        user_id,
-        users(id, name, email, role)
-      )
-    `);
-
-    // Admin sees all tasks in their company
-    if (userRole === 'admin') {
-      query = query.eq('company', userCompany);
-    } else {
-      // Regular users see:
-      // 1. Tasks assigned to them
-      // 2. Tasks they created
-      // 3. User-to-user tasks where they are sender or receiver
-      query = query.or(`
-        assigned_by.eq.${userId},
-        id.in.(${supabase.from('task_assignments').select('task_id').eq('user_id', userId)})
-      `);
-    }
-
-    // Only show approved tasks (hide pending approvals from regular users)
-    if (userRole !== 'admin') {
-      query = query.eq('approval_status', 'approved');
-    }
-
-    const { data, error } = await query.order('created_at', { ascending: false });
+    console.log('Finding visible tasks for user:', { userId, userRole, userCompany });
     
-    if (error) throw error;
+    // Get all tasks with assignments
+    const { data: allTasks, error } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        task_assignments(
+          user_id,
+          users(id, name, email, role)
+        )
+      `)
+      .order('created_at', { ascending: false });
     
-    // Filter user-to-user tasks for visibility
-    const filteredTasks = data.filter(task => {
-      // Admin sees all
-      if (userRole === 'admin') return true;
+    if (error) {
+      console.error('Error fetching tasks:', error);
+      throw error;
+    }
+    
+    console.log('All tasks fetched:', allTasks?.length || 0);
+    
+    // Filter tasks based on visibility rules
+    const visibleTasks = allTasks.filter(task => {
+      // Admin sees all tasks in their company
+      if (userRole === 'admin') {
+        return task.company === userCompany;
+      }
       
       // User created the task
-      if (task.assigned_by === userId) return true;
+      if (task.assigned_by === userId) {
+        return true;
+      }
       
       // User is assigned to the task
-      const isAssigned = task.task_assignments.some(a => a.user_id === userId);
-      if (isAssigned) return true;
-      
-      // For user-to-user tasks, check if both creator and assignee are users
-      if (task.assigned_by_role === 'user' && task.assigned_to_role === 'user') {
-        // Only visible to admin, creator, and assignee
-        const isCreator = task.assigned_by === userId;
-        const isAssignee = task.task_assignments.some(a => a.user_id === userId);
-        return isCreator || isAssignee;
+      const isAssigned = task.task_assignments?.some(a => a.user_id === userId);
+      if (isAssigned) {
+        return true;
       }
       
       return false;
     });
     
+    console.log('Visible tasks after filtering:', visibleTasks.length);
+    
+    // Only show approved tasks for regular users
+    const approvedTasks = userRole === 'admin' ? visibleTasks : 
+      visibleTasks.filter(task => task.approval_status === 'approved');
+    
+    console.log('Approved tasks:', approvedTasks.length);
+    
     // Transform tasks to include proper assignedBy and assignedTo fields
-    const transformedTasks = await Promise.all(filteredTasks.map(async (task) => {
+    const transformedTasks = await Promise.all(approvedTasks.map(async (task) => {
       // Get creator details
       const { data: creator } = await supabase
         .from('users')
@@ -383,6 +379,7 @@ class Task {
       };
     }));
     
+    console.log('Final transformed tasks:', transformedTasks.length);
     return transformedTasks;
   }
 
