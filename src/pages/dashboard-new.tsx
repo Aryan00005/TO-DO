@@ -1624,8 +1624,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 background: theme === 'dark' ? '#4b5563' : '#f3f4f6',
                 border: '1px solid #d1d5db',
                 borderRadius: '50%',
-                width: 44,
-                height: 44,
+                width: 52,
+                height: 52,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1635,7 +1635,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               }}
               title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
             >
-              {theme === 'light' ? <FaMoon size={16} /> : <FaSun size={16} />}
+              {theme === 'light' ? <FaMoon size={22} /> : <FaSun size={22} />}
             </button>
             <div style={{ position: "relative" }}>
               <button
@@ -1643,8 +1643,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   background: theme === 'dark' ? "#4b5563" : "#f3f4f6",
                   border: "1px solid #d1d5db",
                   borderRadius: "50%",
-                  width: 44,
-                  height: 44,
+                  width: 52,
+                  height: 52,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -1654,7 +1654,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 }}
                 onClick={() => setShowNotifications(!showNotifications)}
               >
-                <FaBell size={18} />
+                <FaBell size={22} />
               </button>
               {unreadCount > 0 && (
                 <span
