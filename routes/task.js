@@ -114,8 +114,46 @@ router.patch('/:taskId', auth, async (req, res) => {
       return res.status(403).json({ message: 'Access denied. You cannot update this task.' });
     }
     
-    // If it's just a status update
+    // If it's a status update, validate progression
     if (status && !title) {
+      // Get current task status
+      const { createClient } = require('@supabase/supabase-js');
+      const supabase = createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_KEY
+      );
+      
+      const { data: currentTask, error: fetchError } = await supabase
+        .from('task_assignments')
+        .select('status')
+        .eq('task_id', req.params.taskId)
+        .eq('user_id', currentUser.id)
+        .single();
+      
+      if (fetchError) {
+        console.error('Error fetching current task status:', fetchError);
+        return res.status(500).json({ message: 'Error fetching task status' });
+      }
+      
+      const currentStatus = currentTask.status;
+      
+      // Define status progression rules (one-way only)
+      const statusProgression = {
+        'Not Started': ['Working on it'],
+        'Working on it': ['Stuck', 'Done'],
+        'Stuck': ['Working on it', 'Done'],
+        'Done': [] // Cannot move from Done
+      };
+      
+      // Validate status progression
+      if (!statusProgression[currentStatus] || !statusProgression[currentStatus].includes(status)) {
+        return res.status(400).json({ 
+          message: `Invalid status transition. Cannot move from '${currentStatus}' to '${status}'. Tasks can only move forward in the workflow.`,
+          currentStatus,
+          allowedStatuses: statusProgression[currentStatus] || []
+        });
+      }
+      
       const result = await Task.updateTaskStatus(req.params.taskId, status, remark);
       return res.json({ message: 'Task status updated', result });
     }
