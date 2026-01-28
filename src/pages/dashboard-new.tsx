@@ -118,10 +118,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const refreshData = useCallback(async () => {
     setIsRefreshing(true);
     try {
+      const token = sessionStorage.getItem("jwt-token");
       const [tasksRes, usersRes, notificationsRes] = await Promise.all([
-        axios.get(`/tasks/assignedTo/${user._id}`),
-        axios.get("/auth/users", { headers: { Authorization: `Bearer ${sessionStorage.getItem("jwt-token")}` } }),
-        axios.get(`/notifications/${user._id}`)
+        axios.get(`/tasks/visible`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get("/auth/users", { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`/notifications/${user._id}`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
       
       setTasks(tasksRes.data);

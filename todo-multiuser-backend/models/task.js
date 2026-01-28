@@ -359,7 +359,31 @@ class Task {
       return false;
     });
     
-    return filteredTasks;
+    // Transform tasks to include proper assignedBy and assignedTo fields
+    const transformedTasks = await Promise.all(filteredTasks.map(async (task) => {
+      // Get creator details
+      const { data: creator } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('id', task.assigned_by)
+        .single();
+      
+      // Transform assignees
+      const assignees = task.task_assignments?.map(a => a.users) || [];
+      
+      return {
+        ...task,
+        _id: task.id.toString(),
+        dueDate: task.due_date,
+        stuckReason: task.stuck_reason,
+        assignedBy: creator ? { _id: creator.id.toString(), name: creator.name, email: creator.email } : null,
+        assignedTo: assignees.length === 1 ? 
+          { _id: assignees[0].id.toString(), name: assignees[0].name, email: assignees[0].email } : 
+          assignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
+      };
+    }));
+    
+    return transformedTasks;
   }
 
   static async canUserUpdateTask(taskId, userId, userRole) {

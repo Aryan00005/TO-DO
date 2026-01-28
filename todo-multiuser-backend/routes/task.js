@@ -53,28 +53,7 @@ router.get('/visible', auth, async (req, res) => {
     }
 
     const tasks = await Task.findVisibleToUser(currentUser.id, currentUser.role, currentUser.company);
-    
-    // Populate user details
-    const populatedTasks = await Promise.all(tasks.map(async (task) => {
-      const assignedByUser = await User.findById(task.assigned_by);
-      const assigneeDetails = await Promise.all(
-        task.assigneeStatuses.map(async (status) => {
-          const user = await User.findById(status.user);
-          return {
-            ...status,
-            user: user ? { _id: user.id, name: user.name, email: user.email } : status.user
-          };
-        })
-      );
-      
-      return {
-        ...task,
-        assignedBy: assignedByUser ? { _id: assignedByUser.id, name: assignedByUser.name, email: assignedByUser.email } : task.assigned_by,
-        assigneeStatuses: assigneeDetails
-      };
-    }));
-    
-    res.json(populatedTasks);
+    res.json(tasks);
   } catch (err) {
     console.error('Error fetching visible tasks:', err);
     res.status(500).json({ message: 'Server error: ' + err.message });
