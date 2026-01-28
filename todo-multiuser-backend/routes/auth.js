@@ -897,6 +897,123 @@ router.post('/admin/user-action', authenticateToken, async (req, res) => {
   }
 });
 
+// Google Admin Registration (from role selection)
+router.post('/google-admin-register', async (req, res) => {
+  try {
+    const { token, name, userId, email, password, company } = req.body;
+    
+    if (!token || !name || !userId || !email || !password || !company) {
+      return res.status(400).json({ message: 'All fields are required.' });
+    }
+    
+    // Verify Google token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      if (decoded.purpose !== 'role_selection') {
+        return res.status(403).json({ message: 'Invalid token purpose.' });
+      }
+    } catch (err) {
+      return res.status(403).json({ message: 'Invalid or expired token.' });
+    }
+    
+    // Check if user exists and update their info
+    const existingUser = await User.findById(decoded.id);
+    if (!existingUser) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    
+    // Check if userId is already taken by someone else
+    const userIdExists = await User.findByUserId(userId);
+    if (userIdExists && userIdExists.id !== decoded.id) {
+      return res.status(400).json({ message: 'User ID already in use.' });
+    }
+    
+    // Update the Google user with admin registration data
+    await User.updateById(decoded.id, {
+      name,
+      user_id: userId,
+      password: password,
+      role: 'admin',
+      company,
+      account_status: 'pending',
+      auth_provider: 'hybrid'
+    });
+    
+    res.json({ 
+      message: 'Admin registration completed. Awaiting super admin approval.',
+      status: 'pending_approval'
+    });
+  } catch (error) {
+    console.error('Google admin registration error:', error);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Google User Registration (from role selection)
+router.post('/google-user-register', async (req, res) => {
+  try {
+    const { token, name, userId, email, password, companyCode } = req.body;
+    
+    if (!token || !name || !userId || !email || !password || !companyCode) {
+      return res.status(400).json({ message: 'All fields are required.' });
+    }
+    
+    // Verify Google token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      if (decoded.purpose !== 'role_selection') {
+        return res.status(403).json({ message: 'Invalid token purpose.' });
+      }
+    } catch (err) {
+      return res.status(403).json({ message: 'Invalid or expired token.' });
+    }
+    
+    // Verify company code exists
+    const { data: companyUsers, error: companyError } = await supabase
+      .from('users')
+      .select('company')
+      .eq('company', companyCode)
+      .limit(1);
+    
+    if (companyError || !companyUsers || companyUsers.length === 0) {
+      return res.status(400).json({ message: 'Invalid company code.' });
+    }
+    
+    // Check if user exists and update their info
+    const existingUser = await User.findById(decoded.id);
+    if (!existingUser) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    
+    // Check if userId is already taken by someone else
+    const userIdExists = await User.findByUserId(userId);
+    if (userIdExists && userIdExists.id !== decoded.id) {
+      return res.status(400).json({ message: 'User ID already in use.' });
+    }
+    
+    // Update the Google user with user registration data
+    await User.updateById(decoded.id, {
+      name,
+      user_id: userId,
+      password: password,
+      role: 'user',
+      company: companyCode,
+      account_status: 'pending',
+      auth_provider: 'hybrid'
+    });
+    
+    res.json({ 
+      message: 'User registration completed. Awaiting company admin approval.',
+      status: 'pending_approval'
+    });
+  } catch (error) {
+    console.error('Google user registration error:', error);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
 // Select role for new Google users
 router.post('/select-role', async (req, res) => {
   try {

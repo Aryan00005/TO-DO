@@ -20,24 +20,18 @@ const SelectRole: React.FC = () => {
     setError('');
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'https://to-do-1-26zv.onrender.com'}/api/auth/select-role`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ token, role: selectedRole })
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        // Redirect to pending approval page
-        navigate('/pending-approval');
+      // Store the Google user token and role in sessionStorage for registration forms
+      sessionStorage.setItem('google-auth-token', token);
+      sessionStorage.setItem('selected-role', selectedRole);
+      
+      // Redirect to appropriate registration form
+      if (selectedRole === 'admin') {
+        navigate('/admin/register?google=true');
       } else {
-        setError(data.message || 'Failed to select role');
+        navigate('/register?google=true');
       }
     } catch (err) {
-      setError('Network error. Please try again.');
+      setError('Error processing role selection. Please try again.');
     } finally {
       setLoading(false);
     }

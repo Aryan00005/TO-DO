@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "../api/axios";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import { FaUserPlus } from "react-icons/fa";
 
@@ -113,21 +113,67 @@ const Register = () => {
   const [password, setPassword] = useState("");
   const [companyCode, setCompanyCode] = useState("");
   const [error, setError] = useState("");
-  const navigate = useNavigate();
   const [userId, setUserId] = useState("");
+  const [isGoogleUser, setIsGoogleUser] = useState(false);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    // Check if this is a Google user from role selection
+    const googleParam = searchParams.get('google');
+    const googleToken = sessionStorage.getItem('google-auth-token');
+    
+    if (googleParam === 'true' && googleToken) {
+      setIsGoogleUser(true);
+      // Pre-fill data from Google token
+      try {
+        const payload = JSON.parse(atob(googleToken.split('.')[1]));
+        if (payload.email) {
+          setEmail(payload.email);
+        }
+        if (payload.name) {
+          setName(payload.name);
+        }
+      } catch (err) {
+        console.error('Error parsing Google token:', err);
+      }
+    }
+  }, [searchParams]);
 
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
     try {
-      console.log('🔄 Registration attempt:', { name, userId, email, companyCode });
-      const response = await axios.post("/auth/register", { name, userId, email, password, companyCode });
-      console.log('✅ Registration successful:', response.data);
+      console.log('🔄 Registration attempt:', { name, userId, email, companyCode, isGoogleUser });
       
-      // Show success message and redirect
-      alert('Registration successful! Your account is pending approval from your company admin.');
-      navigate("/login");
+      if (isGoogleUser) {
+        // For Google users, call the new Google user registration endpoint
+        const googleToken = sessionStorage.getItem('google-auth-token');
+        const response = await axios.post("/auth/google-user-register", {
+          token: googleToken,
+          name,
+          userId,
+          email,
+          password,
+          companyCode
+        });
+        
+        // Clear Google session data
+        sessionStorage.removeItem('google-auth-token');
+        sessionStorage.removeItem('selected-role');
+        
+        console.log('✅ Google user registration successful:', response.data);
+        alert('Registration successful! Your account is pending approval from your company admin.');
+        navigate("/pending-approval");
+      } else {
+        // Regular user registration
+        const response = await axios.post("/auth/register", { name, userId, email, password, companyCode });
+        console.log('✅ Registration successful:', response.data);
+        
+        alert('Registration successful! Your account is pending approval from your company admin.');
+        navigate("/login");
+      }
     } catch (err: any) {
       console.error('❌ Registration error:', err);
       console.error('Error response:', err.response?.data);
@@ -151,7 +197,7 @@ const Register = () => {
         <IconCircle>
           <FaUserPlus size={36} />
         </IconCircle>
-        <AuthTitle>Register</AuthTitle>
+        <AuthTitle>{isGoogleUser ? 'Complete Registration' : 'Register'}</AuthTitle>
         <AuthForm onSubmit={handleSubmit}>
           <AuthInput
             type="text"

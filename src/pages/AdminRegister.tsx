@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from '../api/axios';
 import { useToast } from '../components/Toast';
 
@@ -13,8 +13,32 @@ const AdminRegister: React.FC = () => {
     company: ''
   });
   const [loading, setLoading] = useState(false);
+  const [isGoogleUser, setIsGoogleUser] = useState(false);
   const navigate = useNavigate();
   const { showToast, ToastContainer } = useToast();
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    // Check if this is a Google user from role selection
+    const googleParam = searchParams.get('google');
+    const googleToken = sessionStorage.getItem('google-auth-token');
+    
+    if (googleParam === 'true' && googleToken) {
+      setIsGoogleUser(true);
+      // Pre-fill email from Google token if available
+      try {
+        const payload = JSON.parse(atob(googleToken.split('.')[1]));
+        if (payload.email) {
+          setFormData(prev => ({ ...prev, email: payload.email }));
+        }
+        if (payload.name) {
+          setFormData(prev => ({ ...prev, name: payload.name }));
+        }
+      } catch (err) {
+        console.error('Error parsing Google token:', err);
+      }
+    }
+  }, [searchParams]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -38,16 +62,37 @@ const AdminRegister: React.FC = () => {
 
     setLoading(true);
     try {
-      await axios.post('/auth/admin/register', {
-        name: formData.name,
-        userId: formData.userId,
-        email: formData.email,
-        password: formData.password,
-        company: formData.company
-      });
-      
-      showToast('Company admin registered successfully!', 'success');
-      setTimeout(() => navigate('/admin/login'), 2000);
+      if (isGoogleUser) {
+        // For Google users, call the new Google admin registration endpoint
+        const googleToken = sessionStorage.getItem('google-auth-token');
+        await axios.post('/auth/google-admin-register', {
+          token: googleToken,
+          name: formData.name,
+          userId: formData.userId,
+          email: formData.email,
+          password: formData.password,
+          company: formData.company
+        });
+        
+        // Clear Google session data
+        sessionStorage.removeItem('google-auth-token');
+        sessionStorage.removeItem('selected-role');
+        
+        showToast('Admin account created! Awaiting super admin approval.', 'success');
+        setTimeout(() => navigate('/pending-approval'), 2000);
+      } else {
+        // Regular admin registration
+        await axios.post('/auth/admin/register', {
+          name: formData.name,
+          userId: formData.userId,
+          email: formData.email,
+          password: formData.password,
+          company: formData.company
+        });
+        
+        showToast('Company admin registered successfully!', 'success');
+        setTimeout(() => navigate('/admin/login'), 2000);
+      }
     } catch (error: any) {
       showToast(error.response?.data?.message || 'Registration failed', 'error');
     } finally {
@@ -74,9 +119,24 @@ const AdminRegister: React.FC = () => {
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <h1 style={{ fontSize: '28px', fontWeight: '700', color: '#1f2937', marginBottom: '8px' }}>
-            Company Admin Registration
+            {isGoogleUser ? 'Complete Admin Registration' : 'Company Admin Registration'}
           </h1>
-          <p style={{ color: '#6b7280' }}>Create your company admin account</p>
+          <p style={{ color: '#6b7280' }}>
+            {isGoogleUser ? 'Complete your admin account setup' : 'Create your company admin account'}
+          </p>
+          {isGoogleUser && (
+            <div style={{
+              background: '#f0f9ff',
+              border: '1px solid #0ea5e9',
+              borderRadius: '8px',
+              padding: '12px',
+              marginTop: '16px',
+              fontSize: '14px',
+              color: '#0369a1'
+            }}>
+              ✓ Signed in with Google - Complete your admin registration below
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
