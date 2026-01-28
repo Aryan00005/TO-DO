@@ -121,18 +121,26 @@ const Register = () => {
     e.preventDefault();
     setError("");
     try {
-      console.log('Registration attempt:', { name, userId, email, companyCode });
-      await axios.post("/auth/register", { name, userId, email, password, companyCode });
-      console.log('Registration successful');
+      console.log('🔄 Registration attempt:', { name, userId, email, companyCode });
+      const response = await axios.post("/auth/register", { name, userId, email, password, companyCode });
+      console.log('✅ Registration successful:', response.data);
+      
+      // Show success message and redirect
+      alert('Registration successful! Your account is pending approval from your company admin.');
       navigate("/login");
-    } catch (err) {
-      console.error('Registration error:', err);
-      if (axios.isAxiosError(err)) {
-        setError(err.response?.data?.message || "Registration failed. Please try again.");
-      } else if (err instanceof Error) {
+    } catch (err: any) {
+      console.error('❌ Registration error:', err);
+      console.error('Error response:', err.response?.data);
+      console.error('Error status:', err.response?.status);
+      
+      if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else if (err.response?.status === 400) {
+        setError('Registration failed: Please check all fields and ensure the company code is valid.');
+      } else if (err.message) {
         setError(err.message);
       } else {
-        setError("Registration failed. Please try again.");
+        setError('Registration failed. Please try again.');
       }
     }
   };
