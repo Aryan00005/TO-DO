@@ -87,8 +87,8 @@ router.get('/google/callback',
         hasPassword: !!user.password
       });
 
-      // NEW USERS: Redirect to role selection instead of account completion
-      const needsRoleSelection = !user.user_id || !user.password || user.account_status === 'incomplete';
+      // NEW USERS: Redirect to role selection (only if they don't have a role yet)
+      const needsRoleSelection = !user.role || user.account_status === 'incomplete';
 
       if (needsRoleSelection) {
         console.log('🔄 New Google user needs to select role');
@@ -106,7 +106,13 @@ router.get('/google/callback',
       } else {
         // EXISTING USERS: Check approval status
         if (user.account_status === 'pending') {
-          return res.redirect(`${process.env.FRONTEND_URL}/login?error=pending_approval`);
+          // Create a temporary token for pending users to access pending approval page
+          const tempToken = jwt.sign(
+            { id: user.id, purpose: 'pending_approval', email: user.email, role: user.role },
+            process.env.JWT_SECRET,
+            { expiresIn: '1h' }
+          );
+          return res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${tempToken}&status=pending`);
         }
         
         if (user.account_status === 'rejected') {

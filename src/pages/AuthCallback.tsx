@@ -14,6 +14,7 @@ const AuthCallback: React.FC<AuthCallbackProps> = ({ setUser }) => {
     const token = searchParams.get('token');
     const error = searchParams.get('error');
     const setupCredentials = searchParams.get('setupCredentials');
+    const status = searchParams.get('status');
 
     if (error) {
       console.error('OAuth error:', error);
@@ -37,15 +38,18 @@ const AuthCallback: React.FC<AuthCallbackProps> = ({ setUser }) => {
           name: payload.name || payload.email?.split('@')[0] || 'User',
           email: payload.email || '',
           role: payload.role || 'user',
-          userId: payload.userId || payload.user_id || ''
+          userId: payload.userId || payload.user_id || '',
+          accountStatus: payload.accountStatus || 'active'
         };
         
         console.log('User from token:', userFromToken);
         sessionStorage.setItem('user', JSON.stringify(userFromToken));
         setUser(userFromToken);
         
-        // Redirect based on setup requirement
-        if (setupCredentials === 'true') {
+        // Redirect based on status or setup requirement
+        if (status === 'pending') {
+          navigate('/pending-approval');
+        } else if (setupCredentials === 'true') {
           navigate('/setup-credentials?welcome=true');
         } else {
           navigate('/dashboard');
