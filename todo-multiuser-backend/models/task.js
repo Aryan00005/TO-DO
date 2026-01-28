@@ -330,7 +330,7 @@ class Task {
     const visibleTasks = allTasks.filter(task => {
       // Admin sees all approved tasks in company
       if (userRole === 'admin') {
-        return task.company === userCompany && task.approval_status === 'approved';
+        return task.company === userCompany;
       }
       
       // For regular users
