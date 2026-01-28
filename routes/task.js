@@ -116,7 +116,7 @@ router.patch('/:taskId', auth, async (req, res) => {
     
     // If it's a status update, validate progression
     if (status && !title) {
-      // Get current task status
+      // Get current task status from tasks table (not task_assignments)
       const { createClient } = require('@supabase/supabase-js');
       const supabase = createClient(
         process.env.SUPABASE_URL,
@@ -124,10 +124,9 @@ router.patch('/:taskId', auth, async (req, res) => {
       );
       
       const { data: currentTask, error: fetchError } = await supabase
-        .from('task_assignments')
+        .from('tasks')
         .select('status')
-        .eq('task_id', req.params.taskId)
-        .eq('user_id', currentUser.id)
+        .eq('id', req.params.taskId)
         .single();
       
       if (fetchError) {
