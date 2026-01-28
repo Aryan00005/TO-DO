@@ -50,7 +50,7 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
 
   const handleGoogleLogin = () => {
     // Use the configured axios baseURL for Google OAuth
-    const baseURL = axios.defaults.baseURL || 'https://to-do-m0we.onrender.com/api';
+    const baseURL = axios.defaults.baseURL || 'https://to-do-1-26zv.onrender.com';
     window.location.href = `${baseURL}/auth/google`;
   };
 
