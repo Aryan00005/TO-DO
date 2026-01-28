@@ -302,11 +302,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   const handleUserApproval = async (userId: string, action: 'approve' | 'reject') => {
     try {
+      console.log('🔄 Attempting user approval:', { userId, action });
       const token = sessionStorage.getItem("jwt-token");
-      await axios.post("/auth/admin/user-action", {
+      
+      const requestData = {
         userId,
         action
-      }, {
+      };
+      console.log('📊 Request data:', requestData);
+      
+      await axios.post("/auth/admin/user-action", requestData, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -318,6 +323,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       
       showToast(`User ${action}d successfully! 🎉`, "success");
     } catch (err: any) {
+      console.error('❌ User approval error:', err);
+      console.error('❌ Error response:', err.response?.data);
       showToast("Error: " + (err.response?.data?.message || err.message), "error");
     }
   };
@@ -1386,7 +1393,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 
                 <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
                   <button
-                    onClick={() => handleUserApproval(pendingUser._id, 'approve')}
+                    onClick={() => handleUserApproval(pendingUser.id || pendingUser._id, 'approve')}
                     style={{
                       background: "#22c55e",
                       color: "white",
@@ -1402,7 +1409,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     ✅ Approve
                   </button>
                   <button
-                    onClick={() => handleUserApproval(pendingUser._id, 'reject')}
+                    onClick={() => handleUserApproval(pendingUser.id || pendingUser._id, 'reject')}
                     style={{
                       background: "#ef4444",
                       color: "white",
