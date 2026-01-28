@@ -35,9 +35,9 @@ passport.use(new GoogleStrategy({
         await User.updateById(user.id, { google_id: googleId });
       }
       
-      // Existing user - check if needs completion
-      if (!user.user_id || !user.password || user.account_status === 'incomplete') {
-        console.log('🔄 User needs completion');
+      // Existing user - check if needs role selection
+      if (!user.role || user.account_status === 'incomplete') {
+        console.log('🔄 User needs role selection');
         return done(null, { ...user, requiresCompletion: true });
       }
       
@@ -45,16 +45,17 @@ passport.use(new GoogleStrategy({
       console.log('✅ User is active, proceeding with login');
       return done(null, user);
     } else {
-      // New user - create incomplete account
+      // New user - create account without password, pending role selection
       console.log('🆕 Creating new Google user');
       user = await User.create({
         name,
         email,
-        userId: null,
-        password: null,
+        userId: null, // Will be set to email by default
+        password: null, // Google-only authentication
         authProvider: 'google',
-        accountStatus: 'incomplete',
-        googleId: googleId
+        accountStatus: 'incomplete', // Will be updated after role selection
+        googleId: googleId,
+        role: null // Will be set during role selection
       });
       
       console.log('✅ New user created:', user.id);

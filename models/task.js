@@ -305,61 +305,84 @@ class Task {
   }
 
   static async findVisibleToUser(userId, userRole, userCompany) {
-    let query = supabase.from('tasks').select(`
-      *,
-      task_assignments(
-        user_id,
-        users(id, name, email, role)
-      )
-    `);
-
-    // Admin sees all tasks in their company
-    if (userRole === 'admin') {
-      query = query.eq('company', userCompany);
-    } else {
-      // Regular users see:
-      // 1. Tasks assigned to them
-      // 2. Tasks they created
-      // 3. User-to-user tasks where they are sender or receiver
-      query = query.or(`
-        assigned_by.eq.${userId},
-        id.in.(${supabase.from('task_assignments').select('task_id').eq('user_id', userId)})
-      `);
-    }
-
-    // Only show approved tasks (hide pending approvals from regular users)
-    if (userRole !== 'admin') {
-      query = query.eq('approval_status', 'approved');
-    }
-
-    const { data, error } = await query.order('created_at', { ascending: false });
+    console.log('Finding visible tasks for user:', { userId, userRole, userCompany });
     
-    if (error) throw error;
+    // Get all tasks with assignments
+    const { data: allTasks, error } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        task_assignments(
+          user_id,
+          users(id, name, email, role)
+        )
+      `)
+      .order('created_at', { ascending: false });
     
-    // Filter user-to-user tasks for visibility
-    const filteredTasks = data.filter(task => {
-      // Admin sees all
-      if (userRole === 'admin') return true;
+    if (error) {
+      console.error('Error fetching tasks:', error);
+      throw error;
+    }
+    
+    console.log('All tasks fetched:', allTasks?.length || 0);
+    
+    // Filter tasks based on visibility rules
+    const visibleTasks = allTasks.filter(task => {
+      // Admin sees all approved tasks in company
+      if (userRole === 'admin') {
+        return task.company === userCompany;
+      }
       
-      // User created the task
-      if (task.assigned_by === userId) return true;
+      // For regular users
+      const isCreator = task.assigned_by === userId;
+      const isAssigned = task.task_assignments?.some(a => a.user_id === userId);
       
-      // User is assigned to the task
-      const isAssigned = task.task_assignments.some(a => a.user_id === userId);
-      if (isAssigned) return true;
-      
-      // For user-to-user tasks, check if both creator and assignee are users
+      // User-to-user tasks: only visible to creator, assignee, and admin
       if (task.assigned_by_role === 'user' && task.assigned_to_role === 'user') {
-        // Only visible to admin, creator, and assignee
-        const isCreator = task.assigned_by === userId;
-        const isAssignee = task.task_assignments.some(a => a.user_id === userId);
-        return isCreator || isAssignee;
+        return (isCreator || isAssigned) && task.approval_status === 'approved';
+      }
+      
+      // User-to-admin tasks: visible to all when approved
+      if (task.assigned_by_role === 'user' && task.assigned_to_role === 'admin') {
+        return task.approval_status === 'approved';
+      }
+      
+      // Admin-to-user tasks: visible to all
+      if (task.assigned_by_role === 'admin') {
+        return task.approval_status === 'approved';
       }
       
       return false;
     });
     
-    return filteredTasks;
+    console.log('Visible tasks after filtering:', visibleTasks.length);
+    
+    // Transform tasks to include proper assignedBy and assignedTo fields
+    const transformedTasks = await Promise.all(visibleTasks.map(async (task) => {
+      // Get creator details
+      const { data: creator } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('id', task.assigned_by)
+        .single();
+      
+      // Transform assignees
+      const assignees = task.task_assignments?.map(a => a.users) || [];
+      
+      return {
+        ...task,
+        _id: task.id.toString(),
+        dueDate: task.due_date,
+        stuckReason: task.stuck_reason,
+        assignedBy: creator ? { _id: creator.id.toString(), name: creator.name, email: creator.email } : null,
+        assignedTo: assignees.length === 1 ? 
+          { _id: assignees[0].id.toString(), name: assignees[0].name, email: assignees[0].email } : 
+          assignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
+      };
+    }));
+    
+    console.log('Final transformed tasks:', transformedTasks.length);
+    return transformedTasks;
   }
 
   static async canUserUpdateTask(taskId, userId, userRole) {

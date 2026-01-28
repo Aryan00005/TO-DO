@@ -87,20 +87,20 @@ router.get('/google/callback',
         hasPassword: !!user.password
       });
 
-      // NEW USERS: Need to complete account setup (choose company + set password)
-      const needsCompletion = !user.user_id || !user.password || user.account_status === 'incomplete';
+      // NEW USERS: Redirect to role selection instead of account completion
+      const needsRoleSelection = !user.user_id || !user.password || user.account_status === 'incomplete';
 
-      if (needsCompletion) {
-        console.log('🔄 New Google user needs to complete account setup');
-        // Create temporary token for account completion
+      if (needsRoleSelection) {
+        console.log('🔄 New Google user needs to select role');
+        // Create temporary token for role selection
         const tempToken = jwt.sign(
-          { id: user.id, purpose: 'account_completion', email: user.email },
+          { id: user.id, purpose: 'role_selection', email: user.email },
           process.env.JWT_SECRET,
           { expiresIn: '30m' }
         );
 
-        // Redirect to account completion page where they choose company
-        const redirectUrl = `${process.env.FRONTEND_URL}/complete-account?token=${tempToken}&type=google`;
+        // Redirect to role selection page
+        const redirectUrl = `${process.env.FRONTEND_URL}/select-role?token=${tempToken}`;
         console.log('🔗 Redirect URL:', redirectUrl);
         res.redirect(redirectUrl);
       } else {
@@ -653,7 +653,7 @@ router.get('/superadmin/pending-admins', authenticateToken, async (req, res) => 
   }
 });
 
-// Super Admin: Get Company Details with Users
+// Super Admin: Get Company Details with Users (ONLY APPROVED USERS)
 router.get('/superadmin/company/:companyCode', authenticateToken, async (req, res) => {
   try {
     const currentUser = await User.findById(req.user.id);
@@ -668,6 +668,7 @@ router.get('/superadmin/company/:companyCode', authenticateToken, async (req, re
       .from('users')
       .select('id, name, email, user_id, role, account_status, created_at')
       .eq('company', companyCode)
+      .eq('account_status', 'active') // ONLY SHOW APPROVED USERS
       .order('role', { ascending: false }) // Admins first
       .order('name');
     
@@ -727,6 +728,63 @@ router.post('/superadmin/admin-action', authenticateToken, async (req, res) => {
 // Company Admin: Get Pending Users in Their Company
 router.get('/admin/pending-users', authenticateToken, async (req, res) => {
   try {
+    console.log('🔍 Admin pending users request from user ID:', req.user.id);
+    const currentUser = await User.findById(req.user.id);
+    console.log('👤 Current user details:', {
+      id: currentUser?.id,
+      name: currentUser?.name,
+      email: currentUser?.email,
+      role: currentUser?.role,
+      company: currentUser?.company,
+      account_status: currentUser?.account_status
+    });
+    
+    if (!currentUser || currentUser.role !== 'admin' || !currentUser.company) {
+      console.log('❌ Access denied - not admin or no company:', {
+        userExists: !!currentUser,
+        role: currentUser?.role,
+        company: currentUser?.company
+      });
+      return res.status(403).json({ message: 'Access denied. Company admin privileges required.' });
+    }
+    
+    console.log('🔍 Searching for pending users in company:', currentUser.company);
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, email, user_id, company, account_status, role, created_at')
+      .eq('company', currentUser.company)
+      .eq('account_status', 'pending')
+      .neq('role', 'admin') // Exclude admin requests
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('❌ Supabase query error:', error);
+      throw error;
+    }
+    
+    console.log('📊 Found pending users:', data?.length || 0);
+    if (data && data.length > 0) {
+      console.log('👥 Pending users list:', data.map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        user_id: u.user_id,
+        company: u.company,
+        account_status: u.account_status,
+        role: u.role
+      })));
+    }
+    
+    res.json(data || []);
+  } catch (err) {
+    console.error('❌ Get pending users error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Company Admin: Get All Users in Their Company (both pending and approved)
+router.get('/admin/all-users', authenticateToken, async (req, res) => {
+  try {
     const currentUser = await User.findById(req.user.id);
     
     if (!currentUser || currentUser.role !== 'admin' || !currentUser.company) {
@@ -735,17 +793,59 @@ router.get('/admin/pending-users', authenticateToken, async (req, res) => {
     
     const { data, error } = await supabase
       .from('users')
-      .select('id, name, email, user_id, created_at')
+      .select('id, name, email, user_id, account_status, created_at')
       .eq('company', currentUser.company)
-      .eq('account_status', 'pending')
-      .neq('role', 'admin') // Exclude admin requests
+      .neq('role', 'admin') // Exclude admin users
+      .order('account_status', { ascending: false }) // Pending first, then active
       .order('created_at', { ascending: false });
     
     if (error) throw error;
     
     res.json(data || []);
   } catch (err) {
-    console.error('Get pending users error:', err);
+    console.error('Get all users error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Company Admin: Remove User from Company
+router.delete('/admin/remove-user/:userId', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser || currentUser.role !== 'admin' || !currentUser.company) {
+      return res.status(403).json({ message: 'Access denied. Company admin privileges required.' });
+    }
+    
+    const { userId } = req.params;
+    
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required.' });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user || user.company !== currentUser.company || user.role === 'admin') {
+      return res.status(404).json({ message: 'User not found or access denied.' });
+    }
+    
+    // Delete the user
+    const { error } = await supabase
+      .from('users')
+      .delete()
+      .eq('id', userId);
+    
+    if (error) throw error;
+    
+    res.json({ 
+      message: 'User removed successfully.',
+      removedUser: {
+        id: user.id,
+        name: user.name,
+        email: user.email
+      }
+    });
+  } catch (err) {
+    console.error('Remove user error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 });
@@ -787,6 +887,48 @@ router.post('/admin/user-action', authenticateToken, async (req, res) => {
     });
   } catch (err) {
     console.error('User action error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Select role for new Google users
+router.post('/select-role', async (req, res) => {
+  try {
+    const { token, role } = req.body;
+    
+    if (!token || !role || !['user', 'admin'].includes(role)) {
+      return res.status(400).json({ message: 'Token and valid role (user/admin) are required.' });
+    }
+    
+    // Verify temporary token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      if (decoded.purpose !== 'role_selection') {
+        return res.status(403).json({ message: 'Invalid token purpose.' });
+      }
+    } catch (err) {
+      return res.status(403).json({ message: 'Invalid or expired token.' });
+    }
+    
+    // Get user and update with selected role
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    
+    // Update user with selected role and pending status
+    await User.updateById(user.id, {
+      role: role,
+      account_status: 'pending'
+    });
+    
+    res.json({ 
+      message: 'Role selected successfully. Your account is pending approval.',
+      status: 'pending_approval'
+    });
+  } catch (error) {
+    console.error('Select role error:', error);
     res.status(500).json({ message: 'Server error.' });
   }
 });
