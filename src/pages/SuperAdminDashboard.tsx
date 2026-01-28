@@ -549,7 +549,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                       </button>
                     </td>
                   </tr>
-                ))}}
+                ))}
               </tbody>
             </table>
           </div>
