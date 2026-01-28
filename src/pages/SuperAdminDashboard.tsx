@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "../api/axios";
 import { useNavigate } from "react-router-dom";
-import { FaBuilding, FaUserShield, FaSignOutAlt, FaPlus, FaUsers, FaClock, FaCheck, FaTimes } from "react-icons/fa";
+import { FaBuilding, FaUserShield, FaSignOutAlt, FaPlus, FaUsers, FaClock, FaCheck, FaTimes, FaTrash } from "react-icons/fa";
 
 interface SuperAdminDashboardProps {
   user: any;
@@ -48,6 +48,24 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
       setPendingAdmins(pendingRes.data);
     } catch (err) {
       console.error("Error fetching data:", err);
+    }
+  };
+
+  const handleDeleteCompany = async (companyCode: string) => {
+    if (!confirm(`Are you sure you want to delete company "${companyCode}"? This will remove all users and data associated with this company. This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const token = sessionStorage.getItem("jwt-token");
+      await axios.delete(`/auth/superadmin/delete-company/${companyCode}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setSuccess(`Company "${companyCode}" deleted successfully!`);
+      fetchData(); // Refresh data
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Failed to delete company");
     }
   };
 
@@ -446,22 +464,30 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                   <th style={{ padding: '16px 24px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Company Code</th>
                   <th style={{ padding: '16px 24px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Admins</th>
                   <th style={{ padding: '16px 24px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Users</th>
+                  <th style={{ padding: '16px 24px', textAlign: 'center', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {companies.map((company, index) => (
                   <tr 
                     key={index} 
-                    onClick={() => handleViewCompany(company.name)}
                     style={{ 
                       borderBottom: '1px solid #e5e7eb',
-                      cursor: 'pointer',
                       transition: 'background 0.2s'
                     }}
                     onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
                     onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                   >
-                    <td style={{ padding: '16px 24px', fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>
+                    <td 
+                      onClick={() => handleViewCompany(company.name)}
+                      style={{ 
+                        padding: '16px 24px', 
+                        fontSize: '14px', 
+                        color: '#1f2937', 
+                        fontWeight: '500',
+                        cursor: 'pointer'
+                      }}
+                    >
                       <span style={{ 
                         background: '#f3f4f6', 
                         padding: '4px 8px', 
@@ -472,14 +498,58 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                         {company.name}
                       </span>
                     </td>
-                    <td style={{ padding: '16px 24px', fontSize: '14px', color: '#6b7280' }}>
+                    <td 
+                      onClick={() => handleViewCompany(company.name)}
+                      style={{ 
+                        padding: '16px 24px', 
+                        fontSize: '14px', 
+                        color: '#6b7280',
+                        cursor: 'pointer'
+                      }}
+                    >
                       {company.adminCount}
                     </td>
-                    <td style={{ padding: '16px 24px', fontSize: '14px', color: '#6b7280' }}>
+                    <td 
+                      onClick={() => handleViewCompany(company.name)}
+                      style={{ 
+                        padding: '16px 24px', 
+                        fontSize: '14px', 
+                        color: '#6b7280',
+                        cursor: 'pointer'
+                      }}
+                    >
                       {company.userCount}
                     </td>
+                    <td style={{ padding: '16px 24px', textAlign: 'center' }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteCompany(company.name);
+                        }}
+                        style={{
+                          background: '#ef4444',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          margin: '0 auto',
+                          transition: 'background 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#dc2626'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = '#ef4444'}
+                        title="Delete Company"
+                      >
+                        <FaTrash size={10} /> Delete
+                      </button>
+                    </td>
                   </tr>
-                ))}
+                ))}}
               </tbody>
             </table>
           </div>

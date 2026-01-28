@@ -39,50 +39,43 @@ const SuperAdminLogin: React.FC<SuperAdminLoginProps> = ({ setUser }) => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)'
+      background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)'
     }}>
       <div style={{
         background: '#fff',
-        padding: '48px 32px 32px 32px',
-        borderRadius: '16px',
-        boxShadow: '0 20px 40px rgba(220, 38, 38, 0.3)',
+        padding: '40px',
+        borderRadius: '12px',
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
         maxWidth: '400px',
         width: '100%',
-        textAlign: 'center',
-        position: 'relative'
+        textAlign: 'center'
       }}>
         <div style={{
-          background: '#dc2626',
+          background: '#667eea',
           color: '#fff',
-          width: '80px',
-          height: '80px',
+          width: '60px',
+          height: '60px',
           borderRadius: '50%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          position: 'absolute',
-          top: '-40px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          boxShadow: '0 4px 12px rgba(220, 38, 38, 0.4)',
-          border: '4px solid #fff'
+          margin: '0 auto 20px auto'
         }}>
-          <FaShieldAlt size={40} />
+          <FaShieldAlt size={28} />
         </div>
         
         <h1 style={{
-          fontSize: '28px',
-          fontWeight: '700',
-          color: '#dc2626',
-          marginBottom: '8px',
-          marginTop: '16px'
-        }}>Super Admin</h1>
+          fontSize: '24px',
+          fontWeight: '600',
+          color: '#1f2937',
+          marginBottom: '8px'
+        }}>Super Admin Login</h1>
         
         <p style={{
           color: '#6b7280',
           fontSize: '14px',
           marginBottom: '32px'
-        }}>Restricted Access Only</p>
+        }}>Secure access to system administration</p>
         
         <form onSubmit={handleSubmit} style={{
           display: 'flex',
@@ -91,20 +84,20 @@ const SuperAdminLogin: React.FC<SuperAdminLoginProps> = ({ setUser }) => {
         }}>
           <input
             type="text"
-            placeholder="Super Admin ID"
+            placeholder="Admin ID"
             value={userId}
             onChange={e => setUserId(e.target.value)}
             required
             style={{
               padding: '12px 16px',
-              border: '2px solid #e5e7eb',
+              border: '1px solid #d1d5db',
               borderRadius: '8px',
               fontSize: '16px',
-              transition: 'border-color 0.2s',
-              outline: 'none'
+              outline: 'none',
+              transition: 'border-color 0.2s'
             }}
-            onFocus={(e) => e.target.style.borderColor = '#dc2626'}
-            onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+            onFocus={(e) => e.target.style.borderColor = '#667eea'}
+            onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
           />
           <input
             type="password"
@@ -114,19 +107,19 @@ const SuperAdminLogin: React.FC<SuperAdminLoginProps> = ({ setUser }) => {
             required
             style={{
               padding: '12px 16px',
-              border: '2px solid #e5e7eb',
+              border: '1px solid #d1d5db',
               borderRadius: '8px',
               fontSize: '16px',
-              transition: 'border-color 0.2s',
-              outline: 'none'
+              outline: 'none',
+              transition: 'border-color 0.2s'
             }}
-            onFocus={(e) => e.target.style.borderColor = '#dc2626'}
-            onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+            onFocus={(e) => e.target.style.borderColor = '#667eea'}
+            onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
           />
           <button
             type="submit"
             style={{
-              background: '#dc2626',
+              background: '#667eea',
               color: '#fff',
               padding: '12px 24px',
               border: 'none',
@@ -137,10 +130,10 @@ const SuperAdminLogin: React.FC<SuperAdminLoginProps> = ({ setUser }) => {
               marginTop: '8px',
               transition: 'background-color 0.2s'
             }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = '#b91c1c'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = '#dc2626'}
+            onMouseEnter={(e) => e.target.style.backgroundColor = '#5a67d8'}
+            onMouseLeave={(e) => e.target.style.backgroundColor = '#667eea'}
           >
-            Access System
+            Sign In
           </button>
         </form>
 
@@ -148,7 +141,11 @@ const SuperAdminLogin: React.FC<SuperAdminLoginProps> = ({ setUser }) => {
           <p style={{
             color: '#ef4444',
             marginTop: '16px',
-            fontSize: '14px'
+            fontSize: '14px',
+            background: '#fef2f2',
+            padding: '8px 12px',
+            borderRadius: '6px',
+            border: '1px solid #fecaca'
           }}>{error}</p>
         )}
         
@@ -158,9 +155,9 @@ const SuperAdminLogin: React.FC<SuperAdminLoginProps> = ({ setUser }) => {
           color: '#6b7280'
         }}>
           <Link to="/login" style={{
-            color: '#3b82f6',
+            color: '#667eea',
             textDecoration: 'none',
-            fontWeight: '600'
+            fontWeight: '500'
           }}>← Back to Login</Link>
         </div>
       </div>
