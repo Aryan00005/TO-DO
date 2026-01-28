@@ -483,16 +483,17 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (window.confirm(`Delete company '${company.name}' and all its users?`)) {
+                          if (window.confirm(`Are you sure you want to delete company '${company.name}' and ALL its users? This action cannot be undone!`)) {
                             const token = sessionStorage.getItem("jwt-token");
                             axios.delete(`/auth/superadmin/delete-company/${company.name}`, {
                               headers: { Authorization: `Bearer ${token}` }
                             })
-                            .then(() => {
-                              setSuccess(`Company '${company.name}' deleted successfully!`);
+                            .then((res) => {
+                              setSuccess(`Company '${company.name}' deleted successfully! ${res.data.deletedUsers} users removed.`);
                               fetchData();
                             })
                             .catch(err => {
+                              console.error('Delete error:', err);
                               setError(err.response?.data?.message || 'Failed to delete company');
                             });
                           }
@@ -501,14 +502,17 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                           background: '#ef4444',
                           color: '#fff',
                           border: 'none',
-                          padding: '6px 12px',
+                          padding: '8px 16px',
                           borderRadius: 6,
                           cursor: 'pointer',
-                          fontSize: 12,
-                          fontWeight: 600
+                          fontSize: 14,
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4
                         }}
                       >
-                        Delete
+                        🗑️ Delete
                       </button>
                     </td>
                   </tr>
