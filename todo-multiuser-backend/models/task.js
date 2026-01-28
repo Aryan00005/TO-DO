@@ -328,20 +328,28 @@ class Task {
     
     // Filter tasks based on visibility rules
     const visibleTasks = allTasks.filter(task => {
-      // Admin sees all tasks in their company
+      // Admin sees all approved tasks in company
       if (userRole === 'admin') {
-        return task.company === userCompany;
+        return task.company === userCompany && task.approval_status === 'approved';
       }
       
-      // User created the task
-      if (task.assigned_by === userId) {
-        return true;
-      }
-      
-      // User is assigned to the task
+      // For regular users
+      const isCreator = task.assigned_by === userId;
       const isAssigned = task.task_assignments?.some(a => a.user_id === userId);
-      if (isAssigned) {
-        return true;
+      
+      // User-to-user tasks: only visible to creator, assignee, and admin
+      if (task.assigned_by_role === 'user' && task.assigned_to_role === 'user') {
+        return (isCreator || isAssigned) && task.approval_status === 'approved';
+      }
+      
+      // User-to-admin tasks: visible to all when approved
+      if (task.assigned_by_role === 'user' && task.assigned_to_role === 'admin') {
+        return task.approval_status === 'approved';
+      }
+      
+      // Admin-to-user tasks: visible to all
+      if (task.assigned_by_role === 'admin') {
+        return task.approval_status === 'approved';
       }
       
       return false;
@@ -349,14 +357,8 @@ class Task {
     
     console.log('Visible tasks after filtering:', visibleTasks.length);
     
-    // Only show approved tasks for regular users
-    const approvedTasks = userRole === 'admin' ? visibleTasks : 
-      visibleTasks.filter(task => task.approval_status === 'approved');
-    
-    console.log('Approved tasks:', approvedTasks.length);
-    
     // Transform tasks to include proper assignedBy and assignedTo fields
-    const transformedTasks = await Promise.all(approvedTasks.map(async (task) => {
+    const transformedTasks = await Promise.all(visibleTasks.map(async (task) => {
       // Get creator details
       const { data: creator } = await supabase
         .from('users')
