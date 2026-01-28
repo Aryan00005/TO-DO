@@ -446,6 +446,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                   <th style={{ padding: '16px 24px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Company Code</th>
                   <th style={{ padding: '16px 24px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Admins</th>
                   <th style={{ padding: '16px 24px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Users</th>
+                  <th style={{ padding: '16px 24px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -477,6 +478,42 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                     </td>
                     <td style={{ padding: '16px 24px', fontSize: '14px', color: '#6b7280' }}>
                       {company.userCount}
+                    </td>
+                    <td style={{ padding: '16px 24px', fontSize: '14px' }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`Are you sure you want to delete company '${company.name}' and ALL its users? This action cannot be undone!`)) {
+                            const token = sessionStorage.getItem("jwt-token");
+                            axios.delete(`/auth/superadmin/delete-company/${company.name}`, {
+                              headers: { Authorization: `Bearer ${token}` }
+                            })
+                            .then((res) => {
+                              setSuccess(`Company '${company.name}' deleted successfully! ${res.data.deletedUsers} users removed.`);
+                              fetchData();
+                            })
+                            .catch(err => {
+                              console.error('Delete error:', err);
+                              setError(err.response?.data?.message || 'Failed to delete company');
+                            });
+                          }
+                        }}
+                        style={{
+                          background: '#ef4444',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '8px 16px',
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                          fontSize: 14,
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4
+                        }}
+                      >
+                        🗑️ Delete
+                      </button>
                     </td>
                   </tr>
                 ))}

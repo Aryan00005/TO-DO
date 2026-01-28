@@ -87,29 +87,40 @@ router.get('/google/callback',
         hasPassword: !!user.password
       });
 
-      // FORCE all Google users to complete account setup
-      // Check if user has no userId or password (needs completion)
+      // NEW USERS: Need to complete account setup (choose company + set password)
       const needsCompletion = !user.user_id || !user.password || user.account_status === 'incomplete';
 
       if (needsCompletion) {
-        console.log('🔄 User needs to complete account setup');
-        // Create temporary token for account completion (short-lived)
+        console.log('🔄 New Google user needs to complete account setup');
+        // Create temporary token for account completion
         const tempToken = jwt.sign(
-          { id: user.id, purpose: 'account_completion' },
+          { id: user.id, purpose: 'account_completion', email: user.email },
           process.env.JWT_SECRET,
-          { expiresIn: '30m' } // 30 minutes to complete account
+          { expiresIn: '30m' }
         );
 
-        // Redirect to account completion page (NOT logged in)
-        const redirectUrl = `${process.env.FRONTEND_URL}/complete-account?token=${tempToken}`;
+        // Redirect to account completion page where they choose company
+        const redirectUrl = `${process.env.FRONTEND_URL}/complete-account?token=${tempToken}&type=google`;
         console.log('🔗 Redirect URL:', redirectUrl);
         res.redirect(redirectUrl);
       } else {
-        console.log('✅ User has complete credentials - normal login');
-        // Active account - proceed with normal login
-        const loginData = await handleLoginSuccess(user, res);
-        const redirectUrl = `${process.env.FRONTEND_URL}/auth/callback?token=${loginData.token}`;
-        res.redirect(redirectUrl);
+        // EXISTING USERS: Check approval status
+        if (user.account_status === 'pending') {
+          return res.redirect(`${process.env.FRONTEND_URL}/login?error=pending_approval`);
+        }
+        
+        if (user.account_status === 'rejected') {
+          return res.redirect(`${process.env.FRONTEND_URL}/login?error=account_rejected`);
+        }
+        
+        if (user.account_status === 'active') {
+          console.log('✅ Existing user with active account - normal login');
+          const loginData = await handleLoginSuccess(user, res);
+          const redirectUrl = `${process.env.FRONTEND_URL}/auth/callback?token=${loginData.token}`;
+          res.redirect(redirectUrl);
+        } else {
+          return res.redirect(`${process.env.FRONTEND_URL}/login?error=account_inactive`);
+        }
       }
     } catch (error) {
       console.error('💥 Google callback error:', error);
@@ -359,7 +370,7 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// Get users (filtered by company unless super admin)
+// Get users (filtered by company unless super admin) - ONLY ACTIVE USERS
 router.get('/users', authenticateToken, async (req, res) => {
   try {
     const currentUser = await User.findById(req.user.id);
@@ -368,27 +379,45 @@ router.get('/users', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
     
-    // Super admin sees all users
+    // Super admin sees all ACTIVE users
     if (currentUser.is_super_admin) {
-      const users = await User.findAll();
-      return res.json(users);
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('account_status', 'active');
+      if (error) throw error;
+      return res.json(data || []);
     }
     
-    // Admin sees all users in their company
+    // Admin sees all ACTIVE users in their company
     if (currentUser.role === 'admin' && currentUser.company) {
-      const users = await User.findByCompany(currentUser.company);
-      return res.json(users);
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('company', currentUser.company)
+        .eq('account_status', 'active');
+      if (error) throw error;
+      return res.json(data || []);
     }
     
-    // Regular users with company see company users
+    // Regular users with company see ACTIVE company users
     if (currentUser.company) {
-      const users = await User.findByCompany(currentUser.company);
-      return res.json(users);
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('company', currentUser.company)
+        .eq('account_status', 'active');
+      if (error) throw error;
+      return res.json(data || []);
     }
     
-    // Users without company see all users (for now)
-    const users = await User.findAll();
-    res.json(users);
+    // Users without company see all ACTIVE users
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('account_status', 'active');
+    if (error) throw error;
+    res.json(data || []);
   } catch (err) {
     console.error('Error fetching users:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -765,7 +794,7 @@ router.post('/admin/user-action', authenticateToken, async (req, res) => {
 // Complete account for Google users (mandatory step)
 router.post('/complete-account', async (req, res) => {
   try {
-    const { token, userId, password } = req.body;
+    const { token, userId, password, companyCode } = req.body;
     
     // Validation
     if (!token || !userId || !password) {
@@ -808,24 +837,50 @@ router.post('/complete-account', async (req, res) => {
       return res.status(400).json({ message: 'Account is already complete.' });
     }
     
+    // For Google users, validate company code if provided
+    let finalCompanyCode = null;
+    let accountStatus = 'pending'; // Default to pending for approval
+    
+    if (companyCode) {
+      // Verify company code exists
+      const { data: companyUsers, error: companyError } = await supabase
+        .from('users')
+        .select('company')
+        .eq('company', companyCode)
+        .limit(1);
+      
+      if (companyError || !companyUsers || companyUsers.length === 0) {
+        return res.status(400).json({ message: 'Invalid company code.' });
+      }
+      
+      finalCompanyCode = companyCode;
+    }
+    
     // Complete the account
-    const hashedPassword = await bcrypt.hash(password, 12);
     await User.updateById(user.id, {
       user_id: userId,
       password: password,
-      account_status: 'active',
+      company: finalCompanyCode,
+      account_status: accountStatus,
       auth_provider: 'hybrid'
     });
     
-    const updatedUser = await User.findById(user.id);
-    
-    // Now create actual login session
-    const loginData = await handleLoginSuccess(updatedUser, res);
-    
-    res.json({ 
-      message: 'Account completed successfully. You are now logged in.',
-      ...loginData
-    });
+    if (finalCompanyCode) {
+      res.json({ 
+        message: 'Account completed successfully! Your account is pending approval from your company admin.',
+        status: 'pending_approval',
+        requiresApproval: true
+      });
+    } else {
+      // No company - might be admin or special case
+      const updatedUser = await User.findById(user.id);
+      const loginData = await handleLoginSuccess(updatedUser, res);
+      
+      res.json({ 
+        message: 'Account completed successfully. You are now logged in.',
+        ...loginData
+      });
+    }
   } catch (error) {
     console.error('Complete account error:', error);
     res.status(500).json({ message: 'Server error.' });
@@ -923,6 +978,48 @@ router.post('/reset-password', async (req, res) => {
   } catch (error) {
     console.error('Reset password error:', error);
     res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Super Admin: Delete Company
+router.delete('/superadmin/delete-company/:companyCode', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser || !currentUser.is_super_admin) {
+      return res.status(403).json({ message: 'Access denied. Super admin privileges required.' });
+    }
+    
+    const { companyCode } = req.params;
+    
+    // Get all users in the company first
+    const { data: companyUsers, error: fetchError } = await supabase
+      .from('users')
+      .select('id, name, email')
+      .eq('company', companyCode);
+    
+    if (fetchError) throw fetchError;
+    
+    if (!companyUsers || companyUsers.length === 0) {
+      return res.status(404).json({ message: 'Company not found or already empty.' });
+    }
+    
+    // Delete all users in the company
+    const { error: deleteError } = await supabase
+      .from('users')
+      .delete()
+      .eq('company', companyCode);
+    
+    if (deleteError) throw deleteError;
+    
+    res.json({ 
+      message: `Company '${companyCode}' deleted successfully.`,
+      deletedUsers: companyUsers.length,
+      users: companyUsers
+    });
+  } catch (err) {
+    console.error('Delete company error:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
   }
 });
 
