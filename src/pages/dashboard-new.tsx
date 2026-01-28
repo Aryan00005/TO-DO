@@ -85,6 +85,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [pendingUsers, setPendingUsers] = useState<User[]>([]);
 
   const today = new Date();
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
@@ -235,10 +236,29 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
   }, [nav, user._id]);
 
+  // Fetch pending users for admin
+  useEffect(() => {
+    if (nav === "userapprovals" && user.role === 'admin') {
+      console.log('🔄 Fetching pending users for admin:', user._id, user.company, user.role);
+      const token = sessionStorage.getItem("jwt-token");
+      axios.get("/auth/admin/pending-users", {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      .then(res => {
+        console.log('📊 Pending users response:', res.data);
+        setPendingUsers(res.data);
+      })
+      .catch(err => {
+        console.error("❌ Error fetching pending users:", err);
+        showToast("Error loading pending users: " + (err.response?.data?.message || err.message), "error");
+      });
+    }
+  }, [nav, user._id, user.role]);
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const errors = validateTask({ title, description, assignedTo: assignedTo.length > 0 ? assignedTo : '', dueDate });
+    const errors = validateTask({ title, description, assignedTo: assignedTo.join(','), dueDate });
     if (errors.length > 0) {
       setValidationErrors(errors);
       showToast(errors[0], 'error');
@@ -277,6 +297,28 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       showToast("Error: " + (err.response?.data?.message || err.message), "error");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUserApproval = async (userId: string, action: 'approve' | 'reject') => {
+    try {
+      const token = sessionStorage.getItem("jwt-token");
+      await axios.post("/auth/admin/user-action", {
+        userId,
+        action
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // Refresh pending users
+      const res = await axios.get("/auth/admin/pending-users", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPendingUsers(res.data);
+      
+      showToast(`User ${action}d successfully! 🎉`, "success");
+    } catch (err: any) {
+      showToast("Error: " + (err.response?.data?.message || err.message), "error");
     }
   };
 
@@ -1278,6 +1320,110 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         )}
       </div>
     );
+  } else if (nav === "userapprovals" && user.role === 'admin') {
+    // User Approvals for Admin
+    content = (
+      <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 1000, margin: "0 auto" }}>
+        <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
+          👥 User Approval Requests ({pendingUsers.length})
+        </div>
+        
+        {pendingUsers.length === 0 ? (
+          <div style={{ 
+            textAlign: "center", 
+            color: "#64748b", 
+            fontSize: 16, 
+            marginTop: 40,
+            background: theme === 'dark' ? "#4b5563" : "#f8fafc",
+            padding: 32,
+            borderRadius: 12
+          }}>
+            🎉 No pending user approvals!
+            <div style={{ fontSize: 14, marginTop: 8 }}>
+              When users register with your company code, they'll appear here for approval.
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: 16 }}>
+            {pendingUsers.map(pendingUser => (
+              <div key={pendingUser._id} style={{
+                background: theme === 'dark' ? "#4b5563" : "#fff5f5",
+                border: "2px solid #f59e0b",
+                borderRadius: 10,
+                padding: 20,
+                boxShadow: "0 2px 8px #f59e0b44",
+                position: "relative"
+              }}>
+                <div style={{ 
+                  position: "absolute", 
+                  top: 8, 
+                  right: 8, 
+                  background: "#f59e0b", 
+                  color: "white", 
+                  padding: "2px 8px", 
+                  borderRadius: 12, 
+                  fontSize: 11, 
+                  fontWeight: 600 
+                }}>
+                  PENDING
+                </div>
+                
+                <div style={{ fontWeight: 600, fontSize: 18, color: theme === 'dark' ? '#ffffff' : '#22223b', marginBottom: 8, paddingRight: 80 }}>
+                  {pendingUser.name}
+                </div>
+                
+                <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 8 }}>
+                  <b>Email:</b> {pendingUser.email}
+                </div>
+                
+                <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 8 }}>
+                  <b>User ID:</b> {pendingUser.userId || pendingUser._id}
+                </div>
+                
+                <div style={{ fontSize: 14, color: "#2563eb", marginBottom: 12 }}>
+                  <b>Company:</b> {pendingUser.company || 'Not specified'}
+                </div>
+                
+                <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                  <button
+                    onClick={() => handleUserApproval(pendingUser._id, 'approve')}
+                    style={{
+                      background: "#22c55e",
+                      color: "white",
+                      border: "none",
+                      padding: "10px 16px",
+                      borderRadius: 6,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      flex: 1
+                    }}
+                  >
+                    ✅ Approve
+                  </button>
+                  <button
+                    onClick={() => handleUserApproval(pendingUser._id, 'reject')}
+                    style={{
+                      background: "#ef4444",
+                      color: "white",
+                      border: "none",
+                      padding: "10px 16px",
+                      borderRadius: 6,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      flex: 1
+                    }}
+                  >
+                    ❌ Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   }
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
@@ -1347,6 +1493,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             { key: 'assignedtasks', icon: FaUser, label: 'Tasks Assigned' },
             { key: 'list', icon: FaTasks, label: 'Task List' },
             { key: 'completed', icon: FaCheckCircle, label: 'Completed Tasks' },
+            ...(user.role === 'admin' ? [{ key: 'userapprovals', icon: FaUser, label: '👥 User Approvals' }] : []),
             { key: 'calendar', icon: FaCalendarAlt, label: 'Calendar' },
             { key: 'analytics', icon: FaChartBar, label: 'Analytics' }
           ].map(({ key, icon: Icon, label }) => (
