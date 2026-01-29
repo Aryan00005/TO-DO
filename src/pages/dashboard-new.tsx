@@ -1110,30 +1110,58 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8, width: "100%" }}
         />
         <label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Assign To (Multiple)</label>
-        <select 
-          multiple 
-          value={assignedTo} 
-          onChange={(e) => {
-            const values = Array.from(e.target.selectedOptions, option => option.value);
-            setAssignedTo(values);
-          }}
-          required
-          style={{ 
-            padding: 12, 
-            border: "1px solid #ddd", 
-            borderRadius: 8, 
-            width: "100%", 
-            minHeight: 100 
-          }}
-        >
-          {users.map(u => (
-            <option key={u._id || u.id} value={u._id || u.id}>
-              {u.name}
-            </option>
-          ))}
-        </select>
+        <div style={{
+          border: "1px solid #ddd",
+          borderRadius: 8,
+          padding: 12,
+          maxHeight: 200,
+          overflowY: 'auto',
+          background: theme === 'dark' ? '#4b5563' : '#fff'
+        }}>
+          {users.length > 0 && (() => {
+            const priorityNames = ['Rajendrasinh Raj', 'Nishit Raj'];
+            const priorityUsers = users.filter(u => priorityNames.includes(u.name));
+            const otherUsers = users.filter(u => !priorityNames.includes(u.name));
+            const sortedUsers = [...priorityUsers, ...otherUsers];
+            
+            return sortedUsers.map(u => (
+              <div key={u._id || u.id} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 0',
+                borderBottom: '1px solid #f0f0f0'
+              }}>
+                <input
+                  type="checkbox"
+                  id={`user-${u._id || u.id}`}
+                  checked={assignedTo.includes(u._id || u.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setAssignedTo([...assignedTo, u._id || u.id]);
+                    } else {
+                      setAssignedTo(assignedTo.filter(id => id !== (u._id || u.id)));
+                    }
+                  }}
+                  style={{ cursor: 'pointer' }}
+                />
+                <label 
+                  htmlFor={`user-${u._id || u.id}`}
+                  style={{ 
+                    cursor: 'pointer', 
+                    flex: 1,
+                    fontSize: '14px',
+                    color: theme === 'dark' ? '#fff' : '#333'
+                  }}
+                >
+                  {u.name}
+                </label>
+              </div>
+            ));
+          })()}
+        </div>
         <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
-          Hold Ctrl/Cmd to select multiple users
+          Select multiple users by checking the boxes
         </div>
         <label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Priority</label>
         <div style={{ marginBottom: 8 }}>{renderStars(priority, setPriority)}</div>
