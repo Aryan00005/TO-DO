@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import axios from "../api/axios";
 import { useNavigate, Link } from "react-router-dom";
-import { FaShieldAlt } from "react-icons/fa";
+import { FaShieldAlt, FaEye, FaEyeSlash } from "react-icons/fa";
 
 interface SuperAdminLoginProps {
   setUser: React.Dispatch<React.SetStateAction<any>>;
@@ -10,6 +10,7 @@ interface SuperAdminLoginProps {
 const SuperAdminLogin: React.FC<SuperAdminLoginProps> = ({ setUser }) => {
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
@@ -99,23 +100,45 @@ const SuperAdminLogin: React.FC<SuperAdminLoginProps> = ({ setUser }) => {
             onFocus={(e) => e.target.style.borderColor = '#667eea'}
             onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
           />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required
-            style={{
-              padding: '12px 16px',
-              border: '1px solid #d1d5db',
-              borderRadius: '8px',
-              fontSize: '16px',
-              outline: 'none',
-              transition: 'border-color 0.2s'
-            }}
-            onFocus={(e) => e.target.style.borderColor = '#667eea'}
-            onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-          />
+          <div style={{ position: 'relative' }}>
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+              style={{
+                padding: '12px 16px',
+                paddingRight: '45px',
+                border: '1px solid #d1d5db',
+                borderRadius: '8px',
+                fontSize: '16px',
+                outline: 'none',
+                transition: 'border-color 0.2s',
+                width: '100%',
+                boxSizing: 'border-box'
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#667eea'}
+              onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: 'absolute',
+                right: '12px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#6b7280',
+                fontSize: '16px'
+              }}
+            >
+              {showPassword ? <FaEyeSlash /> : <FaEye />}
+            </button>
+          </div>
           <button
             type="submit"
             style={{

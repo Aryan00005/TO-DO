@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "../api/axios";
 import { useNavigate } from "react-router-dom";
-import { FaBuilding, FaUserShield, FaSignOutAlt, FaPlus, FaUsers, FaClock, FaCheck, FaTimes, FaTrash } from "react-icons/fa";
+import { FaBuilding, FaUserShield, FaSignOutAlt, FaPlus, FaUsers, FaClock, FaCheck, FaTimes, FaTrash, FaEye, FaEyeSlash } from "react-icons/fa";
 
 interface SuperAdminDashboardProps {
   user: any;
@@ -20,6 +20,7 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
   const [adminEmail, setAdminEmail] = useState("");
   const [adminUserId, setAdminUserId] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -623,19 +624,41 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
                   fontSize: '16px'
                 }}
               />
-              <input
-                type="password"
-                placeholder="Admin Password"
-                value={adminPassword}
-                onChange={(e) => setAdminPassword(e.target.value)}
-                required
-                style={{
-                  padding: '12px 16px',
-                  border: '2px solid #e5e7eb',
-                  borderRadius: '8px',
-                  fontSize: '16px'
-                }}
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showAdminPassword ? "text" : "password"}
+                  placeholder="Admin Password"
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  required
+                  style={{
+                    padding: '12px 16px',
+                    paddingRight: '45px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '8px',
+                    fontSize: '16px',
+                    width: '100%',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAdminPassword(!showAdminPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#6b7280',
+                    fontSize: '16px'
+                  }}
+                >
+                  {showAdminPassword ? <FaEyeSlash /> : <FaEye />}
+                </button>
+              </div>
               <input
                 type="text"
                 placeholder="Company Name"
