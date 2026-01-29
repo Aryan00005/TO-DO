@@ -84,7 +84,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [autoRefresh, setAutoRefresh] = useState(false);
   const [pendingUsers, setPendingUsers] = useState<User[]>([]);
 
   const today = new Date();
@@ -153,7 +153,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       ));
       
       showToast(`Task moved to ${newStatus}!`, "success");
-      refreshData(); // Refresh to get latest data
+      // refreshData(); // Removed to eliminate delay
     } catch (err: any) {
       console.error('Task update error:', err);
       const errorMessage = err.response?.data?.message || "Failed to update task";
@@ -301,8 +301,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       // Reset form
       setTitle(""); setDescription(""); setAssignedTo([]); setPriority(3); setDueDate(""); setCompany("");
       
-      // Refresh data
-      refreshData();
+      // refreshData(); // Removed to eliminate delay
     } catch (err: any) {
       showToast("Error: " + (err.response?.data?.message || err.message), "error");
     } finally {

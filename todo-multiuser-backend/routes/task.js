@@ -136,12 +136,12 @@ router.patch('/:taskId', auth, async (req, res) => {
       
       const currentStatus = currentTask.status;
       
-      // Define status progression rules (one-way only)
+      // Define status progression rules (allow more flexible transitions)
       const statusProgression = {
-        'Not Started': ['Working on it'],
-        'Working on it': ['Stuck', 'Done'],
-        'Stuck': ['Working on it', 'Done'],
-        'Done': [] // Cannot move from Done
+        'Not Started': ['Working on it', 'Stuck', 'Done'],
+        'Working on it': ['Stuck', 'Done', 'Not Started'],
+        'Stuck': ['Working on it', 'Done', 'Not Started'],
+        'Done': ['Working on it', 'Stuck', 'Not Started'] // Allow moving back from Done
       };
       
       // Validate status progression
