@@ -27,6 +27,14 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
       // Check if user is pending approval
       if (res.data.user.accountStatus === 'pending') {
         navigate("/pending-approval");
+        return;
+      }
+      
+      // Role-based redirection
+      if (res.data.user.isSuperAdmin) {
+        navigate("/superadmin/dashboard");
+      } else if (res.data.user.role === 'admin') {
+        navigate("/dashboard");
       } else {
         navigate("/dashboard");
       }
@@ -244,28 +252,6 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
             textDecoration: 'none',
             fontWeight: '600'
           }}>Register</Link>
-          <br />
-          <span style={{ marginTop: '8px', display: 'block' }}>
-            Company admin?{' '}
-            <Link to="/admin/login" style={{
-              color: '#3b82f6',
-              textDecoration: 'none',
-              fontWeight: '600'
-            }}>Admin Login</Link>
-            {' | '}
-            <Link to="/admin/register" style={{
-              color: '#10b981',
-              textDecoration: 'none',
-              fontWeight: '600'
-            }}>Create Admin Account</Link>
-          </span>
-          <div style={{ marginTop: '8px', fontSize: '12px' }}>
-            <Link to="/system-admin-access" style={{
-              color: '#ef4444',
-              textDecoration: 'none',
-              fontWeight: '600'
-            }}>System Access</Link>
-          </div>
         </div>
       </div>
     </div>

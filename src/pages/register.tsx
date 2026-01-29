@@ -113,6 +113,7 @@ const Register = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [companyCode, setCompanyCode] = useState("");
+  const [userType, setUserType] = useState("user"); // user, admin
   const [error, setError] = useState("");
   const [userId, setUserId] = useState("");
   const [isGoogleUser, setIsGoogleUser] = useState(false);
@@ -146,7 +147,7 @@ const Register = () => {
     e.preventDefault();
     setError("");
     try {
-      console.log('🔄 Registration attempt:', { name, userId, email, companyCode, isGoogleUser });
+      console.log('🔄 Registration attempt:', { name, userId, email, companyCode, userType, isGoogleUser });
       
       if (isGoogleUser) {
         // For Google users, call the new Google user registration endpoint
@@ -157,7 +158,8 @@ const Register = () => {
           userId,
           email,
           password,
-          companyCode
+          companyCode,
+          userType
         });
         
         // Clear Google session data
@@ -165,14 +167,34 @@ const Register = () => {
         sessionStorage.removeItem('selected-role');
         
         console.log('✅ Google user registration successful:', response.data);
-        alert('Registration successful! Your account is pending approval from your company admin.');
+        
+        if (userType === 'admin') {
+          alert('Admin registration successful! Your account is pending approval from the super admin.');
+        } else {
+          alert('Registration successful! Your account is pending approval from your company admin.');
+        }
         navigate("/pending-approval");
       } else {
-        // Regular user registration
-        const response = await axios.post("/auth/register", { name, userId, email, password, companyCode });
-        console.log('✅ Registration successful:', response.data);
+        // Regular registration based on user type
+        let endpoint = "/auth/register";
+        let successMessage = "Registration successful! Your account is pending approval from your company admin.";
         
-        alert('Registration successful! Your account is pending approval from your company admin.');
+        if (userType === 'admin') {
+          endpoint = "/auth/admin-register";
+          successMessage = "Admin registration successful! Your account is pending approval from the super admin.";
+        }
+        
+        const response = await axios.post(endpoint, { 
+          name, 
+          userId, 
+          email, 
+          password, 
+          companyCode: userType === 'admin' ? companyCode : companyCode,
+          company: userType === 'admin' ? name : undefined // For admin, company name is the name field
+        });
+        
+        console.log('✅ Registration successful:', response.data);
+        alert(successMessage);
         navigate("/login");
       }
     } catch (err: any) {
@@ -198,7 +220,45 @@ const Register = () => {
         <IconCircle>
           <FaUserPlus size={36} />
         </IconCircle>
-        <AuthTitle>{isGoogleUser ? 'Complete Registration' : 'Register'}</AuthTitle>
+        <AuthTitle>{isGoogleUser ? 'Complete Registration' : 'Create Account'}</AuthTitle>
+        
+        {/* User Type Selection */}
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setUserType('user')}
+              style={{
+                padding: '8px 16px',
+                border: userType === 'user' ? '2px solid #2563eb' : '2px solid #e5e7eb',
+                borderRadius: '6px',
+                background: userType === 'user' ? '#dbeafe' : '#fff',
+                color: userType === 'user' ? '#2563eb' : '#6b7280',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '600'
+              }}
+            >
+              Regular User
+            </button>
+            <button
+              type="button"
+              onClick={() => setUserType('admin')}
+              style={{
+                padding: '8px 16px',
+                border: userType === 'admin' ? '2px solid #2563eb' : '2px solid #e5e7eb',
+                borderRadius: '6px',
+                background: userType === 'admin' ? '#dbeafe' : '#fff',
+                color: userType === 'admin' ? '#2563eb' : '#6b7280',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '600'
+              }}
+            >
+              Company Admin
+            </button>
+          </div>
+        </div>
         <AuthForm onSubmit={handleSubmit}>
           <AuthInput
             type="text"
@@ -250,7 +310,7 @@ const Register = () => {
           </div>
           <AuthInput
             type="text"
-            placeholder="Company Code (provided by admin)"
+            placeholder={userType === 'admin' ? "Company Name" : "Company Code (provided by admin)"}
             value={companyCode}
             onChange={e => setCompanyCode(e.target.value)}
             required
