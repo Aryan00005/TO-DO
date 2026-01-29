@@ -686,10 +686,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                         width: "280px",
                         maxWidth: "280px",
                         flexShrink: 0,
-                        background: theme === 'dark' ? "#374151" : "#f9fafb",
+                        background: theme === 'dark' ? "#374151" : "#f8fafc",
+                        border: theme === 'dark' ? "2px solid #4b5563" : "2px solid #e2e8f0",
                         borderRadius: 12,
                         padding: 12,
-                        boxShadow: "0 2px 12px #c7d2fe22",
+                        boxShadow: theme === 'dark' ? "0 4px 16px rgba(0,0,0,0.3)" : "0 4px 16px rgba(0,0,0,0.08)",
                         minHeight: 200
                       }}
                     >
