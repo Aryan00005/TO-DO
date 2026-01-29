@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from '../api/axios';
 import { useToast } from '../components/Toast';
+import { FaEye, FaEyeSlash } from 'react-icons/fa';
 
 const AdminRegister: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -12,6 +13,8 @@ const AdminRegister: React.FC = () => {
     confirmPassword: '',
     company: ''
   });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isGoogleUser, setIsGoogleUser] = useState(false);
   const navigate = useNavigate();
@@ -224,40 +227,80 @@ const AdminRegister: React.FC = () => {
             <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
               Password
             </label>
-            <input
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              style={{
-                width: '100%',
-                padding: '12px 16px',
-                border: '2px solid #e5e7eb',
-                borderRadius: '8px',
-                fontSize: '16px'
-              }}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                required
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  paddingRight: '45px',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '16px'
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  fontSize: '16px'
+                }}
+              >
+                {showPassword ? <FaEyeSlash /> : <FaEye />}
+              </button>
+            </div>
           </div>
 
           <div>
             <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
               Confirm Password
             </label>
-            <input
-              type="password"
-              name="confirmPassword"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              required
-              style={{
-                width: '100%',
-                padding: '12px 16px',
-                border: '2px solid #e5e7eb',
-                borderRadius: '8px',
-                fontSize: '16px'
-              }}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                name="confirmPassword"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                required
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  paddingRight: '45px',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '16px'
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  fontSize: '16px'
+                }}
+              >
+                {showConfirmPassword ? <FaEyeSlash /> : <FaEye />}
+              </button>
+            </div>
           </div>
 
           <button

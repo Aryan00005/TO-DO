@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from '../api/axios';
 import { useToast } from '../components/Toast';
+import { FaEye, FaEyeSlash } from 'react-icons/fa';
 
 interface AdminLoginProps {
   setUser: (user: any) => void;
@@ -12,6 +13,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ setUser }) => {
     userId: '',
     password: ''
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { showToast, ToastContainer } = useToast();
@@ -93,20 +95,40 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ setUser }) => {
             <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>
               Password
             </label>
-            <input
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              style={{
-                width: '100%',
-                padding: '12px 16px',
-                border: '2px solid #e5e7eb',
-                borderRadius: '8px',
-                fontSize: '16px'
-              }}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                required
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  paddingRight: '45px',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '16px'
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  fontSize: '16px'
+                }}
+              >
+                {showPassword ? <FaEyeSlash /> : <FaEye />}
+              </button>
+            </div>
           </div>
 
           <button

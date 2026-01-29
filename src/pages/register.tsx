@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import axios from "../api/axios";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
-import { FaUserPlus } from "react-icons/fa";
+import { FaUserPlus, FaEye, FaEyeSlash } from "react-icons/fa";
 
 // Styled Components
 const PageContainer = styled.div`
@@ -111,6 +111,7 @@ const Register = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [companyCode, setCompanyCode] = useState("");
   const [error, setError] = useState("");
   const [userId, setUserId] = useState("");
@@ -220,13 +221,33 @@ const Register = () => {
             onChange={e => setEmail(e.target.value)}
             required
           />
-          <AuthInput
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required
-          />
+          <div style={{ position: 'relative' }}>
+            <AuthInput
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+              style={{ paddingRight: '45px' }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: 'absolute',
+                right: '12px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#6b7280',
+                fontSize: '16px'
+              }}
+            >
+              {showPassword ? <FaEyeSlash /> : <FaEye />}
+            </button>
+          </div>
           <AuthInput
             type="text"
             placeholder="Company Code (provided by admin)"

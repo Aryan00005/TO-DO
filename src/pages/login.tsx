@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import axios from "../api/axios";
 import { useNavigate, Link } from "react-router-dom";
-import { FaUserCircle, FaGoogle } from "react-icons/fa";
+import { FaUserCircle, FaGoogle, FaEye, FaEyeSlash } from "react-icons/fa";
 
 interface LoginProps {
   setUser: React.Dispatch<React.SetStateAction<any>>;
@@ -10,6 +10,7 @@ interface LoginProps {
 const Login: React.FC<LoginProps> = ({ setUser }) => {
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
@@ -165,23 +166,44 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
             onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
             onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
           />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required
-            style={{
-              padding: '12px 16px',
-              border: '2px solid #e5e7eb',
-              borderRadius: '8px',
-              fontSize: '16px',
-              transition: 'border-color 0.2s',
-              outline: 'none'
-            }}
-            onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-            onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-          />
+          <div style={{ position: 'relative' }}>
+            <input
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+              style={{
+                padding: '12px 16px',
+                paddingRight: '45px',
+                border: '2px solid #e5e7eb',
+                borderRadius: '8px',
+                fontSize: '16px',
+                transition: 'border-color 0.2s',
+                outline: 'none',
+                width: '100%'
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+              onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: 'absolute',
+                right: '12px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#6b7280',
+                fontSize: '16px'
+              }}
+            >
+              {showPassword ? <FaEyeSlash /> : <FaEye />}
+            </button>
+          </div>
           <button
             type="submit"
             style={{
