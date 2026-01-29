@@ -139,9 +139,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const updateTaskStatus = async (taskId: string, newStatus: string) => {
     try {
       const token = sessionStorage.getItem("jwt-token");
-      await axios.patch(`/tasks/${taskId}`, { status: newStatus }, {
+      console.log('Updating task status:', { taskId, newStatus });
+      
+      const response = await axios.patch(`/tasks/${taskId}`, { status: newStatus }, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      
+      console.log('Update response:', response.data);
       
       // Update local state immediately for better UX
       setTasks(prev => prev.map(task => 
@@ -150,8 +154,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       
       showToast(`Task moved to ${newStatus}!`, "success");
       refreshData(); // Refresh to get latest data
-    } catch (err) {
-      showToast("Failed to update task", "error");
+    } catch (err: any) {
+      console.error('Task update error:', err);
+      const errorMessage = err.response?.data?.message || "Failed to update task";
+      showToast(errorMessage, "error");
+      
+      // Refresh data to revert any optimistic updates
+      refreshData();
     }
   };
 
