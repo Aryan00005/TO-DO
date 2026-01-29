@@ -1554,7 +1554,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             { key: 'assignedtasks', icon: FaUser, label: 'Tasks Assigned' },
             { key: 'list', icon: FaTasks, label: 'Task List' },
             { key: 'completed', icon: FaCheckCircle, label: 'Completed Tasks' },
-            ...(user.role === 'admin' ? [{ key: 'userapprovals', icon: FaUser, label: '👥 User Management' }] : []),
+            ...(user.role === 'admin' ? [{ key: 'userapprovals', icon: FaUser, label: 'User Management' }] : []),
             { key: 'calendar', icon: FaCalendarAlt, label: 'Calendar' },
             { key: 'analytics', icon: FaChartBar, label: 'Analytics' }
           ].map(({ key, icon: Icon, label }) => (

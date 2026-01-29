@@ -11,12 +11,23 @@ class Task {
     
     console.log('Creating task with data:', taskData);
     
-    // Get creator and assignee roles for approval logic
+    // Get creator details including company
     const { data: creator } = await supabase
       .from('users')
-      .select('role')
+      .select('role, company')
       .eq('id', assignedBy)
       .single();
+    
+    if (!creator) {
+      throw new Error('Creator not found');
+    }
+    
+    // Use creator's company if no company specified
+    const taskCompany = company || creator.company;
+    
+    if (!taskCompany) {
+      throw new Error('Task must have a company assigned');
+    }
     
     let approvalStatus = 'approved'; // Default for most cases
     let assignedByRole = creator?.role || 'user';
@@ -61,7 +72,7 @@ class Task {
         assigned_by: assignedBy,
         priority,
         due_date: dueDate,
-        company,
+        company: taskCompany, // Use determined company
         created_by_admin: createdByAdmin,
         status: 'Not Started',
         approval_status: approvalStatus,
@@ -122,7 +133,18 @@ class Task {
   static async findAssignedToUser(userId) {
     console.log('Finding tasks for user ID:', userId);
     
-    // Get tasks where user is assigned with full details
+    // Get user's company first
+    const { data: currentUser } = await supabase
+      .from('users')
+      .select('company')
+      .eq('id', userId)
+      .single();
+    
+    if (!currentUser) {
+      throw new Error('User not found');
+    }
+    
+    // Get tasks where user is assigned with full details - filtered by company
     const { data: assignedTasks, error: assignedError } = await supabase
       .from('tasks')
       .select(`
@@ -132,15 +154,17 @@ class Task {
         )
       `)
       .eq('task_assignments.user_id', userId)
+      .eq('company', currentUser.company) // Company filter
       .order('created_at', { ascending: false });
     
     if (assignedError) throw assignedError;
     
-    // Get tasks created by user
+    // Get tasks created by user - filtered by company
     const { data: createdTasks, error: createdError } = await supabase
       .from('tasks')
       .select('*')
       .eq('assigned_by', userId)
+      .eq('company', currentUser.company) // Company filter
       .order('created_at', { ascending: false });
     
     if (createdError) throw createdError;
@@ -189,10 +213,22 @@ class Task {
   }
 
   static async findAssignedByUser(userId) {
+    // Get user's company first
+    const { data: currentUser } = await supabase
+      .from('users')
+      .select('company')
+      .eq('id', userId)
+      .single();
+    
+    if (!currentUser) {
+      throw new Error('User not found');
+    }
+    
     const { data: tasks, error } = await supabase
       .from('tasks')
       .select('*')
       .eq('assigned_by', userId)
+      .eq('company', currentUser.company) // Company filter
       .order('created_at', { ascending: false });
     
     if (error) throw error;
@@ -330,10 +366,14 @@ class Task {
     const visibleTasks = allTasks.filter(task => {
       // Admin sees all approved tasks in company
       if (userRole === 'admin') {
-        return task.company === userCompany;
+        return task.company === userCompany && task.approval_status === 'approved';
       }
       
-      // For regular users
+      // For regular users - MUST be in same company
+      if (task.company !== userCompany) {
+        return false; // Block cross-company visibility
+      }
+      
       const isCreator = task.assigned_by === userId;
       const isAssigned = task.task_assignments?.some(a => a.user_id === userId);
       
