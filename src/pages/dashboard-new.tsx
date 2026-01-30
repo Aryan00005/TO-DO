@@ -2017,21 +2017,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                               e.stopPropagation();
                               try {
                                 const token = sessionStorage.getItem("jwt-token");
+                                
                                 // Extract task title from notification message
                                 const match = notification.message.match(/Task approval required: "([^"]+)"/);
                                 if (match) {
                                   const taskTitle = match[1];
                                   
-                                  // Find the task by title from pending approvals
-                                  const tasksRes = await axios.get('/tasks/pending-approvals', {
+                                  // Use the debug endpoint to find the task
+                                  const debugRes = await axios.get('/tasks/debug-all', {
                                     headers: { Authorization: `Bearer ${token}` }
                                   });
-                                  const task = tasksRes.data.find((t: any) => t.title === taskTitle);
+                                  
+                                  const task = debugRes.data.find((t: any) => t.title === taskTitle && t.approval_status === 'pending');
                                   
                                   if (task) {
-                                    // Use notification-based approval endpoint with taskId in body
                                     await axios.post(`/notifications/approve-task/${notification._id || notification.id}`, {
-                                      taskId: task.id || task._id
+                                      taskId: task.id
                                     }, {
                                       headers: { Authorization: `Bearer ${token}` }
                                     });
@@ -2039,7 +2040,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                     showToast('Task approved successfully! ✅', 'success');
                                     refreshData();
                                   } else {
-                                    showToast('Task not found for approval', 'error');
+                                    showToast('Task not found or already processed', 'error');
                                   }
                                 } else {
                                   showToast('Could not extract task information', 'error');
@@ -2066,21 +2067,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                               e.stopPropagation();
                               try {
                                 const token = sessionStorage.getItem("jwt-token");
+                                
                                 // Extract task title from notification message
                                 const match = notification.message.match(/Task approval required: "([^"]+)"/);
                                 if (match) {
                                   const taskTitle = match[1];
                                   
-                                  // Find the task by title from pending approvals
-                                  const tasksRes = await axios.get('/tasks/pending-approvals', {
+                                  // Use the debug endpoint to find the task
+                                  const debugRes = await axios.get('/tasks/debug-all', {
                                     headers: { Authorization: `Bearer ${token}` }
                                   });
-                                  const task = tasksRes.data.find((t: any) => t.title === taskTitle);
+                                  
+                                  const task = debugRes.data.find((t: any) => t.title === taskTitle && t.approval_status === 'pending');
                                   
                                   if (task) {
-                                    // Use notification-based rejection endpoint with taskId in body
                                     await axios.post(`/notifications/reject-task/${notification._id || notification.id}`, {
-                                      taskId: task.id || task._id
+                                      taskId: task.id
                                     }, {
                                       headers: { Authorization: `Bearer ${token}` }
                                     });
@@ -2088,7 +2090,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                     showToast('Task rejected successfully! ❌', 'success');
                                     refreshData();
                                   } else {
-                                    showToast('Task not found for rejection', 'error');
+                                    showToast('Task not found or already processed', 'error');
                                   }
                                 } else {
                                   showToast('Could not extract task information', 'error');
