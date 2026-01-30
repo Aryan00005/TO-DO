@@ -160,11 +160,10 @@ class Task {
         
         const creatorName = creatorData?.name || 'Someone';
         
-        // Find admin users in the company to notify
+        // Find ALL admin users to notify (not just in same company)
         const { data: adminUsers } = await supabase
           .from('users')
           .select('id')
-          .eq('company', taskCompany)
           .eq('role', 'admin')
           .eq('account_status', 'active');
         
@@ -172,6 +171,7 @@ class Task {
           for (const admin of adminUsers) {
             try {
               await Notification.create(admin.id, `Task approval required: "${title}" assigned by ${creatorName}`);
+              console.log(`Approval notification sent to admin ${admin.id}`);
             } catch (notifError) {
               console.error('Admin notification creation failed:', notifError);
             }

@@ -123,7 +123,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     setIsRefreshing(true);
     try {
       const token = sessionStorage.getItem("jwt-token");
-      console.log('🔄 Refreshing data for user:', user._id);
       
       const [tasksRes, usersRes, notificationsRes] = await Promise.all([
         axios.get(`/tasks/visible`, { headers: { Authorization: `Bearer ${token}` } }),
@@ -131,28 +130,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         axios.get(`/notifications/${user._id}`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
       
-      console.log('📊 Data refreshed:', {
-        tasks: tasksRes.data.length,
-        users: usersRes.data.length,
-        notifications: notificationsRes.data.length
-      });
-      
       setTasks(tasksRes.data);
       setUsers(usersRes.data);
       setNotifications(notificationsRes.data);
       setLastUpdated(new Date());
     } catch (err: any) {
-      console.error('❌ Error refreshing data:', err);
+      console.error('Error refreshing data:', err);
       if (err.response?.status === 401) {
-        showToast('Session expired. Please login again.', 'error');
         onLogout();
-      } else {
-        showToast('Error refreshing data: ' + (err.response?.data?.message || err.message), 'error');
       }
     } finally {
       setIsRefreshing(false);
     }
-  }, [user._id, onLogout, showToast]);
+  }, [user._id, onLogout]);
 
   const updateTaskStatus = async (taskId: string, newStatus: string) => {
     try {
