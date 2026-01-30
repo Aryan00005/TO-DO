@@ -108,34 +108,25 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     };
   }
 
-  // Auto-refresh data every 30 seconds
-  useEffect(() => {
-    if (!autoRefresh) return;
-    
-    const interval = setInterval(() => {
-      refreshData();
-    }, 30000);
-    
-    return () => clearInterval(interval);
-  }, [autoRefresh, user._id]);
+  // Auto-refresh data every 30 seconds - DISABLED for performance
+  // useEffect(() => {
+  //   if (!autoRefresh) return;
+  //   const interval = setInterval(() => {
+  //     refreshData();
+  //   }, 30000);
+  //   return () => clearInterval(interval);
+  // }, [autoRefresh, user._id]);
 
   const refreshData = useCallback(async () => {
     setIsRefreshing(true);
     try {
       const token = sessionStorage.getItem("jwt-token");
       
-      const [tasksRes, usersRes, notificationsRes] = await Promise.all([
-        axios.get(`/tasks/visible`, { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get("/auth/users", { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get(`/notifications/${user._id}`, { headers: { Authorization: `Bearer ${token}` } })
-      ]);
-      
+      // Only fetch tasks - users and notifications on demand
+      const tasksRes = await axios.get(`/tasks/visible`, { headers: { Authorization: `Bearer ${token}` } });
       setTasks(tasksRes.data);
-      setUsers(usersRes.data);
-      setNotifications(notificationsRes.data);
       setLastUpdated(new Date());
     } catch (err: any) {
-      console.error('Error refreshing data:', err);
       if (err.response?.status === 401) {
         onLogout();
       }
@@ -145,30 +136,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   }, [user._id, onLogout]);
 
   const updateTaskStatus = async (taskId: string, newStatus: string) => {
+    // Update UI immediately
+    setTasks(prev => prev.map(task => 
+      task._id === taskId ? { ...task, status: newStatus } : task
+    ));
+    
+    showToast(`Task moved to ${newStatus}!`, "success");
+    
+    // Update in background
     try {
       const token = sessionStorage.getItem("jwt-token");
-      console.log('Updating task status:', { taskId, newStatus });
-      
-      const response = await axios.patch(`/tasks/${taskId}`, { status: newStatus }, {
+      await axios.patch(`/tasks/${taskId}`, { status: newStatus }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
-      console.log('Update response:', response.data);
-      
-      // Update local state immediately for better UX
-      setTasks(prev => prev.map(task => 
-        task._id === taskId ? { ...task, status: newStatus } : task
-      ));
-      
-      showToast(`Task moved to ${newStatus}!`, "success");
-      // refreshData(); // Removed to eliminate delay
     } catch (err: any) {
-      console.error('Task update error:', err);
-      const errorMessage = err.response?.data?.message || "Failed to update task";
-      showToast(errorMessage, "error");
-      
-      // Refresh data to revert any optimistic updates
+      // Revert on error
       refreshData();
+      showToast("Failed to update task", "error");
     }
   };
 
@@ -233,17 +217,33 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   };
 
   useEffect(() => {
+    // Load users only once
     const token = sessionStorage.getItem("jwt-token");
-    axios.get("/auth/users", { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => setUsers(res.data))
-      .catch(err => {
-        console.error("Error fetching users:", err);
-        setUsers([user]);
-      });
-  }, [user.organization?.name]);
+    if (users.length === 0) {
+      axios.get("/auth/users", { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => setUsers(res.data))
+        .catch(err => setUsers([user]));
+    }
+  }, []);
 
   useEffect(() => {
-    refreshData();
+    // Load initial data only once
+    const loadInitialData = async () => {
+      const token = sessionStorage.getItem("jwt-token");
+      try {
+        const [tasksRes, usersRes, notificationsRes] = await Promise.all([
+          axios.get(`/tasks/visible`, { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get("/auth/users", { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get(`/notifications/${user._id}`, { headers: { Authorization: `Bearer ${token}` } })
+        ]);
+        setTasks(tasksRes.data);
+        setUsers(usersRes.data);
+        setNotifications(notificationsRes.data);
+      } catch (err) {
+        console.error('Error loading initial data:', err);
+      }
+    };
+    loadInitialData();
   }, [user._id]);
 
   useEffect(() => {
@@ -312,27 +312,41 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     try {
       const token = sessionStorage.getItem("jwt-token");
       
+      // Optimistic update - add task immediately
+      const newTask = {
+        _id: Date.now().toString(),
+        title,
+        description,
+        status: 'Not Started',
+        priority,
+        dueDate,
+        company,
+        assignedTo: assignedTo.map(id => users.find(u => u._id === id) || { _id: id, name: 'Unknown' }),
+        assignedBy: { _id: user._id, name: user.name }
+      };
+      
+      setTasks(prev => [newTask, ...prev]);
+      
+      // Reset form immediately
+      setTitle(""); setDescription(""); setAssignedTo([]); setPriority(3); setDueDate(""); setCompany("");
+      setEditingTask(null);
+      
+      showToast(editingTask ? "Task updated! 🎉" : "Task created! 🎉", "success");
+      
+      // Make API call in background
       if (editingTask) {
-        // Update existing task
         await axios.patch(`/tasks/${editingTask._id}`, { 
           title, description, assignedTo, priority, dueDate, company 
         }, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        showToast("Task updated successfully! 🎉", "success");
-        setEditingTask(null);
       } else {
-        // Create new task
         await axios.post("/tasks", { title, description, assignedTo, priority, dueDate, company }, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        showToast("Task created successfully! 🎉", "success");
       }
       
-      // Reset form
-      setTitle(""); setDescription(""); setAssignedTo([]); setPriority(3); setDueDate(""); setCompany("");
-      
-      // Refresh data to show new tasks
+      // Refresh only tasks in background
       refreshData();
       
       // Also refresh assigned tasks if on that view
