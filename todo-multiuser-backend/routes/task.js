@@ -52,6 +52,40 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
+// Debug endpoint - get ALL tasks (remove after debugging)
+router.get('/debug-all', auth, async (req, res) => {
+  try {
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+    
+    const { data: allTasks, error } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        task_assignments(
+          user_id,
+          users(id, name, email, role, account_status)
+        )
+      `)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    console.log('DEBUG - All tasks in database:', allTasks.length);
+    allTasks.forEach(task => {
+      console.log(`Task ${task.id}: ${task.title} | Company: ${task.company} | Approval: ${task.approval_status} | Assigned by: ${task.assigned_by}`);
+    });
+    
+    res.json(allTasks);
+  } catch (err) {
+    console.error('Debug error:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Get all visible tasks for user
 router.get('/visible', auth, async (req, res) => {
   try {
@@ -68,6 +102,8 @@ router.get('/visible', auth, async (req, res) => {
     const tasks = await Task.findVisibleToUser(currentUser.id, currentUser.role, currentUser.company);
     
     console.log('📋 Tasks returned:', tasks.length);
+    console.log('📋 Task details:', tasks.map(t => ({ id: t._id, title: t.title, approval_status: t.approval_status, company: t.company })));
+    
     res.json(tasks);
   } catch (err) {
     console.error('❌ Error fetching visible tasks:', err);
