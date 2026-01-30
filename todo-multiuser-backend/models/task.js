@@ -430,7 +430,6 @@ class Task {
           users(id, name, email, role, account_status)
         )
       `)
-      .eq('company', userCompany) // Filter by company first
       .order('created_at', { ascending: false });
     
     if (error) {
@@ -438,44 +437,29 @@ class Task {
       throw error;
     }
     
-    console.log('All tasks fetched for company:', allTasks?.length || 0);
+    console.log('All tasks fetched:', allTasks?.length || 0);
     
-    // Filter tasks based on visibility rules
+    // SIMPLIFIED LOGIC - Show ALL approved tasks + user's own tasks
     const visibleTasks = allTasks.filter(task => {
       const isCreator = task.assigned_by === userIdInt;
-      const isAssigned = task.task_assignments?.some(a => a.user_id === userIdInt && a.users?.account_status === 'active');
+      const isAssigned = task.task_assignments?.some(a => a.user_id === userIdInt);
       
-      console.log(`Task ${task.id}: isCreator=${isCreator}, isAssigned=${isAssigned}, approval_status=${task.approval_status}`);
+      console.log(`Task ${task.id}: creator=${isCreator}, assigned=${isAssigned}, approval=${task.approval_status}`);
       
-      // Admin sees all approved tasks in company + their own pending tasks
-      if (userRole === 'admin') {
-        return task.approval_status === 'approved' || isCreator;
-      }
-      
-      // For regular users:
-      // 1. Show approved tasks where they are creator or assignee
-      // 2. Show their own pending tasks (waiting for approval)
-      if (task.approval_status === 'approved') {
-        return isCreator || isAssigned;
-      } else if (task.approval_status === 'pending') {
-        return isCreator; // Users can see their own pending tasks
-      }
-      
-      return false;
+      // Show approved tasks OR tasks created by user
+      return task.approval_status === 'approved' || isCreator;
     });
     
     console.log('Visible tasks after filtering:', visibleTasks.length);
     
-    // Transform tasks to include proper assignedBy and assignedTo fields
+    // Transform tasks
     const transformedTasks = await Promise.all(visibleTasks.map(async (task) => {
-      // Get creator details
       const { data: creator } = await supabase
         .from('users')
         .select('id, name, email')
         .eq('id', task.assigned_by)
         .single();
       
-      // Transform assignees - only include active users
       const assignees = task.task_assignments?.map(a => a.users).filter(u => u?.account_status === 'active') || [];
       
       return {
