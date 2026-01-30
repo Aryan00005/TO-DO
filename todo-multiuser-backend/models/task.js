@@ -266,27 +266,17 @@ class Task {
   }
 
   static async findAssignedByUser(userId) {
-    // Get user's company first
-    const { data: currentUser } = await supabase
-      .from('users')
-      .select('company')
-      .eq('id', userId)
-      .single();
-    
-    if (!currentUser) {
-      throw new Error('User not found');
-    }
+    const userIdInt = parseInt(userId);
     
     const { data: tasks, error } = await supabase
       .from('tasks')
       .select('*')
-      .eq('assigned_by', userId)
-      .eq('company', currentUser.company) // Company filter
+      .eq('assigned_by', userIdInt)
       .order('created_at', { ascending: false });
     
     if (error) throw error;
 
-    // Populate assignee details for each task (include all tasks regardless of approval status)
+    // Populate assignee details for each task
     const populatedTasks = await Promise.all(tasks.map(async (task) => {
       const { data: assignments } = await supabase
         .from('task_assignments')
