@@ -417,6 +417,9 @@ class Task {
   static async findVisibleToUser(userId, userRole, userCompany) {
     console.log('Finding visible tasks for user:', { userId, userRole, userCompany });
     
+    // Ensure userId is an integer for comparison
+    const userIdInt = parseInt(userId);
+    
     // Get all tasks with assignments
     const { data: allTasks, error } = await supabase
       .from('tasks')
@@ -439,10 +442,12 @@ class Task {
     
     // Filter tasks based on visibility rules
     const visibleTasks = allTasks.filter(task => {
-      const isCreator = task.assigned_by === userId;
-      const isAssigned = task.task_assignments?.some(a => a.user_id === userId && a.users?.account_status === 'active');
+      const isCreator = task.assigned_by === userIdInt;
+      const isAssigned = task.task_assignments?.some(a => a.user_id === userIdInt && a.users?.account_status === 'active');
       
-      // Admin sees all tasks in company (approved and their own pending)
+      console.log(`Task ${task.id}: isCreator=${isCreator}, isAssigned=${isAssigned}, approval_status=${task.approval_status}`);
+      
+      // Admin sees all approved tasks in company + their own pending tasks
       if (userRole === 'admin') {
         return task.approval_status === 'approved' || isCreator;
       }
