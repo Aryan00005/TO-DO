@@ -149,6 +149,34 @@ class Task {
             console.error('Notification creation failed:', notifError);
           }
         }
+      } else if (approvalStatus === 'pending') {
+        // Create approval notification for admin when user assigns task to admin
+        const Notification = require('./notification');
+        const { data: creatorData } = await supabase
+          .from('users')
+          .select('name')
+          .eq('id', assignedBy)
+          .single();
+        
+        const creatorName = creatorData?.name || 'Someone';
+        
+        // Find admin users in the company to notify
+        const { data: adminUsers } = await supabase
+          .from('users')
+          .select('id')
+          .eq('company', taskCompany)
+          .eq('role', 'admin')
+          .eq('account_status', 'active');
+        
+        if (adminUsers && adminUsers.length > 0) {
+          for (const admin of adminUsers) {
+            try {
+              await Notification.create(admin.id, `Task approval required: "${title}" assigned by ${creatorName}`);
+            } catch (notifError) {
+              console.error('Admin notification creation failed:', notifError);
+            }
+          }
+        }
       }
     }
     
@@ -258,7 +286,7 @@ class Task {
     
     if (error) throw error;
 
-    // Populate assignee details for each task
+    // Populate assignee details for each task (include all tasks regardless of approval status)
     const populatedTasks = await Promise.all(tasks.map(async (task) => {
       const { data: assignments } = await supabase
         .from('task_assignments')
@@ -385,6 +413,7 @@ class Task {
           users(id, name, email, role, account_status)
         )
       `)
+      .eq('company', userCompany) // Filter by company first
       .order('created_at', { ascending: false });
     
     if (error) {
@@ -392,31 +421,28 @@ class Task {
       throw error;
     }
     
-    console.log('All tasks fetched:', allTasks?.length || 0);
+    console.log('All tasks fetched for company:', allTasks?.length || 0);
     
     // Filter tasks based on visibility rules
     const visibleTasks = allTasks.filter(task => {
-      // Must be in same company
-      if (task.company !== userCompany) {
-        return false;
-      }
-      
-      // Admin sees all approved tasks in company
-      if (userRole === 'admin') {
-        return task.approval_status === 'approved';
-      }
-      
-      // For regular users
       const isCreator = task.assigned_by === userId;
       const isAssigned = task.task_assignments?.some(a => a.user_id === userId && a.users?.account_status === 'active');
       
-      // Only show approved tasks
-      if (task.approval_status !== 'approved') {
-        return isCreator; // Creator can see their own pending tasks
+      // Admin sees all tasks in company (approved and their own pending)
+      if (userRole === 'admin') {
+        return task.approval_status === 'approved' || isCreator;
       }
       
-      // Show approved tasks where user is creator, assignee, or it's a company-wide task
-      return isCreator || isAssigned || (task.assigned_by_role === 'admin');
+      // For regular users:
+      // 1. Show approved tasks where they are creator or assignee
+      // 2. Show their own pending tasks (waiting for approval)
+      if (task.approval_status === 'approved') {
+        return isCreator || isAssigned;
+      } else if (task.approval_status === 'pending') {
+        return isCreator; // Users can see their own pending tasks
+      }
+      
+      return false;
     });
     
     console.log('Visible tasks after filtering:', visibleTasks.length);

@@ -34,9 +34,12 @@ interface Task {
 
 interface Notification {
   _id: string;
+  id?: string;
   message: string;
-  isRead: boolean;
-  createdAt: string;
+  isRead?: boolean;
+  is_read?: boolean;
+  createdAt?: string;
+  created_at?: string;
 }
 
 interface DashboardProps {
@@ -316,7 +319,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       // Reset form
       setTitle(""); setDescription(""); setAssignedTo([]); setPriority(3); setDueDate(""); setCompany("");
       
-      // refreshData(); // Removed to eliminate delay
+      // Refresh data to show new tasks
+      refreshData();
+      
+      // Also refresh assigned tasks if on that view
+      if (nav === "assignedtasks") {
+        const token = sessionStorage.getItem("jwt-token");
+        const res = await axios.get(`/tasks/assignedBy/${user._id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setAssignedTasks(res.data);
+      }
     } catch (err: any) {
       showToast("Error: " + (err.response?.data?.message || err.message), "error");
     } finally {
@@ -1711,7 +1724,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     );
   }
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const unreadCount = notifications.filter(n => !n.isRead && !n.is_read).length;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: theme === 'dark' ? 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' : 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)' }}>
@@ -1906,6 +1919,206 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         <div style={{ padding: '24px 32px', flex: 1, background: theme === 'dark' ? '#1e293b' : '#f8fafc', minHeight: 'calc(100vh - 80px)' }}>
           {content}
         </div>
+
+        {/* Notifications Panel */}
+        {showNotifications && (
+          <div style={{
+            position: 'fixed',
+            top: 80,
+            right: 20,
+            width: 400,
+            maxHeight: 500,
+            background: theme === 'dark' ? '#374151' : '#fff',
+            border: theme === 'dark' ? '1px solid #4b5563' : '1px solid #e2e8f0',
+            borderRadius: 12,
+            boxShadow: '0 10px 40px rgba(0,0,0,0.15)',
+            zIndex: 1000,
+            overflow: 'hidden'
+          }}>
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: theme === 'dark' ? '1px solid #4b5563' : '1px solid #e2e8f0',
+              background: theme === 'dark' ? '#4b5563' : '#f8fafc',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <h3 style={{ margin: 0, color: theme === 'dark' ? '#ffffff' : '#1f2937', fontSize: 16, fontWeight: 600 }}>
+                Notifications ({notifications.length})
+              </h3>
+              <button
+                onClick={() => setShowNotifications(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: theme === 'dark' ? '#9ca3af' : '#6b7280',
+                  cursor: 'pointer',
+                  fontSize: 18
+                }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+              {notifications.length === 0 ? (
+                <div style={{
+                  padding: 40,
+                  textAlign: 'center',
+                  color: theme === 'dark' ? '#9ca3af' : '#6b7280'
+                }}>
+                  No notifications yet
+                </div>
+              ) : (
+                notifications.map(notification => {
+                  const isApprovalNotification = notification.message.includes('approval required');
+                  
+                  return (
+                    <div key={notification._id} style={{
+                      padding: '16px 20px',
+                      borderBottom: theme === 'dark' ? '1px solid #374151' : '1px solid #f3f4f6',
+                      background: (notification.isRead || notification.is_read) ? 'transparent' : (theme === 'dark' ? '#1f2937' : '#f0f9ff'),
+                      cursor: 'pointer'
+                    }}>
+                      <div style={{
+                        fontSize: 14,
+                        color: theme === 'dark' ? '#e5e7eb' : '#374151',
+                        marginBottom: 4,
+                        lineHeight: 1.4
+                      }}>
+                        {notification.message}
+                      </div>
+                      
+                      <div style={{
+                        fontSize: 12,
+                        color: theme === 'dark' ? '#9ca3af' : '#6b7280',
+                        marginBottom: isApprovalNotification ? 8 : 0
+                      }}>
+                        {new Date(notification.createdAt || notification.created_at || '').toLocaleString()}
+                      </div>
+                      
+                      {isApprovalNotification && user.role === 'admin' && (
+                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              // Extract task title from notification message
+                              const match = notification.message.match(/Task approval required: "([^"]+)"/);
+                              if (match) {
+                                const taskTitle = match[1];
+                                try {
+                                  const token = sessionStorage.getItem("jwt-token");
+                                  // Find the task by title
+                                  const tasksRes = await axios.get('/tasks/pending-approvals', {
+                                    headers: { Authorization: `Bearer ${token}` }
+                                  });
+                                  const task = tasksRes.data.find((t: any) => t.title === taskTitle);
+                                  if (task) {
+                                    await handleTaskApproval(task._id || task.id, 'approve');
+                                    // Mark notification as read
+                                    await axios.patch(`/notifications/${notification._id}/read`, {}, {
+                                      headers: { Authorization: `Bearer ${token}` }
+                                    });
+                                    refreshData();
+                                  }
+                                } catch (err) {
+                                  console.error('Error approving from notification:', err);
+                                }
+                              }
+                            }}
+                            style={{
+                              background: '#22c55e',
+                              color: 'white',
+                              border: 'none',
+                              padding: '4px 8px',
+                              borderRadius: 4,
+                              fontSize: 11,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            ✅ Approve
+                          </button>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              // Extract task title from notification message
+                              const match = notification.message.match(/Task approval required: "([^"]+)"/);
+                              if (match) {
+                                const taskTitle = match[1];
+                                try {
+                                  const token = sessionStorage.getItem("jwt-token");
+                                  // Find the task by title
+                                  const tasksRes = await axios.get('/tasks/pending-approvals', {
+                                    headers: { Authorization: `Bearer ${token}` }
+                                  });
+                                  const task = tasksRes.data.find((t: any) => t.title === taskTitle);
+                                  if (task) {
+                                    await handleTaskApproval(task._id || task.id, 'reject');
+                                    // Mark notification as read
+                                    await axios.patch(`/notifications/${notification._id}/read`, {}, {
+                                      headers: { Authorization: `Bearer ${token}` }
+                                    });
+                                    refreshData();
+                                  }
+                                } catch (err) {
+                                  console.error('Error rejecting from notification:', err);
+                                }
+                              }
+                            }}
+                            style={{
+                              background: '#ef4444',
+                              color: 'white',
+                              border: 'none',
+                              padding: '4px 8px',
+                              borderRadius: 4,
+                              fontSize: 11,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            ❌ Reject
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            
+            {notifications.length > 0 && (
+              <div style={{
+                padding: '12px 20px',
+                borderTop: theme === 'dark' ? '1px solid #4b5563' : '1px solid #e2e8f0',
+                background: theme === 'dark' ? '#4b5563' : '#f8fafc'
+              }}>
+                <button
+                  onClick={async () => {
+                    try {
+                      const token = sessionStorage.getItem("jwt-token");
+                      await axios.patch(`/notifications/all/${user._id}/read`, {}, {
+                        headers: { Authorization: `Bearer ${token}` }
+                      });
+                      refreshData();
+                    } catch (err) {
+                      console.error('Error marking all as read:', err);
+                    }
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: theme === 'dark' ? '#9ca3af' : '#6b7280',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    width: '100%',
+                    textAlign: 'center'
+                  }}
+                >
+                  Mark all as read
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         <FloatingActionButton onAction={handleFABAction} />
         <ToastContainer />
