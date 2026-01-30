@@ -86,6 +86,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [pendingUsers, setPendingUsers] = useState<User[]>([]);
+  const [pendingTaskApprovals, setPendingTaskApprovals] = useState<Task[]>([]);
 
   const today = new Date();
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
@@ -246,11 +247,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
   }, [nav, user._id]);
 
-  // Fetch pending users for admin
+  // Fetch pending users and task approvals for admin
   useEffect(() => {
     if (nav === "userapprovals" && user.role === 'admin') {
       console.log('🔄 Fetching all users for admin:', user._id, user.company, user.role);
       const token = sessionStorage.getItem("jwt-token");
+      
+      // Fetch users
       axios.get("/auth/admin/all-users", {
         headers: { Authorization: `Bearer ${token}` }
       })
@@ -261,6 +264,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       .catch(err => {
         console.error("❌ Error fetching all users:", err);
         showToast("Error loading users: " + (err.response?.data?.message || err.message), "error");
+      });
+      
+      // Fetch pending task approvals
+      axios.get("/tasks/pending-approvals", {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      .then(res => {
+        console.log('📊 Pending task approvals:', res.data);
+        setPendingTaskApprovals(res.data);
+      })
+      .catch(err => {
+        console.error("❌ Error fetching pending task approvals:", err);
       });
     }
   }, [nav, user._id, user.role]);
@@ -358,6 +373,61 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       showToast('User removed successfully! 🗑️', "success");
     } catch (err: any) {
       console.error('❌ User removal error:', err);
+      showToast("Error: " + (err.response?.data?.message || err.message), "error");
+    }
+  };
+
+  const handleUserToggle = async (userId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+    const action = newStatus === 'active' ? 'activate' : 'deactivate';
+    
+    if (!window.confirm(`Are you sure you want to ${action} this user?`)) return;
+    
+    try {
+      console.log('🔄 Attempting user status toggle:', { userId, currentStatus, newStatus });
+      const token = sessionStorage.getItem("jwt-token");
+      
+      await axios.post("/auth/admin/toggle-user-status", {
+        userId,
+        status: newStatus
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // Refresh all users
+      const res = await axios.get("/auth/admin/all-users", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPendingUsers(res.data);
+      
+      showToast(`User ${action}d successfully! ${newStatus === 'active' ? '✅' : '❌'}`, "success");
+    } catch (err: any) {
+      console.error('❌ User toggle error:', err);
+      showToast("Error: " + (err.response?.data?.message || err.message), "error");
+    }
+  };
+
+  const handleTaskApproval = async (taskId: string, action: 'approve' | 'reject') => {
+    try {
+      console.log('🔄 Attempting task approval:', { taskId, action });
+      const token = sessionStorage.getItem("jwt-token");
+      
+      await axios.post(`/tasks/${taskId}/${action}`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // Refresh pending task approvals
+      const res = await axios.get("/tasks/pending-approvals", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPendingTaskApprovals(res.data);
+      
+      // Refresh tasks to show newly approved tasks
+      refreshData();
+      
+      showToast(`Task ${action}d successfully! ${action === 'approve' ? '✅' : '❌'}`, "success");
+    } catch (err: any) {
+      console.error('❌ Task approval error:', err);
       showToast("Error: " + (err.response?.data?.message || err.message), "error");
     }
   };
@@ -1174,8 +1244,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         <label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Priority</label>
         <div style={{ marginBottom: 8 }}>{renderStars(priority, setPriority)}</div>
         <label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Due Date</label>
-        <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required 
-          style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8, width: "100%" }} />
+        <input 
+          type="date" 
+          value={dueDate} 
+          onChange={(e) => setDueDate(e.target.value)} 
+          min={new Date().toISOString().split('T')[0]} // Prevent past dates
+          required 
+          style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8, width: "100%" }} 
+        />
         
         <button type="submit" disabled={loading} style={{
           fontWeight: 600, fontSize: "1.1rem", background: loading ? "#ccc" : "#2563eb",
@@ -1392,9 +1468,100 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   } else if (nav === "userapprovals" && user.role === 'admin') {
     // User Approvals for Admin
     content = (
-      <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 1000, margin: "0 auto" }}>
+      <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
-          User Management ({pendingUsers.length})
+          Admin Dashboard
+        </div>
+        
+        {/* Pending Task Approvals Section */}
+        {pendingTaskApprovals.length > 0 && (
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 16, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
+              📝 Pending Task Approvals ({pendingTaskApprovals.length})
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: 16, marginBottom: 24 }}>
+              {pendingTaskApprovals.map(task => (
+                <div key={task._id} style={{
+                  background: theme === 'dark' ? "#4b5563" : "#fff3cd",
+                  border: "2px solid #f59e0b",
+                  borderRadius: 10,
+                  padding: 20,
+                  boxShadow: "0 2px 8px #f59e0b44",
+                  position: "relative"
+                }}>
+                  <div style={{ 
+                    position: "absolute", 
+                    top: 8, 
+                    right: 8, 
+                    background: "#f59e0b", 
+                    color: "white", 
+                    padding: "2px 8px", 
+                    borderRadius: 12, 
+                    fontSize: 11, 
+                    fontWeight: 600 
+                  }}>
+                    PENDING APPROVAL
+                  </div>
+                  
+                  <div style={{ fontWeight: 600, fontSize: 16, color: theme === 'dark' ? '#ffffff' : '#22223b', marginBottom: 8, paddingRight: 120 }}>
+                    {task.title}
+                  </div>
+                  
+                  <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 8 }}>
+                    {task.description}
+                  </div>
+                  
+                  <div style={{ fontSize: 12, color: "#2563eb", marginBottom: 8 }}>
+                    <b>Assigned by:</b> {typeof task.assignedBy === 'object' ? task.assignedBy?.name : 'Unknown'}
+                  </div>
+                  
+                  <div style={{ fontSize: 12, color: "#2563eb", marginBottom: 12 }}>
+                    <b>Due:</b> {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No due date'}
+                  </div>
+                  
+                  <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                    <button
+                      onClick={() => handleTaskApproval(task._id, 'approve')}
+                      style={{
+                        background: "#22c55e",
+                        color: "white",
+                        border: "none",
+                        padding: "8px 12px",
+                        borderRadius: 6,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        flex: 1
+                      }}
+                    >
+                      ✅ Approve Task
+                    </button>
+                    <button
+                      onClick={() => handleTaskApproval(task._id, 'reject')}
+                      style={{
+                        background: "#ef4444",
+                        color: "white",
+                        border: "none",
+                        padding: "8px 12px",
+                        borderRadius: 6,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        flex: 1
+                      }}
+                    >
+                      ❌ Reject Task
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* User Management Section */}
+        <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 16, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
+          👥 User Management ({pendingUsers.length})
         </div>
         
         {pendingUsers.length === 0 ? (
@@ -1417,28 +1584,29 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             {pendingUsers.map(pendingUser => {
               const isPending = pendingUser.account_status === 'pending';
               const isActive = pendingUser.account_status === 'active';
+              const isInactive = pendingUser.account_status === 'inactive';
               
               return (
                 <div key={pendingUser._id || pendingUser.id} style={{
                   background: theme === 'dark' ? "#4b5563" : "#fff5f5",
-                  border: isPending ? "2px solid #f59e0b" : isActive ? "2px solid #22c55e" : "2px solid #ef4444",
+                  border: isPending ? "2px solid #f59e0b" : isActive ? "2px solid #22c55e" : isInactive ? "2px solid #6b7280" : "2px solid #ef4444",
                   borderRadius: 10,
                   padding: 20,
-                  boxShadow: isPending ? "0 2px 8px #f59e0b44" : isActive ? "0 2px 8px #22c55e44" : "0 2px 8px #ef444444",
+                  boxShadow: isPending ? "0 2px 8px #f59e0b44" : isActive ? "0 2px 8px #22c55e44" : isInactive ? "0 2px 8px #6b728044" : "0 2px 8px #ef444444",
                   position: "relative"
                 }}>
                   <div style={{ 
                     position: "absolute", 
                     top: 8, 
                     right: 8, 
-                    background: isPending ? "#f59e0b" : isActive ? "#22c55e" : "#ef4444", 
+                    background: isPending ? "#f59e0b" : isActive ? "#22c55e" : isInactive ? "#6b7280" : "#ef4444", 
                     color: "white", 
                     padding: "2px 8px", 
                     borderRadius: 12, 
                     fontSize: 11, 
                     fontWeight: 600 
                   }}>
-                    {isPending ? 'PENDING' : isActive ? 'ACTIVE' : 'REJECTED'}
+                    {isPending ? 'PENDING' : isActive ? 'ACTIVE' : isInactive ? 'INACTIVE' : 'REJECTED'}
                   </div>
                   
                   <div style={{ fontWeight: 600, fontSize: 18, color: theme === 'dark' ? '#ffffff' : '#22223b', marginBottom: 8, paddingRight: 80 }}>
@@ -1495,7 +1663,26 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                       </>
                     )}
                     
-                    {(isActive || pendingUser.account_status === 'rejected') && (
+                    {(isActive || isInactive) && (
+                      <button
+                        onClick={() => handleUserToggle(pendingUser.id || pendingUser._id, pendingUser.account_status)}
+                        style={{
+                          background: isActive ? "#6b7280" : "#22c55e",
+                          color: "white",
+                          border: "none",
+                          padding: "8px 12px",
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          flex: 1
+                        }}
+                      >
+                        {isActive ? '⏸️ Deactivate' : '▶️ Activate'}
+                      </button>
+                    )}
+                    
+                    {(isActive || isInactive || pendingUser.account_status === 'rejected') && (
                       <button
                         onClick={() => handleUserRemoval(pendingUser.id || pendingUser._id)}
                         style={{
@@ -1507,7 +1694,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                           fontSize: 12,
                           fontWeight: 600,
                           cursor: "pointer",
-                          width: "100%"
+                          width: "100%",
+                          marginTop: 8
                         }}
                       >
                         🗑️ Remove User

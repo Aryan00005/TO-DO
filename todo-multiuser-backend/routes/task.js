@@ -310,6 +310,30 @@ router.post('/:taskId/approve', auth, async (req, res) => {
     }
 
     const task = await Task.approveTask(req.params.taskId, currentUser.id);
+    
+    // Create notifications for assigned users when task is approved
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+    
+    const { data: assignments } = await supabase
+      .from('task_assignments')
+      .select('user_id')
+      .eq('task_id', req.params.taskId);
+    
+    if (assignments && assignments.length > 0) {
+      const Notification = require('../models/notification');
+      for (const assignment of assignments) {
+        try {
+          await Notification.create(assignment.user_id, `Task approved: "${task.title}"`);
+        } catch (notifError) {
+          console.error('Notification creation failed:', notifError);
+        }
+      }
+    }
+    
     res.json({ message: 'Task approved successfully', task });
   } catch (err) {
     console.error('Error approving task:', err);
@@ -326,6 +350,15 @@ router.post('/:taskId/reject', auth, async (req, res) => {
     }
 
     const task = await Task.rejectTask(req.params.taskId, currentUser.id);
+    
+    // Notify task creator about rejection
+    const Notification = require('../models/notification');
+    try {
+      await Notification.create(task.assigned_by, `Task rejected: "${task.title}"`);
+    } catch (notifError) {
+      console.error('Notification creation failed:', notifError);
+    }
+    
     res.json({ message: 'Task rejected successfully', task });
   } catch (err) {
     console.error('Error rejecting task:', err);

@@ -15,6 +15,14 @@ export const validateTask = (task: { title: string; description: string; assigne
   
   if (!task.dueDate) {
     errors.push("Due date is required");
+  } else {
+    const selectedDate = new Date(task.dueDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time to start of day
+    
+    if (selectedDate < today) {
+      errors.push("Due date cannot be in the past");
+    }
   }
   
   return errors;
