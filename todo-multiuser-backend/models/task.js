@@ -345,6 +345,8 @@ class Task {
 
   // New methods for approval system
   static async approveTask(taskId, adminId) {
+    console.log('Task.approveTask called with:', { taskId, adminId });
+    
     const { data, error } = await supabase
       .from('tasks')
       .update({ approval_status: 'approved' })
@@ -353,11 +355,18 @@ class Task {
       .select()
       .single();
     
-    if (error) throw error;
+    if (error) {
+      console.error('Task approval error:', error);
+      throw error;
+    }
+    
+    console.log('Task approved successfully:', data);
     return data;
   }
 
   static async rejectTask(taskId, adminId) {
+    console.log('Task.rejectTask called with:', { taskId, adminId });
+    
     const { data, error } = await supabase
       .from('tasks')
       .update({ approval_status: 'rejected' })
@@ -366,7 +375,12 @@ class Task {
       .select()
       .single();
     
-    if (error) throw error;
+    if (error) {
+      console.error('Task rejection error:', error);
+      throw error;
+    }
+    
+    console.log('Task rejected successfully:', data);
     return data;
   }
 

@@ -123,22 +123,36 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     setIsRefreshing(true);
     try {
       const token = sessionStorage.getItem("jwt-token");
+      console.log('🔄 Refreshing data for user:', user._id);
+      
       const [tasksRes, usersRes, notificationsRes] = await Promise.all([
         axios.get(`/tasks/visible`, { headers: { Authorization: `Bearer ${token}` } }),
         axios.get("/auth/users", { headers: { Authorization: `Bearer ${token}` } }),
         axios.get(`/notifications/${user._id}`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
       
+      console.log('📊 Data refreshed:', {
+        tasks: tasksRes.data.length,
+        users: usersRes.data.length,
+        notifications: notificationsRes.data.length
+      });
+      
       setTasks(tasksRes.data);
       setUsers(usersRes.data);
       setNotifications(notificationsRes.data);
       setLastUpdated(new Date());
-    } catch (err) {
-      console.error('Error refreshing data:', err);
+    } catch (err: any) {
+      console.error('❌ Error refreshing data:', err);
+      if (err.response?.status === 401) {
+        showToast('Session expired. Please login again.', 'error');
+        onLogout();
+      } else {
+        showToast('Error refreshing data: ' + (err.response?.data?.message || err.message), 'error');
+      }
     } finally {
       setIsRefreshing(false);
     }
-  }, [user._id]);
+  }, [user._id, onLogout, showToast]);
 
   const updateTaskStatus = async (taskId: string, newStatus: string) => {
     try {
@@ -244,9 +258,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   useEffect(() => {
     if (nav === "assignedtasks") {
-      axios.get(`/tasks/assignedBy/${user._id}`)
-        .then(res => setAssignedTasks(res.data))
-        .catch(err => console.error("Error fetching assigned tasks:", err));
+      const token = sessionStorage.getItem("jwt-token");
+      axios.get(`/tasks/assignedBy/${user._id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(res => {
+          console.log('Assigned tasks response:', res.data);
+          setAssignedTasks(res.data);
+        })
+        .catch(err => {
+          console.error("Error fetching assigned tasks:", err);
+          showToast("Error loading assigned tasks: " + (err.response?.data?.message || err.message), "error");
+        });
     }
   }, [nav, user._id]);
 
@@ -2002,28 +2025,38 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                           <button
                             onClick={async (e) => {
                               e.stopPropagation();
-                              // Extract task title from notification message
-                              const match = notification.message.match(/Task approval required: "([^"]+)"/);
-                              if (match) {
-                                const taskTitle = match[1];
-                                try {
-                                  const token = sessionStorage.getItem("jwt-token");
-                                  // Find the task by title
+                              try {
+                                const token = sessionStorage.getItem("jwt-token");
+                                // Extract task title from notification message
+                                const match = notification.message.match(/Task approval required: "([^"]+)"/);
+                                if (match) {
+                                  const taskTitle = match[1];
+                                  
+                                  // Find the task by title from pending approvals
                                   const tasksRes = await axios.get('/tasks/pending-approvals', {
                                     headers: { Authorization: `Bearer ${token}` }
                                   });
                                   const task = tasksRes.data.find((t: any) => t.title === taskTitle);
+                                  
                                   if (task) {
-                                    await handleTaskApproval(task._id || task.id, 'approve');
-                                    // Mark notification as read
-                                    await axios.patch(`/notifications/${notification._id}/read`, {}, {
+                                    // Use notification-based approval endpoint with taskId in body
+                                    await axios.post(`/notifications/approve-task/${notification._id || notification.id}`, {
+                                      taskId: task.id || task._id
+                                    }, {
                                       headers: { Authorization: `Bearer ${token}` }
                                     });
+                                    
+                                    showToast('Task approved successfully! ✅', 'success');
                                     refreshData();
+                                  } else {
+                                    showToast('Task not found for approval', 'error');
                                   }
-                                } catch (err) {
-                                  console.error('Error approving from notification:', err);
+                                } else {
+                                  showToast('Could not extract task information', 'error');
                                 }
+                              } catch (err: any) {
+                                console.error('Error approving from notification:', err);
+                                showToast('Error: ' + (err.response?.data?.message || err.message), 'error');
                               }
                             }}
                             style={{
@@ -2041,28 +2074,38 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                           <button
                             onClick={async (e) => {
                               e.stopPropagation();
-                              // Extract task title from notification message
-                              const match = notification.message.match(/Task approval required: "([^"]+)"/);
-                              if (match) {
-                                const taskTitle = match[1];
-                                try {
-                                  const token = sessionStorage.getItem("jwt-token");
-                                  // Find the task by title
+                              try {
+                                const token = sessionStorage.getItem("jwt-token");
+                                // Extract task title from notification message
+                                const match = notification.message.match(/Task approval required: "([^"]+)"/);
+                                if (match) {
+                                  const taskTitle = match[1];
+                                  
+                                  // Find the task by title from pending approvals
                                   const tasksRes = await axios.get('/tasks/pending-approvals', {
                                     headers: { Authorization: `Bearer ${token}` }
                                   });
                                   const task = tasksRes.data.find((t: any) => t.title === taskTitle);
+                                  
                                   if (task) {
-                                    await handleTaskApproval(task._id || task.id, 'reject');
-                                    // Mark notification as read
-                                    await axios.patch(`/notifications/${notification._id}/read`, {}, {
+                                    // Use notification-based rejection endpoint with taskId in body
+                                    await axios.post(`/notifications/reject-task/${notification._id || notification.id}`, {
+                                      taskId: task.id || task._id
+                                    }, {
                                       headers: { Authorization: `Bearer ${token}` }
                                     });
+                                    
+                                    showToast('Task rejected successfully! ❌', 'success');
                                     refreshData();
+                                  } else {
+                                    showToast('Task not found for rejection', 'error');
                                   }
-                                } catch (err) {
-                                  console.error('Error rejecting from notification:', err);
+                                } else {
+                                  showToast('Could not extract task information', 'error');
                                 }
+                              } catch (err: any) {
+                                console.error('Error rejecting from notification:', err);
+                                showToast('Error: ' + (err.response?.data?.message || err.message), 'error');
                               }
                             }}
                             style={{

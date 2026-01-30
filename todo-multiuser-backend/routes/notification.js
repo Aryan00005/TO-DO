@@ -110,6 +110,8 @@ router.post('/approve-task/:notificationId', auth, async (req, res) => {
     }
 
     const { taskId } = req.body;
+    console.log('Approving task from notification:', { notificationId: req.params.notificationId, taskId, userId: req.user.id });
+    
     if (!taskId) {
       return res.status(400).json({ message: 'Task ID is required' });
     }
@@ -117,6 +119,10 @@ router.post('/approve-task/:notificationId', auth, async (req, res) => {
     // Approve the task
     const Task = require('../models/task');
     const task = await Task.approveTask(taskId, currentUser.id);
+    
+    if (!task) {
+      return res.status(404).json({ message: 'Task not found or already processed' });
+    }
     
     // Mark notification as read
     await Notification.markAsRead(req.params.notificationId);
@@ -146,7 +152,7 @@ router.post('/approve-task/:notificationId', auth, async (req, res) => {
     res.json({ message: 'Task approved successfully', task });
   } catch (err) {
     console.error('Error approving task from notification:', err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: 'Server error: ' + err.message });
   }
 });
 
@@ -159,6 +165,8 @@ router.post('/reject-task/:notificationId', auth, async (req, res) => {
     }
 
     const { taskId } = req.body;
+    console.log('Rejecting task from notification:', { notificationId: req.params.notificationId, taskId, userId: req.user.id });
+    
     if (!taskId) {
       return res.status(400).json({ message: 'Task ID is required' });
     }
@@ -166,6 +174,10 @@ router.post('/reject-task/:notificationId', auth, async (req, res) => {
     // Reject the task
     const Task = require('../models/task');
     const task = await Task.rejectTask(taskId, currentUser.id);
+    
+    if (!task) {
+      return res.status(404).json({ message: 'Task not found or already processed' });
+    }
     
     // Mark notification as read
     await Notification.markAsRead(req.params.notificationId);
@@ -180,7 +192,7 @@ router.post('/reject-task/:notificationId', auth, async (req, res) => {
     res.json({ message: 'Task rejected successfully', task });
   } catch (err) {
     console.error('Error rejecting task from notification:', err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: 'Server error: ' + err.message });
   }
 });
 
