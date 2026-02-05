@@ -122,9 +122,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     try {
       const token = sessionStorage.getItem("jwt-token");
       
-      // Only fetch tasks - users and notifications on demand
-      const tasksRes = await axios.get(`/tasks/visible`, { headers: { Authorization: `Bearer ${token}` } });
+      const [tasksRes, notificationsRes] = await Promise.all([
+        axios.get(`/tasks/visible`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`/notifications/${user._id}`, { headers: { Authorization: `Bearer ${token}` } })
+      ]);
+      
       setTasks(tasksRes.data);
+      setNotifications(notificationsRes.data);
       setLastUpdated(new Date());
     } catch (err: any) {
       if (err.response?.status === 401) {
