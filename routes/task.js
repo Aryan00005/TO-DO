@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Task = require('../models/task.js');
+const TaskOptimized = require('../models/task-optimized.js');
 const User = require('../models/user.js');
 const auth = require('../middleware/auth');
 
@@ -52,10 +53,64 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// Get all visible tasks for user
+// Debug endpoint - get ALL tasks (remove after debugging)
+router.get('/debug-all', auth, async (req, res) => {
+  try {
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+    
+    const { data: allTasks, error } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        task_assignments(
+          user_id,
+          users(id, name, email, role, account_status)
+        )
+      `)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    console.log('DEBUG - All tasks in database:', allTasks.length);
+    allTasks.forEach(task => {
+      console.log(`Task ${task.id}: ${task.title} | Company: ${task.company} | Approval: ${task.approval_status} | Assigned by: ${task.assigned_by}`);
+    });
+    
+    res.json(allTasks);
+  } catch (err) {
+    console.error('Debug error:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Get all visible tasks for user (optimized)
 router.get('/visible', auth, async (req, res) => {
   try {
     console.log('🔍 /tasks/visible called for user:', req.user.id);
+    
+    const currentUser = req.user; // Use cached user from auth middleware
+    console.log('👤 Current user:', { id: currentUser.id, role: currentUser.role, company: currentUser.company });
+
+    // Use optimized method for better performance
+    const tasks = await TaskOptimized.findVisibleToUserOptimized(currentUser.id, currentUser.role, currentUser.company);
+    
+    console.log('📋 Tasks returned:', tasks.length);
+    
+    res.json(tasks);
+  } catch (err) {
+    console.error('❌ Error fetching visible tasks:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
+// Get all visible tasks for user (fallback to original method)
+router.get('/visible-original', auth, async (req, res) => {
+  try {
+    console.log('🔍 /tasks/visible-original called for user:', req.user.id);
     
     const currentUser = await User.findById(req.user.id);
     if (!currentUser) {
@@ -68,6 +123,8 @@ router.get('/visible', auth, async (req, res) => {
     const tasks = await Task.findVisibleToUser(currentUser.id, currentUser.role, currentUser.company);
     
     console.log('📋 Tasks returned:', tasks.length);
+    console.log('📋 Task details:', tasks.map(t => ({ id: t._id, title: t.title, approval_status: t.approval_status, company: t.company })));
+    
     res.json(tasks);
   } catch (err) {
     console.error('❌ Error fetching visible tasks:', err);
@@ -136,12 +193,12 @@ router.patch('/:taskId', auth, async (req, res) => {
       
       const currentStatus = currentTask.status;
       
-      // Define status progression rules (one-way only)
+      // Define status progression rules (allow more flexible transitions)
       const statusProgression = {
-        'Not Started': ['Working on it'],
-        'Working on it': ['Stuck', 'Done'],
-        'Stuck': ['Working on it', 'Done'],
-        'Done': [] // Cannot move from Done
+        'Not Started': ['Working on it', 'Stuck', 'Done'],
+        'Working on it': ['Stuck', 'Done', 'Not Started'],
+        'Stuck': ['Working on it', 'Done', 'Not Started'],
+        'Done': ['Working on it', 'Stuck', 'Not Started'] // Allow moving back from Done
       };
       
       // Validate status progression
@@ -285,11 +342,27 @@ router.delete('/:taskId', auth, async (req, res) => {
   }
 });
 
+// Fix pending tasks (Admin only)
+router.post('/fix-pending', auth, async (req, res) => {
+  try {
+    const currentUser = req.user;
+    if (currentUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Only admins can fix pending tasks.' });
+    }
+
+    const fixedTasks = await TaskOptimized.fixPendingTasks();
+    res.json({ message: `Fixed ${fixedTasks?.length || 0} pending tasks`, tasks: fixedTasks });
+  } catch (err) {
+    console.error('Error fixing pending tasks:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
 // Get pending task approvals (Admin only)
 router.get('/pending-approvals', auth, async (req, res) => {
   try {
-    const currentUser = await User.findById(req.user.id);
-    if (!currentUser || currentUser.role !== 'admin') {
+    const currentUser = req.user; // Use cached user
+    if (currentUser.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied. Only admins can view pending approvals.' });
     }
 
@@ -310,6 +383,30 @@ router.post('/:taskId/approve', auth, async (req, res) => {
     }
 
     const task = await Task.approveTask(req.params.taskId, currentUser.id);
+    
+    // Create notifications for assigned users when task is approved
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+    
+    const { data: assignments } = await supabase
+      .from('task_assignments')
+      .select('user_id')
+      .eq('task_id', req.params.taskId);
+    
+    if (assignments && assignments.length > 0) {
+      const Notification = require('../models/notification');
+      for (const assignment of assignments) {
+        try {
+          await Notification.create(assignment.user_id, `Task approved: "${task.title}"`);
+        } catch (notifError) {
+          console.error('Notification creation failed:', notifError);
+        }
+      }
+    }
+    
     res.json({ message: 'Task approved successfully', task });
   } catch (err) {
     console.error('Error approving task:', err);
@@ -326,6 +423,15 @@ router.post('/:taskId/reject', auth, async (req, res) => {
     }
 
     const task = await Task.rejectTask(req.params.taskId, currentUser.id);
+    
+    // Notify task creator about rejection
+    const Notification = require('../models/notification');
+    try {
+      await Notification.create(task.assigned_by, `Task rejected: "${task.title}"`);
+    } catch (notifError) {
+      console.error('Notification creation failed:', notifError);
+    }
+    
     res.json({ message: 'Task rejected successfully', task });
   } catch (err) {
     console.error('Error rejecting task:', err);

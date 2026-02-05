@@ -231,6 +231,14 @@ router.post('/admin/login', async (req, res) => {
     if (user.account_status === 'rejected') {
       return res.status(403).json({ message: 'Account has been rejected. Contact support.' });
     }
+    
+    if (user.account_status === 'inactive') {
+      return res.status(403).json({ message: 'Account has been deactivated. Contact support.' });
+    }
+    
+    if (user.account_status !== 'active') {
+      return res.status(403).json({ message: 'Account is not active. Contact support.' });
+    }
 
     const loginData = await handleLoginSuccess(user, res);
     res.json(loginData);
@@ -347,6 +355,20 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ 
         message: 'Account has been rejected. Please contact your company admin.',
         status: 'rejected'
+      });
+    }
+    
+    if (user.account_status === 'inactive') {
+      return res.status(403).json({ 
+        message: 'Account has been deactivated. Please contact your company admin.',
+        status: 'inactive'
+      });
+    }
+    
+    if (user.account_status !== 'active') {
+      return res.status(403).json({ 
+        message: 'Account is not active. Please contact your company admin.',
+        status: user.account_status
       });
     }
 
@@ -852,6 +874,55 @@ router.delete('/admin/remove-user/:userId', authenticateToken, async (req, res) 
     });
   } catch (err) {
     console.error('Remove user error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Company Admin: Activate/Deactivate User
+router.post('/admin/toggle-user-status', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser || currentUser.role !== 'admin' || !currentUser.company) {
+      return res.status(403).json({ message: 'Access denied. Company admin privileges required.' });
+    }
+    
+    const { userId, status } = req.body;
+    
+    if (!userId || !['active', 'inactive'].includes(status)) {
+      return res.status(400).json({ message: 'User ID and valid status (active/inactive) required.' });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user || user.company !== currentUser.company || user.role === 'admin') {
+      return res.status(404).json({ message: 'User not found or access denied.' });
+    }
+    
+    await User.updateById(userId, {
+      account_status: status
+    });
+    
+    // Create notification for user
+    try {
+      await supabase.from('notifications').insert({
+        user_id: userId,
+        message: `Your account has been ${status === 'active' ? 'activated' : 'deactivated'} by admin`
+      });
+    } catch (notifError) {
+      console.error('Notification creation failed:', notifError);
+    }
+    
+    res.json({ 
+      message: `User ${status === 'active' ? 'activated' : 'deactivated'} successfully.`,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        status: status
+      }
+    });
+  } catch (err) {
+    console.error('Toggle user status error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 });
