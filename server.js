@@ -1,6 +1,15 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+
+// Validate critical environment variables
+if (!process.env.JWT_SECRET) {
+  console.error('❌ CRITICAL: JWT_SECRET is missing!');
+  if (process.env.VERCEL !== '1') {
+    process.exit(1);
+  }
+}
+
 const passport = require('./config/passport');
 const { testConnection } = require('./config/database');
 const { rateLimiters, securityHeaders, sanitizeInput, securityLogger } = require('./middleware/security');
@@ -43,8 +52,10 @@ app.get('/health', (req, res) => {
 // Initialize Passport
 app.use(passport.initialize());
 
-// Test PostgreSQL connection
-testConnection();
+// Test PostgreSQL connection (skip in serverless cold start)
+if (process.env.VERCEL !== '1') {
+  testConnection();
+}
 
 // Debug: Log environment variables
 console.log('🔍 Environment check:');

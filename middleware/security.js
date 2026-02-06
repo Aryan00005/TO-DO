@@ -2,9 +2,12 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const jwt = require('jsonwebtoken');
 
-// Validate required environment variables
+// Validate required environment variables (warn only in serverless)
 if (!process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable is required');
+  console.error('❌ JWT_SECRET environment variable is required');
+  if (process.env.VERCEL !== '1') {
+    throw new Error('JWT_SECRET environment variable is required');
+  }
 }
 
 // Rate limiting configurations
