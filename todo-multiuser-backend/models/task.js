@@ -407,10 +407,9 @@ class Task {
   static async findVisibleToUser(userId, userRole, userCompany) {
     console.log('Finding visible tasks for user:', { userId, userRole, userCompany });
     
-    // Ensure userId is an integer for comparison
     const userIdInt = parseInt(userId);
     
-    // Get all tasks with assignments
+    // Get tasks where user is CREATOR or ASSIGNEE only
     const { data: allTasks, error } = await supabase
       .from('tasks')
       .select(`
@@ -429,20 +428,21 @@ class Task {
     
     console.log('All tasks fetched:', allTasks?.length || 0);
     
-    // SIMPLIFIED LOGIC - Show ALL approved tasks + user's own tasks
+    // NEW LOGIC: Show only tasks where user is creator OR assignee
     const visibleTasks = allTasks.filter(task => {
       const isCreator = task.assigned_by === userIdInt;
       const isAssigned = task.task_assignments?.some(a => a.user_id === userIdInt);
       
-      console.log(`Task ${task.id}: creator=${isCreator}, assigned=${isAssigned}, approval=${task.approval_status}`);
-      
-      // Show approved tasks OR tasks created by user
-      return task.approval_status === 'approved' || isCreator;
+      // Only show if user is creator OR assigned to this task
+      // AND task must be approved (unless user is creator)
+      if (isCreator) return true;
+      if (isAssigned && task.approval_status === 'approved') return true;
+      return false;
     });
     
     console.log('Visible tasks after filtering:', visibleTasks.length);
     
-    // Transform tasks
+    // Transform tasks - hide other assignees from non-creators
     const transformedTasks = await Promise.all(visibleTasks.map(async (task) => {
       const { data: creator } = await supabase
         .from('users')
@@ -450,7 +450,18 @@ class Task {
         .eq('id', task.assigned_by)
         .single();
       
-      const assignees = task.task_assignments?.map(a => a.users).filter(u => u?.account_status === 'active') || [];
+      const isCreator = task.assigned_by === userIdInt;
+      const allAssignees = task.task_assignments?.map(a => a.users).filter(u => u?.account_status === 'active') || [];
+      
+      // If user is NOT creator, show only their own assignment
+      let displayAssignees;
+      if (isCreator) {
+        // Creator sees all assignees
+        displayAssignees = allAssignees;
+      } else {
+        // Assignee sees only themselves - compare by ID
+        displayAssignees = allAssignees.filter(a => parseInt(a.id) === userIdInt);
+      }
       
       return {
         ...task,
@@ -458,9 +469,9 @@ class Task {
         dueDate: task.due_date,
         stuckReason: task.stuck_reason,
         assignedBy: creator ? { _id: creator.id.toString(), name: creator.name, email: creator.email } : null,
-        assignedTo: assignees.length === 1 ? 
-          { _id: assignees[0].id.toString(), name: assignees[0].name, email: assignees[0].email } : 
-          assignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
+        assignedTo: displayAssignees.length === 1 ? 
+          { _id: displayAssignees[0].id.toString(), name: displayAssignees[0].name, email: displayAssignees[0].email } : 
+          displayAssignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
       };
     }));
     
