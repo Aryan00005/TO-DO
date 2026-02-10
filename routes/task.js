@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const Task = require('../models/task.js');
-const TaskOptimized = require('../models/task-optimized.js');
 const User = require('../models/user.js');
 const auth = require('../middleware/auth');
 
@@ -87,30 +86,10 @@ router.get('/debug-all', auth, async (req, res) => {
   }
 });
 
-// Get all visible tasks for user (optimized)
+// Get all visible tasks for user
 router.get('/visible', auth, async (req, res) => {
   try {
     console.log('🔍 /tasks/visible called for user:', req.user.id);
-    
-    const currentUser = req.user; // Use cached user from auth middleware
-    console.log('👤 Current user:', { id: currentUser.id, role: currentUser.role, company: currentUser.company });
-
-    // Use optimized method for better performance
-    const tasks = await TaskOptimized.findVisibleToUserOptimized(currentUser.id, currentUser.role, currentUser.company);
-    
-    console.log('📋 Tasks returned:', tasks.length);
-    
-    res.json(tasks);
-  } catch (err) {
-    console.error('❌ Error fetching visible tasks:', err);
-    res.status(500).json({ message: 'Server error: ' + err.message });
-  }
-});
-
-// Get all visible tasks for user (fallback to original method)
-router.get('/visible-original', auth, async (req, res) => {
-  try {
-    console.log('🔍 /tasks/visible-original called for user:', req.user.id);
     
     const currentUser = await User.findById(req.user.id);
     if (!currentUser) {
@@ -325,13 +304,37 @@ router.put('/:taskId', auth, async (req, res) => {
   }
 });
 
-// Delete task (Admin only)
+// Delete task (Admin or Creator can delete)
 router.delete('/:taskId', auth, async (req, res) => {
   try {
-    // Check if user is admin
     const currentUser = await User.findById(req.user.id);
-    if (!currentUser || currentUser.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied. Only company admins can delete tasks.' });
+    if (!currentUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Get task to check creator
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+    
+    const { data: task, error: fetchError } = await supabase
+      .from('tasks')
+      .select('assigned_by')
+      .eq('id', req.params.taskId)
+      .single();
+    
+    if (fetchError || !task) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+    
+    // Allow if user is admin OR task creator
+    const isCreator = task.assigned_by === currentUser.id;
+    const isAdmin = currentUser.role === 'admin';
+    
+    if (!isAdmin && !isCreator) {
+      return res.status(403).json({ message: 'Access denied. Only task creator or admin can delete tasks.' });
     }
 
     await Task.deleteById(req.params.taskId);
@@ -342,27 +345,11 @@ router.delete('/:taskId', auth, async (req, res) => {
   }
 });
 
-// Fix pending tasks (Admin only)
-router.post('/fix-pending', auth, async (req, res) => {
-  try {
-    const currentUser = req.user;
-    if (currentUser.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied. Only admins can fix pending tasks.' });
-    }
-
-    const fixedTasks = await TaskOptimized.fixPendingTasks();
-    res.json({ message: `Fixed ${fixedTasks?.length || 0} pending tasks`, tasks: fixedTasks });
-  } catch (err) {
-    console.error('Error fixing pending tasks:', err);
-    res.status(500).json({ message: 'Server error: ' + err.message });
-  }
-});
-
 // Get pending task approvals (Admin only)
 router.get('/pending-approvals', auth, async (req, res) => {
   try {
-    const currentUser = req.user; // Use cached user
-    if (currentUser.role !== 'admin') {
+    const currentUser = await User.findById(req.user.id);
+    if (!currentUser || currentUser.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied. Only admins can view pending approvals.' });
     }
 
