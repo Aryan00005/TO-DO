@@ -17,7 +17,7 @@ import axios from "../api/axios";
 import type { User } from "../types/User";
 import { validateTask } from "../utils/validation";
 import {
-  Button, DashboardTitle, Form, Input, Label, Layout, Main, NavItem, 
+  Button, DashboardTitle, Form, Input, Label, Layout, Main, NavItem,  
   ProfileBox, Sidebar, Status, TaskCard, TaskDesc, TaskTitle, TopBar
 } from "../components/StyledComponents";
 
@@ -295,7 +295,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             <div style={{ fontWeight: 700, fontSize: 22, marginTop: 10, color: theme === 'dark' ? '#ffffff' : '#000000' }}>{user.name}</div>
             <div style={{ color: "#64748b" }}>{user.email}</div>
             <div style={{ color: "#2563eb", fontSize: 14, marginTop: 4 }}>
-              {user.role === 'admin' ? '👑 Admin' : '👤 User'} • {user.organization?.name || 'No Organization'}
+              {user.role === 'admin' ? ' Admin' : ' User'} • {user.organization?.name || 'No Organization'}
             </div>
           </div>
           
@@ -402,7 +402,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             id="kanbanSort"
             value={kanbanSort}
             onChange={e => setKanbanSort(e.target.value as "none" | "priority" | "date")}
-            style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #dbeafe" }}
+            style={{ padding: "4px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
           >
             <option value="none">None</option>
             <option value="priority">Priority</option>
@@ -549,6 +549,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         
         <Label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Task Title</Label>
         <Input
+          $theme={theme}
           value={title}
           onChange={(e: any) => setTitle(e.target.value)}
           placeholder="Task Title"
@@ -556,6 +557,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         />
         <Label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Company</Label>
         <Input
+          $theme={theme}
           type="text"
           value={company}
           onChange={(e: any) => setCompany(e.target.value)}
@@ -563,6 +565,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         />
         <Label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Description</Label>
         <Input
+          $theme={theme}
           value={description}
           onChange={(e: any) => setDescription(e.target.value)}
           placeholder="Description"
@@ -570,14 +573,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         />
         <Label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Assign To</Label>
         <select value={assignedTo} onChange={(e: any) => setAssignedTo(e.target.value)} required
-          style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8, width: "100%" }}>
+          style={{ padding: 12, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#ddd'}`, borderRadius: 8, width: "100%", background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}>
           <option value="">Select user...</option>
           {users.map(u => <option key={u._id} value={u._id}>{u.name}</option>)}
         </select>
         <Label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Priority</Label>
         <div style={{ marginBottom: 8 }}>{renderStars(priority, setPriority)}</div>
         <Label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Due Date</Label>
-        <Input type="date" value={dueDate} onChange={(e: any) => setDueDate(e.target.value)} required />
+        <Input $theme={theme} type="date" value={dueDate} onChange={(e: any) => setDueDate(e.target.value)} required />
         <Button type="submit" disabled={loading} style={{
           fontWeight: 600, fontSize: "1.1rem", background: loading ? "#ccc" : "#2563eb",
           color: "#fff", padding: "12px 24px", borderRadius: 8, border: "none",
@@ -683,13 +686,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     content = (
       <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
-          ✅ Completed Tasks ({completedTasks.length})
+           Completed Tasks ({completedTasks.length})
         </div>
         
         {/* Completion Stats */}
         <div style={{ background: theme === 'dark' ? "#22c55e22" : "#f0fdf4", border: "1px solid #22c55e", borderRadius: 8, padding: 16, marginBottom: 20 }}>
           <div style={{ color: "#22c55e", fontWeight: 600 }}>
-            🎉 Great job! You've completed {completedTasks.length} out of {totalTasks} tasks 
+               Great job! You've completed {completedTasks.length} out of {totalTasks} tasks 
             ({totalTasks > 0 ? Math.round((completedTasks.length / totalTasks) * 100) : 0}% completion rate)
           </div>
         </div>
@@ -1406,7 +1409,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           <FaTasks /> Task List
         </NavItem>
         <NavItem $active={nav === "completed"} onClick={() => setNav("completed")} style={{ color: nav === "completed" ? "#2563eb" : theme === 'dark' ? '#ffffff' : "#22223b" }}>
-          ✅ Completed Tasks
+           Completed Tasks
         </NavItem>
         <NavItem $active={nav === "assignedtasks"} onClick={() => setNav("assignedtasks")} style={{ color: nav === "assignedtasks" ? "#2563eb" : theme === 'dark' ? '#ffffff' : "#22223b" }}>
           <FaUser /> Tasks Assigned

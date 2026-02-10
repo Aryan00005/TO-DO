@@ -103,16 +103,23 @@ export const Form = styled.form`
   max-width: 400px;
 `;
 
-export const Input = styled.input`
+export const Input = styled.input<{ $theme?: string }>`
   padding: 0.5rem;
   border-radius: 4px;
-  border: 1px solid #ccc;
+  border: 1px solid ${({ $theme }) => $theme === 'dark' ? '#4b5563' : '#ccc'};
+  background: ${({ $theme }) => $theme === 'dark' ? '#1f2937' : '#fff'};
+  color: ${({ $theme }) => $theme === 'dark' ? '#ffffff' : '#000000'};
+  &::placeholder {
+    color: ${({ $theme }) => $theme === 'dark' ? '#9ca3af' : '#6b7280'};
+  }
 `;
 
-export const Select = styled.select`
+export const Select = styled.select<{ $theme?: string }>`
   padding: 0.5rem;
   border-radius: 4px;
-  border: 1px solid #ccc;
+  border: 1px solid ${({ $theme }) => $theme === 'dark' ? '#4b5563' : '#ccc'};
+  background: ${({ $theme }) => $theme === 'dark' ? '#1f2937' : '#fff'};
+  color: ${({ $theme }) => $theme === 'dark' ? '#ffffff' : '#000000'};
 `;
 
 export const ProfileBox = styled.div`
