@@ -739,7 +739,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search tasks..."
-              style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #dbeafe", minWidth: 200 }}
+              style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, minWidth: 200, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
             />
           </div>
           
@@ -748,7 +748,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #dbeafe" }}
+              style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
             >
               <option value="all">All Status</option>
               <option value="Not Started">Not Started</option>
@@ -763,7 +763,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             <select
               value={kanbanSort}
               onChange={e => setKanbanSort(e.target.value as "none" | "priority" | "date")}
-              style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #dbeafe" }}
+              style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
             >
               <option value="none">None</option>
               <option value="priority">Priority</option>
@@ -1213,7 +1213,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Task Title"
           required
-          style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8, width: "100%" }}
+          style={{ padding: 12, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#ddd'}`, borderRadius: 8, width: "100%", background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
         />
         <label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Company</label>
         <input
@@ -1221,7 +1221,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           value={company}
           onChange={(e) => setCompany(e.target.value)}
           placeholder="Company Name"
-          style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8, width: "100%" }}
+          style={{ padding: 12, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#ddd'}`, borderRadius: 8, width: "100%", background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
         />
         <label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Description</label>
         <input
@@ -1229,16 +1229,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Description"
           required
-          style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8, width: "100%" }}
+          style={{ padding: 12, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#ddd'}`, borderRadius: 8, width: "100%", background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
         />
         <label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Assign To (Multiple)</label>
         <div style={{
-          border: "1px solid #ddd",
+          border: `1px solid ${theme === 'dark' ? '#4b5563' : '#ddd'}`,
           borderRadius: 8,
           padding: 12,
           maxHeight: 200,
           overflowY: 'auto',
-          background: theme === 'dark' ? '#4b5563' : '#fff'
+          background: theme === 'dark' ? '#1f2937' : '#fff'
         }}>
           {users.length > 0 && (() => {
             const priorityNames = ['Rajendrasinh Raj', 'Nishit Raj'];
@@ -1294,7 +1294,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           onChange={(e) => setDueDate(e.target.value)} 
           min={new Date().toISOString().split('T')[0]} // Prevent past dates
           required 
-          style={{ padding: 12, border: "1px solid #ddd", borderRadius: 8, width: "100%" }} 
+          style={{ padding: 12, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#ddd'}`, borderRadius: 8, width: "100%", background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }} 
         />
         
         <button type="submit" disabled={loading} style={{
