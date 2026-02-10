@@ -611,7 +611,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           <select
             value={kanbanSort}
             onChange={e => setKanbanSort(e.target.value as "none" | "priority" | "date")}
-            style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #dbeafe", background: theme === 'dark' ? "#4b5563" : "#fff", color: theme === 'dark' ? '#ffffff' : '#000000' }}
+            style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? "#1f2937" : "#fff", color: theme === 'dark' ? '#ffffff' : '#000000' }}
           >
             <option value="none">Sort: None</option>
             <option value="priority">Sort: Priority</option>
