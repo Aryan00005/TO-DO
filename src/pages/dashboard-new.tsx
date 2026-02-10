@@ -102,9 +102,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   // Organization validation and setup
   if (!user.organization || !user.organization.name) {
-    user.organization = { 
+    user.organization = {
       name: user._id === 'jayraj' ? 'RLA' : user._id === 'testadmin' ? 'TestCorp' : 'Task Management', 
-      type: 'company' 
+      type: 'company'
     };
   }
 
@@ -607,7 +607,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             <div style={{ fontWeight: 700, fontSize: 22, marginTop: 10, color: theme === 'dark' ? '#ffffff' : '#000000' }}>{user.name}</div>
             <div style={{ color: "#64748b" }}>{user.email}</div>
             <div style={{ color: "#2563eb", fontSize: 14, marginTop: 4 }}>
-              {user.role === 'admin' ? '👑 Admin' : '👤 User'} • {user.organization?.name || 'No Organization'}
+              {user.role === 'admin' ? ' Admin' : ' User'} • {user.organization?.name || 'No Organization'}
             </div>
           </div>
           
@@ -1035,12 +1035,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     content = (
       <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22" }}>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
-          ✅ Completed Tasks ({completedTasks.length})
+           Completed Tasks ({completedTasks.length})
         </div>
         
         <div style={{ background: theme === 'dark' ? "#22c55e22" : "#f0fdf4", border: "1px solid #22c55e", borderRadius: 8, padding: 16, marginBottom: 20 }}>
           <div style={{ color: "#22c55e", fontWeight: 600 }}>
-            🎉 Great job! You've completed {completedTasks.length} out of {totalTasks} tasks 
+             Great job! You've completed {completedTasks.length} out of {totalTasks} tasks 
             ({totalTasks > 0 ? Math.round((completedTasks.length / totalTasks) * 100) : 0}% completion rate)
           </div>
         </div>

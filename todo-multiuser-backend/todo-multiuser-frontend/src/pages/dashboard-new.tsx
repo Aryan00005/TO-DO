@@ -43,7 +43,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [showStuckModal, setShowStuckModal] = useState(false);
   const [stuckTaskId, setStuckTaskId] = useState('');
   const [stuckReason, setStuckReason] = useState('');
-  const [sortBy, setSortBy] = useState('none');
+      const [sortBy, setSortBy] = useState('none');
 
   if (!user) return <div>Loading...</div>;
 
