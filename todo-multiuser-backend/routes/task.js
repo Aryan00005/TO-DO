@@ -111,6 +111,71 @@ router.get('/visible', auth, async (req, res) => {
   }
 });
 
+// Get single task details (for editing)
+router.get('/:taskId', auth, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    if (!currentUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+
+    const { data: task, error } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        task_assignments(
+          user_id,
+          users(id, name, email)
+        )
+      `)
+      .eq('id', req.params.taskId)
+      .single();
+
+    if (error || !task) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+
+    // Check if user can view this task
+    const isCreator = task.assigned_by === currentUser.id;
+    const isAssigned = task.task_assignments?.some(a => a.user_id === currentUser.id);
+    const isAdmin = currentUser.role === 'admin';
+
+    if (!isCreator && !isAssigned && !isAdmin) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Get creator details
+    const { data: creator } = await supabase
+      .from('users')
+      .select('id, name, email')
+      .eq('id', task.assigned_by)
+      .single();
+
+    const assignees = task.task_assignments?.map(a => a.users) || [];
+
+    const responseTask = {
+      ...task,
+      _id: task.id.toString(),
+      id: task.id,
+      dueDate: task.due_date,
+      stuckReason: task.stuck_reason,
+      assignedBy: creator ? { _id: creator.id.toString(), name: creator.name, email: creator.email } : null,
+      assignedTo: assignees.map(u => ({ _id: u.id.toString(), id: u.id, name: u.name, email: u.email }))
+    };
+
+    res.json(responseTask);
+  } catch (err) {
+    console.error('Error fetching task:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
 // Get tasks assigned to user
 router.get('/assignedTo/:userId', auth, async (req, res) => {
   try {
@@ -193,10 +258,26 @@ router.patch('/:taskId', auth, async (req, res) => {
       return res.json({ message: 'Task status updated', result });
     }
     
-    // If it's a full task update (admin only)
+    // If it's a full task update (creator or admin can edit)
     if (title && description) {
-      if (currentUser.role !== 'admin') {
-        return res.status(403).json({ message: 'Access denied. Only admins can edit task details.' });
+      // Get task to check creator
+      const { createClient } = require('@supabase/supabase-js');
+      const supabase = createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_KEY
+      );
+      
+      const { data: existingTask } = await supabase
+        .from('tasks')
+        .select('assigned_by')
+        .eq('id', req.params.taskId)
+        .single();
+      
+      const isCreator = existingTask && existingTask.assigned_by === currentUser.id;
+      const isAdmin = currentUser.role === 'admin';
+      
+      if (!isAdmin && !isCreator) {
+        return res.status(403).json({ message: 'Access denied. Only task creator or admin can edit task details.' });
       }
       
       const { createClient } = require('@supabase/supabase-js');
@@ -247,13 +328,12 @@ router.patch('/:taskId', auth, async (req, res) => {
   }
 });
 
-// Update entire task (Admin only)
+// Update entire task (Creator or Admin)
 router.put('/:taskId', auth, async (req, res) => {
   try {
-    // Check if user is admin
     const currentUser = await User.findById(req.user.id);
-    if (!currentUser || currentUser.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied. Only company admins can edit tasks.' });
+    if (!currentUser) {
+      return res.status(404).json({ message: 'User not found' });
     }
 
     const { title, description, assignedTo, priority, dueDate, company } = req.body;
@@ -262,14 +342,27 @@ router.put('/:taskId', auth, async (req, res) => {
       return res.status(400).json({ message: 'Title, description, and assignees are required' });
     }
 
-    const assigneeArray = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
-    
-    // Update task using Supabase
     const { createClient } = require('@supabase/supabase-js');
     const supabase = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_KEY
     );
+    
+    // Check if user is creator or admin
+    const { data: existingTask } = await supabase
+      .from('tasks')
+      .select('assigned_by')
+      .eq('id', req.params.taskId)
+      .single();
+    
+    const isCreator = existingTask && existingTask.assigned_by === currentUser.id;
+    const isAdmin = currentUser.role === 'admin';
+    
+    if (!isAdmin && !isCreator) {
+      return res.status(403).json({ message: 'Access denied. Only task creator or admin can edit tasks.' });
+    }
+
+    const assigneeArray = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
     
     const { data: updatedTask, error } = await supabase
       .from('tasks')
@@ -304,13 +397,37 @@ router.put('/:taskId', auth, async (req, res) => {
   }
 });
 
-// Delete task (Admin only)
+// Delete task (Admin or Creator can delete)
 router.delete('/:taskId', auth, async (req, res) => {
   try {
-    // Check if user is admin
     const currentUser = await User.findById(req.user.id);
-    if (!currentUser || currentUser.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied. Only company admins can delete tasks.' });
+    if (!currentUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Get task to check creator
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+    
+    const { data: task, error: fetchError } = await supabase
+      .from('tasks')
+      .select('assigned_by')
+      .eq('id', req.params.taskId)
+      .single();
+    
+    if (fetchError || !task) {
+      return res.status(404).json({ message: 'Task not found' });
+    }
+    
+    // Allow if user is admin OR task creator
+    const isCreator = task.assigned_by === currentUser.id;
+    const isAdmin = currentUser.role === 'admin';
+    
+    if (!isAdmin && !isCreator) {
+      return res.status(403).json({ message: 'Access denied. Only task creator or admin can delete tasks.' });
     }
 
     await Task.deleteById(req.params.taskId);

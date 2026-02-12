@@ -325,7 +325,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     setCompany(task.company || '');
     setPriority(task.priority);
     setDueDate(task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '');
-    setAssignedTo(typeof task.assignedTo === 'object' ? task.assignedTo._id : task.assignedTo);
+    // Handle both single assignee and array of assignees
+    if (Array.isArray(task.assignedTo)) {
+      const firstAssignee = task.assignedTo[0];
+      setAssignedTo(typeof firstAssignee === 'object' ? firstAssignee._id : firstAssignee);
+    } else {
+      setAssignedTo(typeof task.assignedTo === 'object' ? task.assignedTo._id : task.assignedTo);
+    }
     setShowEditModal(true);
   };
 
@@ -383,13 +389,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     if (!confirm('Are you sure you want to delete this task?')) {
       return;
     }
-    
+
     try {
       const token = sessionStorage.getItem("jwt-token");
       await axios.delete(`/tasks/${taskId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
+
       // Remove task from state
       setTasks(prevTasks => prevTasks.filter(task => task._id !== taskId));
       showToast("Task deleted successfully!", "success");
