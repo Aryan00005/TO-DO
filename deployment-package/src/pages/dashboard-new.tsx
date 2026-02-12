@@ -38,6 +38,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [company, setCompany] = useState("");
   const [description, setDescription] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
+  const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
   const [priority, setPriority] = useState(5);
   const [dueDate, setDueDate] = useState("");
   const [loading, setLoading] = useState(false);
@@ -325,21 +326,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     setCompany(task.company || '');
     setPriority(task.priority);
     setDueDate(task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '');
-    // Handle both single assignee and array of assignees
+    
+    // Handle both single assignee and array of assignees for checkboxes
+    let assigneeIds: string[] = [];
     if (Array.isArray(task.assignedTo)) {
-      const firstAssignee = task.assignedTo[0];
-      setAssignedTo(typeof firstAssignee === 'object' ? firstAssignee._id : firstAssignee);
-    } else {
-      setAssignedTo(typeof task.assignedTo === 'object' ? task.assignedTo._id : task.assignedTo);
+      assigneeIds = task.assignedTo.map(a => typeof a === 'object' ? a._id : a);
+    } else if (task.assignedTo) {
+      assigneeIds = [typeof task.assignedTo === 'object' ? task.assignedTo._id : task.assignedTo];
     }
+    setSelectedAssignees(assigneeIds);
     setShowEditModal(true);
   };
 
   const handleUpdateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!editingTask || !title.trim() || !description.trim() || !assignedTo || !dueDate) {
-      showToast("Please fill all required fields", "error");
+    if (!editingTask || !title.trim() || !description.trim() || selectedAssignees.length === 0 || !dueDate) {
+      showToast("Please fill all required fields and select at least one assignee", "error");
       return;
     }
     
@@ -349,7 +352,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       const taskData = {
         title: title.trim(),
         description: description.trim(),
-        assignedTo: [assignedTo],
+        assignedTo: selectedAssignees,
         priority,
         dueDate,
         company: company.trim() || undefined
@@ -360,7 +363,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       });
       
       // Reset form
-      setTitle(""); setDescription(""); setAssignedTo(""); setPriority(5); setDueDate(""); setCompany("");
+      setTitle(""); setDescription(""); setAssignedTo(""); setPriority(5); setDueDate(""); setCompany(""); setSelectedAssignees([]);
       setEditingTask(null);
       setShowEditModal(false);
       
@@ -1886,28 +1889,59 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 </div>
                 
                 <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: theme === 'dark' ? '#fff' : '#374151', marginBottom: '6px' }}>
-                    Assign To
+                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: theme === 'dark' ? '#fff' : '#374151', marginBottom: '10px' }}>
+                    Assign To (Select multiple users)
                   </label>
-                  <select
-                    value={assignedTo}
-                    onChange={(e) => setAssignedTo(e.target.value)}
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '2px solid #e5e7eb',
-                      borderRadius: '8px',
-                      fontSize: '16px',
-                      background: theme === 'dark' ? '#4b5563' : '#fff',
-                      color: theme === 'dark' ? '#fff' : '#1f2937'
-                    }}
-                  >
-                    <option value="">Select user...</option>
+                  <div style={{
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    background: theme === 'dark' ? '#4b5563' : '#fff',
+                    maxHeight: '200px',
+                    overflowY: 'auto'
+                  }}>
                     {users.map(u => (
-                      <option key={u._id} value={u._id}>{u.name}</option>
+                      <label
+                        key={u._id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '8px',
+                          cursor: 'pointer',
+                          borderRadius: '6px',
+                          marginBottom: '4px',
+                          background: selectedAssignees.includes(u._id) ? (theme === 'dark' ? '#374151' : '#f3f4f6') : 'transparent',
+                          transition: 'background 0.2s'
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedAssignees.includes(u._id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedAssignees([...selectedAssignees, u._id]);
+                            } else {
+                              setSelectedAssignees(selectedAssignees.filter(id => id !== u._id));
+                            }
+                          }}
+                          style={{
+                            marginRight: '10px',
+                            width: '18px',
+                            height: '18px',
+                            cursor: 'pointer'
+                          }}
+                        />
+                        <span style={{ color: theme === 'dark' ? '#fff' : '#1f2937', fontSize: '15px' }}>
+                          {u.name}
+                        </span>
+                      </label>
                     ))}
-                  </select>
+                  </div>
+                  {selectedAssignees.length === 0 && (
+                    <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px' }}>
+                      Please select at least one assignee
+                    </div>
+                  )}
                 </div>
                 
                 <div>
