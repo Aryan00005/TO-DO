@@ -2,11 +2,6 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const jwt = require('jsonwebtoken');
 
-// Validate required environment variables
-if (!process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable is required');
-}
-
 // Rate limiting configurations
 const createRateLimiter = (windowMs, max, message) => rateLimit({
   windowMs,
@@ -15,18 +10,15 @@ const createRateLimiter = (windowMs, max, message) => rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
-    console.log(`🚫 Rate limit exceeded: ${req.ip} - ${req.path}`);
+    console.log(` Rate limit exceeded: ${req.ip} - ${req.path}`);
     res.status(429).json({ error: message });
   }
 });
 
 // Different rate limits for different endpoints
 const rateLimiters = {
-  // Authentication endpoints - relaxed limits for regular users
-  auth: createRateLimiter(15 * 60 * 1000, 20, 'Too many authentication attempts'),
-  
-  // Super admin - separate stricter limits
-  superAdmin: createRateLimiter(15 * 60 * 1000, 5, 'Too many super admin attempts'),
+  // Authentication endpoints - stricter limits
+  auth: createRateLimiter(15 * 60 * 1000, 5, 'Too many authentication attempts'),
   
   // Password reset - very strict
   passwordReset: createRateLimiter(60 * 60 * 1000, 3, 'Too many password reset attempts'),
@@ -46,11 +38,11 @@ const securityHeaders = helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", process.env.SUPABASE_URL || "'self'", "https://accounts.google.com", "https://oauth2.googleapis.com"],
+      connectSrc: ["'self'", process.env.SUPABASE_URL],
       fontSrc: ["'self'"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
-      frameSrc: ["'self'", "https://accounts.google.com"],
+      frameSrc: ["'none'"],
     },
   },
   crossOriginEmbedderPolicy: false,
@@ -105,14 +97,9 @@ const validateJWT = async (req, res, next) => {
 
 // Input sanitization middleware
 const sanitizeInput = (req, res, next) => {
-  // Skip sanitization for OAuth routes to preserve tokens
-  if (req.path.includes('/auth/google') || req.path.includes('/oauth') || req.path.includes('/callback')) {
-    return next();
-  }
-
   const sanitize = (obj) => {
     if (typeof obj === 'string') {
-      return obj.trim().replace(/[<>"'&]/g, '');
+      return obj.trim().replace(/[<>]/g, '');
     }
     if (typeof obj === 'object' && obj !== null) {
       for (const key in obj) {

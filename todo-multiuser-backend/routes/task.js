@@ -280,12 +280,6 @@ router.patch('/:taskId', auth, async (req, res) => {
         return res.status(403).json({ message: 'Access denied. Only task creator or admin can edit task details.' });
       }
       
-      const { createClient } = require('@supabase/supabase-js');
-      const supabase = createClient(
-        process.env.SUPABASE_URL,
-        process.env.SUPABASE_SERVICE_KEY
-      );
-      
       // Update task details
       const { data: updatedTask, error } = await supabase
         .from('tasks')
