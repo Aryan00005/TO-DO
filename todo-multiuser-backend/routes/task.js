@@ -187,6 +187,18 @@ router.get('/assignedTo/:userId', auth, async (req, res) => {
   }
 });
 
+// Get tasks assigned to user only (including self-assigned tasks)
+router.get('/assignedToOnly/:userId', auth, async (req, res) => {
+  try {
+    // This endpoint should include ALL tasks where user is assigned, including self-assigned
+    const tasks = await Task.findAssignedToUser(req.params.userId);
+    res.json(tasks);
+  } catch (err) {
+    console.error('Error fetching assigned tasks:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
 // Get tasks assigned by user (show tasks created by current user)
 router.get('/assignedBy/:userId', auth, async (req, res) => {
   try {
@@ -198,10 +210,43 @@ router.get('/assignedBy/:userId', auth, async (req, res) => {
   }
 });
 
+// Get all tasks for a specific user (for admin user management)
+router.get('/user/:userId', auth, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    if (!currentUser || currentUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Only admins can view user tasks.' });
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+
+    // Get tasks assigned TO the user
+    const assignedToTasks = await Task.findAssignedToUser(req.params.userId);
+    
+    // Get tasks assigned BY the user
+    const assignedByTasks = await Task.findAssignedByUser(req.params.userId);
+    
+    // Combine both arrays and remove duplicates
+    const allTasks = [...assignedToTasks, ...assignedByTasks];
+    const uniqueTasks = allTasks.filter((task, index, self) => 
+      index === self.findIndex(t => t._id === task._id)
+    );
+    
+    res.json(uniqueTasks);
+  } catch (err) {
+    console.error('Error fetching user tasks:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
 // Update task status
 router.patch('/:taskId', auth, async (req, res) => {
   try {
-    const { status, remark, title, description, assignedTo, priority, dueDate, company } = req.body;
+    const { status, remark, title, description, assignedTo, priority, dueDate, company, approval_status, rejection_reason } = req.body;
     console.log('Updating task:', req.params.taskId, 'with data:', req.body);
     
     const currentUser = await User.findById(req.user.id);
@@ -213,6 +258,48 @@ router.patch('/:taskId', auth, async (req, res) => {
     const canUpdate = await Task.canUserUpdateTask(req.params.taskId, currentUser.id, currentUser.role);
     if (!canUpdate) {
       return res.status(403).json({ message: 'Access denied. You cannot update this task.' });
+    }
+    
+    // Handle approval/rejection (creator only)
+    if (approval_status || rejection_reason) {
+      const { createClient } = require('@supabase/supabase-js');
+      const supabase = createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_KEY
+      );
+      
+      // Check if user is the creator
+      const { data: task } = await supabase
+        .from('tasks')
+        .select('assigned_by')
+        .eq('id', req.params.taskId)
+        .single();
+      
+      if (!task || task.assigned_by !== currentUser.id) {
+        return res.status(403).json({ message: 'Only task creator can approve or reject tasks.' });
+      }
+      
+      // Update approval status
+      const updateData = {};
+      if (approval_status) {
+        updateData.approval_status = approval_status;
+      }
+      if (rejection_reason) {
+        updateData.status = 'Working on it';
+        updateData.approval_status = 'rejected';
+        updateData.rejection_reason = rejection_reason;
+      }
+      
+      const { data: updatedTask, error } = await supabase
+        .from('tasks')
+        .update(updateData)
+        .eq('id', req.params.taskId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      return res.json({ message: 'Task updated successfully', task: updatedTask });
     }
     
     // If it's a status update, validate progression
@@ -449,37 +536,32 @@ router.get('/pending-approvals', auth, async (req, res) => {
 });
 
 // Approve task (Admin only)
-router.post('/:taskId/approve', auth, async (req, res) => {
+router.put('/:taskId/approve', auth, async (req, res) => {
   try {
     const currentUser = await User.findById(req.user.id);
     if (!currentUser || currentUser.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied. Only admins can approve tasks.' });
     }
 
-    const task = await Task.approveTask(req.params.taskId, currentUser.id);
-    
-    // Create notifications for assigned users when task is approved
     const { createClient } = require('@supabase/supabase-js');
     const supabase = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_KEY
     );
     
-    const { data: assignments } = await supabase
-      .from('task_assignments')
-      .select('user_id')
-      .eq('task_id', req.params.taskId);
+    // Update task status to approved
+    const { data: task, error } = await supabase
+      .from('tasks')
+      .update({ 
+        approval_status: 'approved',
+        approved_by: currentUser.id,
+        approved_at: new Date().toISOString()
+      })
+      .eq('id', req.params.taskId)
+      .select('*, task_assignments(user_id)')
+      .single();
     
-    if (assignments && assignments.length > 0) {
-      const Notification = require('../models/notification');
-      for (const assignment of assignments) {
-        try {
-          await Notification.create(assignment.user_id, `Task approved: "${task.title}"`);
-        } catch (notifError) {
-          console.error('Notification creation failed:', notifError);
-        }
-      }
-    }
+    if (error) throw error;
     
     res.json({ message: 'Task approved successfully', task });
   } catch (err) {
@@ -489,24 +571,41 @@ router.post('/:taskId/approve', auth, async (req, res) => {
 });
 
 // Reject task (Admin only)
-router.post('/:taskId/reject', auth, async (req, res) => {
+router.put('/:taskId/reject', auth, async (req, res) => {
   try {
     const currentUser = await User.findById(req.user.id);
     if (!currentUser || currentUser.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied. Only admins can reject tasks.' });
     }
 
-    const task = await Task.rejectTask(req.params.taskId, currentUser.id);
-    
-    // Notify task creator about rejection
-    const Notification = require('../models/notification');
-    try {
-      await Notification.create(task.assigned_by, `Task rejected: "${task.title}"`);
-    } catch (notifError) {
-      console.error('Notification creation failed:', notifError);
+    const { reason } = req.body;
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ message: 'Rejection reason is required' });
     }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
     
-    res.json({ message: 'Task rejected successfully', task });
+    // Update task status to rejected and move back to working
+    const { data: task, error } = await supabase
+      .from('tasks')
+      .update({ 
+        status: 'Working on it',
+        approval_status: 'rejected',
+        rejection_reason: reason.trim(),
+        rejected_by: currentUser.id,
+        rejected_at: new Date().toISOString()
+      })
+      .eq('id', req.params.taskId)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    res.json({ message: 'Task rejected and moved to working status', task });
   } catch (err) {
     console.error('Error rejecting task:', err);
     res.status(500).json({ message: 'Server error: ' + err.message });
@@ -525,6 +624,45 @@ router.get('/:taskId/can-update', auth, async (req, res) => {
     res.json({ canUpdate });
   } catch (err) {
     console.error('Error checking update permission:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
+// Cleanup old approved tasks (30 days) - Admin only
+router.delete('/cleanup/old-approved', auth, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    if (!currentUser || currentUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Only admins can run cleanup.' });
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+    
+    // Delete approved tasks older than 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const { data: deletedTasks, error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('approval_status', 'approved')
+      .not('approved_at', 'is', null)
+      .lt('approved_at', thirtyDaysAgo.toISOString())
+      .select();
+    
+    if (error) throw error;
+    
+    res.json({ 
+      message: `Cleanup completed. ${deletedTasks?.length || 0} approved tasks older than 30 days were deleted.`,
+      deletedCount: deletedTasks?.length || 0,
+      deletedTasks: deletedTasks?.map(t => ({ id: t.id, title: t.title, approved_at: t.approved_at }))
+    });
+  } catch (err) {
+    console.error('Cleanup error:', err);
     res.status(500).json({ message: 'Server error: ' + err.message });
   }
 });

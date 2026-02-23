@@ -8,7 +8,7 @@ import {
 } from "@hello-pangea/dnd";
 import React, { useEffect, useState } from "react";
 import AvatarEdit from "react-avatar-edit";
-import { FaBell, FaCalendar, FaCalendarAlt, FaChartBar, FaColumns, FaMoon, FaPlus, FaSignOutAlt, FaStar, FaSun, FaTasks, FaUser } from "react-icons/fa";
+import { FaBell, FaCalendar, FaCalendarAlt, FaChartBar, FaColumns, FaMoon, FaPlus, FaSignOutAlt, FaStar, FaSun, FaTasks, FaUser, FaUsers } from "react-icons/fa";
 import { useTheme } from "../hooks/useTheme";
 import { useToast } from "../components/Toast";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -125,14 +125,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   }, [user.organization?.name]);
 
   useEffect(() => {
-    axios.get(`/tasks/assignedTo/${user._id}`)
+    const token = sessionStorage.getItem("jwt-token");
+    // Fetch tasks assigned TO the user (including self-assigned)
+    axios.get(`/tasks/assignedTo/${user._id}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
       .then(res => setTasks(res.data))
       .catch(err => console.error("Error fetching tasks:", err));
   }, [user._id]);
 
   useEffect(() => {
     if (nav === "assignedtasks") {
-      axios.get(`/tasks/assignedBy/${user._id}`)
+      const token = sessionStorage.getItem("jwt-token");
+      // Fetch tasks assigned BY the user (including self-assigned)
+      axios.get(`/tasks/assignedBy/${user._id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
         .then(res => setAssignedTasks(res.data))
         .catch(err => console.error("Error fetching assigned tasks:", err));
     }
@@ -174,8 +182,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setTitle(""); setDescription(""); setAssignedTo(""); setPriority(3); setDueDate(""); setCompany("");
-      const res = await axios.get(`/tasks/assignedTo/${user._id}`);
-      setTasks(res.data);
+      // Refresh both task lists to show self-assigned tasks in both panels
+      const [tasksRes, assignedRes] = await Promise.all([
+        axios.get(`/tasks/assignedTo/${user._id}`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`/tasks/assignedBy/${user._id}`, { headers: { Authorization: `Bearer ${token}` } })
+      ]);
+      setTasks(tasksRes.data);
+      setAssignedTasks(assignedRes.data);
       showToast("Task created successfully! 🎉", "success");
     } catch (err: any) {
       showToast("Error: " + (err.response?.data?.message || err.message), "error");
@@ -760,6 +773,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         )}
       </div>
     );
+  } else if (nav === "assignedtasks") {
     // Kanban columns for assigned tasks
     const assignedKanbanColumns = ["Not Started", "Working on it", "Stuck", "Done"];
     const assignedKanbanTasks: Record<string, Task[]> = {
@@ -776,7 +790,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     content = (
       <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
-          <FaUser style={{ marginRight: 8 }} /> Tasks You Assigned
+          <FaUser style={{ marginRight: 8 }} /> Tasks You Assigned ({assignedTasks.length})
         </div>
         <div style={{ display: "flex", gap: 24, alignItems: "flex-start", overflowX: "auto" }}>
           {assignedKanbanColumns.map(col => (
@@ -793,7 +807,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               }}
             >
               <div style={{ fontWeight: 700, color: statusColors[col], marginBottom: 12, fontSize: 18 }}>
-                {col}
+                {col} ({assignedKanbanTasks[col].length})
               </div>
               {assignedKanbanTasks[col].length === 0 && (
                 <div style={{ color: "#64748b", fontSize: 14 }}>No tasks</div>
@@ -807,97 +821,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   boxShadow: "0 1px 4px #c7d2fe22",
                   position: "relative"
                 }}>
-                  {/* Action Buttons */}
-                  <div style={{ position: "absolute", top: 8, right: 8, display: "flex", gap: 4, zIndex: 2 }}>
-                    <button
-                      style={{
-                        background: "#2563eb",
-                        color: "#fff",
-                        padding: "4px 8px",
-                        borderRadius: 4,
-                        fontSize: 11,
-                        border: "none",
-                        cursor: "pointer"
-                      }}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setTitle(task.title);
-                        setDescription(task.description);
-                        setCompany(task.company || "");
-                        setAssignedTo(typeof task.assignedTo === "object" ? (task.assignedTo as User)._id : task.assignedTo);
-                        setPriority(task.priority);
-                        setDueDate(task.dueDate ? task.dueDate.slice(0, 10) : "");
-                        setNav('assigntasks');
-                        showToast("Task loaded for editing!", "success");
-                      }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      style={{
-                        background: "#16a34a",
-                        color: "#fff",
-                        padding: "4px 8px",
-                        borderRadius: 4,
-                        fontSize: 11,
-                        border: "none",
-                        cursor: "pointer"
-                      }}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setTitle(task.title + " (Copy)");
-                        setDescription(task.description);
-                        setCompany(task.company || "");
-                        setAssignedTo(typeof task.assignedTo === "object" ? (task.assignedTo as User)._id : task.assignedTo);
-                        setPriority(task.priority);
-                        setDueDate(task.dueDate ? task.dueDate.slice(0, 10) : "");
-                        setNav('assigntasks');
-                        showToast("Task copied for creation!", "success");
-                      }}
-                    >
-                      Copy
-                    </button>
-                    <button
-                      style={{
-                        background: "#ef4444",
-                        color: "#fff",
-                        padding: "4px 8px",
-                        borderRadius: 4,
-                        fontSize: 11,
-                        border: "none",
-                        cursor: "pointer"
-                      }}
-                      onClick={async (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (window.confirm("Are you sure you want to delete this task?")) {
-                          try {
-                            const token = sessionStorage.getItem("jwt-token");
-                            await axios.delete(`/tasks/${task._id}`, {
-                              headers: { Authorization: `Bearer ${token}` }
-                            });
-                            // Refresh assigned tasks
-                            const res = await axios.get(`/tasks/assignedBy/${user._id}`, {
-                              headers: { Authorization: `Bearer ${token}` }
-                            });
-                            setAssignedTasks(res.data);
-                            showToast("Task deleted successfully!", "success");
-                          } catch (err: any) {
-                            console.error('Delete error:', err);
-                            showToast("Failed to delete task: " + (err.response?.data?.message || err.message), "error");
-                          }
-                        }
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-
-                  <TaskTitle style={{ fontWeight: 600, fontSize: 16, color: theme === 'dark' ? '#ffffff' : '#000000', paddingRight: 80 }}>
+                  <TaskTitle style={{ fontWeight: 600, fontSize: 16, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
                     {task.title}
-                    <span style={{ float: "right", marginRight: 80 }}>{renderStars(task.priority)}</span>
+                    <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
                   </TaskTitle>
                   <TaskDesc style={{ color: theme === 'dark' ? '#e5e7eb' : '#475569', marginBottom: 8 }}>{task.description}</TaskDesc>
                   {task.company && (
@@ -907,17 +833,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   )}
                   <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 8 }}>
                     <b>Assigned To:</b> {
-                      (() => {
-                        console.log('DEBUG task.assignedTo:', task.assignedTo, typeof task.assignedTo);
-                        console.log('DEBUG users array:', users);
-                        if (typeof task.assignedTo === "object" && task.assignedTo !== null) {
-                          return (task.assignedTo as User).name || 'No name property';
-                        } else {
-                          const foundUser = users.find(u => u._id === task.assignedTo);
-                          console.log('DEBUG found user:', foundUser);
-                          return foundUser?.name || `User ID: ${task.assignedTo}`;
-                        }
-                      })()
+                      typeof task.assignedTo === "object" && task.assignedTo !== null
+                        ? (task.assignedTo as User).name
+                        : users.find(u => u._id === task.assignedTo)?.name || `User ID: ${task.assignedTo}`
                     }
                   </div>
                   {task.dueDate && (
@@ -937,11 +855,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   }}>
                     {task.status}
                   </Status>
-                  {task.completionRemark && (
-                    <div style={{ fontSize: 13, color: theme === 'dark' ? '#d1d5db' : "#666", marginTop: 8 }}>
-                      <b>Remark:</b> {task.completionRemark}
-                    </div>
-                  )}
                 </TaskCard>
               ))}
             </div>
@@ -1187,6 +1100,374 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
       </div>
     );
+  } else if (nav === "usermanagement" && user.role === 'admin') {
+    // User Management for Admin
+    const [userTasks, setUserTasks] = useState<{[userId: string]: Task[]}>({});
+    const [selectedUser, setSelectedUser] = useState<User | null>(null);
+    const [showUserModal, setShowUserModal] = useState(false);
+    
+    useEffect(() => {
+      if (nav === "usermanagement") {
+        const token = sessionStorage.getItem("jwt-token");
+        // Fetch tasks for all users in the company
+        users.forEach(async (u) => {
+          try {
+            const res = await axios.get(`/tasks/assignedTo/${u._id}`, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            setUserTasks(prev => ({ ...prev, [u._id]: res.data }));
+          } catch (err) {
+            console.error(`Error fetching tasks for user ${u._id}:`, err);
+          }
+        });
+      }
+    }, [nav, users]);
+    
+    const getUserStats = (userId: string) => {
+      const tasks = userTasks[userId] || [];
+      const total = tasks.length;
+      const completed = tasks.filter(t => t.status === "Done").length;
+      const inProgress = tasks.filter(t => t.status === "Working on it").length;
+      const stuck = tasks.filter(t => t.status === "Stuck").length;
+      const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+      return { total, completed, inProgress, stuck, completionRate };
+    };
+    
+    const handleViewUser = (user: User) => {
+      setSelectedUser(user);
+      setShowUserModal(true);
+    };
+    
+    content = (
+      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+        <div style={{
+          background: theme === 'dark' ? "#374151" : "#fff",
+          borderRadius: 12,
+          padding: 24,
+          boxShadow: "0 2px 12px #c7d2fe22",
+          marginBottom: 24
+        }}>
+          <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
+            👥 User Management ({users.length} users)
+          </div>
+          
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+            {users.map(u => {
+              const stats = getUserStats(u._id);
+              return (
+                <div key={u._id} style={{
+                  background: theme === 'dark' ? "#4b5563" : "#f9fafb",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 10,
+                  padding: 20,
+                  cursor: "pointer",
+                  transition: "all 0.2s"
+                }}
+                onClick={() => handleViewUser(u)}
+                onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                    <div style={{
+                      width: 50,
+                      height: 50,
+                      borderRadius: "50%",
+                      background: "#2563eb",
+                      color: "white",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 700,
+                      fontSize: 18
+                    }}>
+                      {u.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 16, color: theme === 'dark' ? '#ffffff' : '#1f2937' }}>
+                        {u.name}
+                      </div>
+                      <div style={{ fontSize: 14, color: "#6b7280" }}>{u.email}</div>
+                      <div style={{ fontSize: 12, color: "#2563eb" }}>
+                        {u.role === 'admin' ? '👑 Admin' : '👤 User'}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 12 }}>
+                    <div style={{ textAlign: "center", padding: 8, background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 6 }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: "#2563eb" }}>{stats.total}</div>
+                      <div style={{ fontSize: 11, color: "#64748b" }}>Total</div>
+                    </div>
+                    <div style={{ textAlign: "center", padding: 8, background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 6 }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: "#22c55e" }}>{stats.completed}</div>
+                      <div style={{ fontSize: 11, color: "#64748b" }}>Done</div>
+                    </div>
+                  </div>
+                  
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, color: theme === 'dark' ? '#d1d5db' : "#374151", fontWeight: 600 }}>Completion Rate</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: stats.completionRate > 70 ? "#22c55e" : stats.completionRate > 40 ? "#fbbf24" : "#ef4444" }}>
+                        {stats.completionRate}%
+                      </span>
+                    </div>
+                    <div style={{ width: "100%", height: 6, background: theme === 'dark' ? "#374151" : "#e5e7eb", borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{
+                        width: `${stats.completionRate}%`,
+                        height: "100%",
+                        background: stats.completionRate > 70 ? "#22c55e" : stats.completionRate > 40 ? "#fbbf24" : "#ef4444",
+                        transition: "width 0.3s ease"
+                      }}></div>
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#64748b" }}>
+                    <span>In Progress: {stats.inProgress}</span>
+                    <span>Stuck: {stats.stuck}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        
+        {/* User Details Modal */}
+        {showUserModal && selectedUser && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}>
+            <div style={{
+              background: theme === 'dark' ? "#374151" : '#fff',
+              padding: '32px',
+              borderRadius: '12px',
+              maxWidth: '600px',
+              width: '90%',
+              maxHeight: '90vh',
+              overflowY: 'auto'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                <h2 style={{ fontSize: '24px', fontWeight: '700', color: theme === 'dark' ? '#ffffff' : '#1f2937', margin: 0 }}>
+                  {selectedUser.name} - Task Details
+                </h2>
+                <button
+                  onClick={() => setShowUserModal(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: '24px',
+                    cursor: 'pointer',
+                    color: '#6b7280'
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+              
+              {userTasks[selectedUser._id] && userTasks[selectedUser._id].length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {userTasks[selectedUser._id].map(task => (
+                    <div key={task._id} style={{
+                      background: theme === 'dark' ? "#4b5563" : "#f9fafb",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 8,
+                      padding: 16
+                    }}>
+                      <div style={{ fontWeight: 600, fontSize: 16, color: theme === 'dark' ? '#ffffff' : '#1f2937', marginBottom: 8 }}>
+                        {task.title}
+                      </div>
+                      <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : '#6b7280', marginBottom: 8 }}>
+                        {task.description}
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{
+                          padding: "4px 12px",
+                          borderRadius: 12,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          background: task.status === "Done" ? "#22c55e22" : task.status === "Working on it" ? "#fbbf2422" : task.status === "Stuck" ? "#ef444422" : "#64748b22",
+                          color: task.status === "Done" ? "#22c55e" : task.status === "Working on it" ? "#fbbf24" : task.status === "Stuck" ? "#ef4444" : "#64748b"
+                        }}>
+                          {task.status}
+                        </span>
+                        {task.dueDate && (
+                          <span style={{ fontSize: 12, color: "#6b7280" }}>
+                            Due: {new Date(task.dueDate).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ textAlign: "center", color: "#64748b", fontSize: 16, padding: 40 }}>
+                  No tasks assigned to this user yet.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  } else if (nav === "adduser" && user.role === 'admin') {
+    // Add User for Admin
+    const [newUserName, setNewUserName] = useState("");
+    const [newUserEmail, setNewUserEmail] = useState("");
+    const [newUserUserId, setNewUserUserId] = useState("");
+    const [newUserPassword, setNewUserPassword] = useState("");
+    const [showNewUserPassword, setShowNewUserPassword] = useState(false);
+    const [addUserLoading, setAddUserLoading] = useState(false);
+    
+    const handleAddUser = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setAddUserLoading(true);
+      
+      try {
+        const token = sessionStorage.getItem("jwt-token");
+        await axios.post("/auth/admin/create-user", {
+          name: newUserName,
+          email: newUserEmail,
+          userId: newUserUserId,
+          password: newUserPassword
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        showToast("User created successfully! 🎉", "success");
+        setNewUserName("");
+        setNewUserEmail("");
+        setNewUserUserId("");
+        setNewUserPassword("");
+        
+        // Refresh users list
+        const res = await axios.get("/auth/users", { headers: { Authorization: `Bearer ${token}` } });
+        setUsers(res.data);
+      } catch (err: any) {
+        showToast("Error: " + (err.response?.data?.message || err.message), "error");
+      } finally {
+        setAddUserLoading(false);
+      }
+    };
+    
+    content = (
+      <div style={{ maxWidth: 600, margin: "0 auto" }}>
+        <div style={{
+          background: theme === 'dark' ? "#374151" : "#fff",
+          boxShadow: "0 4px 24px #c7d2fe33",
+          borderRadius: 16,
+          padding: 32
+        }}>
+          <div style={{ fontWeight: 700, fontSize: 22, color: "#2563eb", marginBottom: 24 }}>👥 Add New User</div>
+          
+          <form onSubmit={handleAddUser} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            <div>
+              <Label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>User Name</Label>
+              <Input
+                $theme={theme}
+                value={newUserName}
+                onChange={(e: any) => setNewUserName(e.target.value)}
+                placeholder="Full Name"
+                required
+              />
+            </div>
+            
+            <div>
+              <Label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Email</Label>
+              <Input
+                $theme={theme}
+                type="email"
+                value={newUserEmail}
+                onChange={(e: any) => setNewUserEmail(e.target.value)}
+                placeholder="user@company.com"
+                required
+              />
+            </div>
+            
+            <div>
+              <Label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>User ID</Label>
+              <Input
+                $theme={theme}
+                value={newUserUserId}
+                onChange={(e: any) => setNewUserUserId(e.target.value)}
+                placeholder="username"
+                required
+              />
+            </div>
+            
+            <div style={{ position: 'relative' }}>
+              <Label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Password</Label>
+              <Input
+                $theme={theme}
+                type={showNewUserPassword ? "text" : "password"}
+                value={newUserPassword}
+                onChange={(e: any) => setNewUserPassword(e.target.value)}
+                placeholder="Password"
+                required
+                style={{ paddingRight: '45px' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewUserPassword(!showNewUserPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '32px',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  fontSize: '16px'
+                }}
+              >
+                {showNewUserPassword ? '👁️' : '👁️‍🗨️'}
+              </button>
+            </div>
+            
+            <Button type="submit" disabled={addUserLoading} style={{
+              fontWeight: 600, fontSize: "1.1rem", background: addUserLoading ? "#ccc" : "#2563eb",
+              color: "#fff", padding: "12px 24px", borderRadius: 8, border: "none",
+              cursor: addUserLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center",
+              justifyContent: "center", gap: 8, marginTop: 8
+            }}>
+              {addUserLoading ? (
+                <>
+                  <LoadingSpinner size="small" color="white" />
+                  Creating User...
+                </>
+              ) : (
+                "Add User"
+              )}
+            </Button>
+          </form>
+          
+          <div style={{ 
+            marginTop: 24, 
+            padding: 16, 
+            background: theme === 'dark' ? "#1f2937" : "#f0f9ff", 
+            borderRadius: 8, 
+            border: "1px solid #3b82f6" 
+          }}>
+            <div style={{ color: "#3b82f6", fontWeight: 600, marginBottom: 8 }}>
+              📝 Add User Information:
+            </div>
+            <div style={{ color: theme === 'dark' ? '#d1d5db' : "#64748b", fontSize: 14 }}>
+              • Users will be added directly to your company<br/>
+              • They can login immediately with the provided credentials<br/>
+              • Users will have access to the task management system<br/>
+              • You can assign tasks to them once they're created
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   } else if (nav === "userapprovals" && user.role === 'admin') {
     // User Approvals for Admin
     const [pendingUsers, setPendingUsers] = useState<User[]>([]);
@@ -1414,6 +1695,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         <NavItem $active={nav === "assignedtasks"} onClick={() => setNav("assignedtasks")} style={{ color: nav === "assignedtasks" ? "#2563eb" : theme === 'dark' ? '#ffffff' : "#22223b" }}>
           <FaUser /> Tasks Assigned
         </NavItem>
+        {user.role === 'admin' && (
+          <NavItem $active={nav === "usermanagement"} onClick={() => setNav("usermanagement")} style={{ color: nav === "usermanagement" ? "#2563eb" : theme === 'dark' ? '#ffffff' : "#22223b" }}>
+            <FaUsers /> User Management
+          </NavItem>
+        )}
+
         {user.role === 'admin' && (
           <NavItem $active={nav === "approvals"} onClick={() => setNav("approvals")} style={{ color: nav === "approvals" ? "#2563eb" : theme === 'dark' ? '#ffffff' : "#22223b" }}>
             🔔 Task Approvals

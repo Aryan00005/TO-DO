@@ -14,6 +14,12 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
   const [selectedCompany, setSelectedCompany] = useState<any>(null);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showCreateSuperAdminModal, setShowCreateSuperAdminModal] = useState(false);
+  const [superAdminName, setSuperAdminName] = useState("");
+  const [superAdminEmail, setSuperAdminEmail] = useState("");
+  const [superAdminUserId, setSuperAdminUserId] = useState("");
+  const [superAdminPassword, setSuperAdminPassword] = useState("");
+  const [showSuperAdminPassword, setShowSuperAdminPassword] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [companyCode, setCompanyCode] = useState("");
   const [adminName, setAdminName] = useState("");
@@ -99,6 +105,36 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
       fetchData(); // Refresh data
     } catch (err: any) {
       setError(err.response?.data?.message || `Failed to ${action} admin`);
+    }
+  };
+
+  const handleCreateSuperAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    setLoading(true);
+
+    try {
+      const token = sessionStorage.getItem("jwt-token");
+      await axios.post("/auth/superadmin/create-super-admin", {
+        name: superAdminName,
+        email: superAdminEmail,
+        userId: superAdminUserId,
+        password: superAdminPassword
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      setSuccess(`Super Admin created successfully!`);
+      setSuperAdminName("");
+      setSuperAdminEmail("");
+      setSuperAdminUserId("");
+      setSuperAdminPassword("");
+      setShowCreateSuperAdminModal(false);
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Failed to create super admin");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -414,8 +450,8 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
           </div>
         )}
 
-        {/* Create Company Admin Button */}
-        <div style={{ marginBottom: '30px' }}>
+        {/* Action Buttons */}
+        <div style={{ marginBottom: '30px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
           <button
             onClick={() => setShowCreateModal(true)}
             style={{
@@ -437,6 +473,28 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
             onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
           >
             <FaPlus /> Create Company Admin
+          </button>
+          <button
+            onClick={() => setShowCreateSuperAdminModal(true)}
+            style={{
+              background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+              color: '#fff',
+              border: 'none',
+              padding: '14px 28px',
+              borderRadius: '8px',
+              fontSize: '16px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)',
+              transition: 'transform 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+          >
+            <FaUserShield /> Create Super Admin
           </button>
         </div>
 
@@ -557,6 +615,148 @@ const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({ user, onLogou
           </div>
         </div>
       </div>
+
+      {/* Create Super Admin Modal */}
+      {showCreateSuperAdminModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#fff',
+            padding: '32px',
+            borderRadius: '12px',
+            maxWidth: '500px',
+            width: '90%',
+            maxHeight: '90vh',
+            overflowY: 'auto'
+          }}>
+            <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937', marginBottom: '24px' }}>
+              Create Super Admin
+            </h2>
+            <form onSubmit={handleCreateSuperAdmin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <input
+                type="text"
+                placeholder="Super Admin Name"
+                value={superAdminName}
+                onChange={(e) => setSuperAdminName(e.target.value)}
+                required
+                style={{
+                  padding: '12px 16px',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '16px'
+                }}
+              />
+              <input
+                type="email"
+                placeholder="Super Admin Email"
+                value={superAdminEmail}
+                onChange={(e) => setSuperAdminEmail(e.target.value)}
+                required
+                style={{
+                  padding: '12px 16px',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '16px'
+                }}
+              />
+              <input
+                type="text"
+                placeholder="Super Admin User ID"
+                value={superAdminUserId}
+                onChange={(e) => setSuperAdminUserId(e.target.value)}
+                required
+                style={{
+                  padding: '12px 16px',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '16px'
+                }}
+              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showSuperAdminPassword ? "text" : "password"}
+                  placeholder="Super Admin Password"
+                  value={superAdminPassword}
+                  onChange={(e) => setSuperAdminPassword(e.target.value)}
+                  required
+                  style={{
+                    padding: '12px 16px',
+                    paddingRight: '45px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '8px',
+                    fontSize: '16px',
+                    width: '100%',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSuperAdminPassword(!showSuperAdminPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#6b7280',
+                    fontSize: '16px'
+                  }}
+                >
+                  {showSuperAdminPassword ? <FaEyeSlash /> : <FaEye />}
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{
+                    flex: 1,
+                    background: '#f59e0b',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    opacity: loading ? 0.7 : 1
+                  }}
+                >
+                  {loading ? 'Creating...' : 'Create Super Admin'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateSuperAdminModal(false)}
+                  style={{
+                    background: '#6b7280',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    fontSize: '16px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Create Company Admin Modal */}
       {showCreateModal && (

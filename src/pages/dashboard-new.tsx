@@ -30,6 +30,10 @@ interface Task {
   company?: string;
   completionRemark?: string;
   stuckReason?: string;
+  rejectionReason?: string;
+  approvalStatus?: 'approved' | 'rejected' | 'pending';
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface Notification {
@@ -90,11 +94,90 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [pendingUsers, setPendingUsers] = useState<User[]>([]);
   const [pendingTaskApprovals, setPendingTaskApprovals] = useState<Task[]>([]);
+  const [filterPriority, setFilterPriority] = useState<string>('all');
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectingTaskId, setRejectingTaskId] = useState<string>('');
+  const [rejectionReason, setRejectionReason] = useState<string>('');
+  const [showUserTasksModal, setShowUserTasksModal] = useState(false);
+  const [selectedUserForTasks, setSelectedUserForTasks] = useState<User | null>(null);
+  const [userTasksFilter, setUserTasksFilter] = useState<string>('all');
+  const [showTaskDetailsModal, setShowTaskDetailsModal] = useState(false);
+  const [selectedTaskDetails, setSelectedTaskDetails] = useState<Task | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
+  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [searchDebounce, setSearchDebounce] = useState('');
 
   const today = new Date();
-  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+  const firstDayOfMonth = new Date(calendarYear, calendarMonth, 1).getDay();
   const calendarDates = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const [selectedDate, setSelectedDate] = useState<string>(today.getDate().toString());
+
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchDebounce(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault();
+        setNav('assigntasks');
+        showToast('📝 Create Task', 'success');
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setNav('kanban');
+        showToast('📊 Kanban Board', 'success');
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+        e.preventDefault();
+        toggleTheme();
+        showToast(`🎨 ${theme === 'light' ? 'Dark' : 'Light'} Mode`, 'success');
+      } else if (e.key === 'Escape') {
+        setShowNotifications(false);
+        setShowRejectModal(false);
+        setShowAvatarEditor(false);
+        setShowUserTasksModal(false);
+        setShowTaskDetailsModal(false);
+      } else if (e.key >= '1' && e.key <= '9') {
+        const navMap: Record<string, string> = {
+          '1': 'profile',
+          '2': 'kanban',
+          '3': 'assigntasks',
+          '4': 'list',
+          '5': 'completed',
+          '6': 'calendar',
+          '7': 'analytics',
+          '8': 'userapprovals',
+          '9': 'adduser'
+        };
+        if (navMap[e.key]) {
+          setNav(navMap[e.key]);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [theme, toggleTheme, showToast]);
+
+  // Click outside to close modals
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (showNotifications && !target.closest('.notifications-panel') && !target.closest('button[aria-label="notifications"]')) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showNotifications]);
 
   if (!user || !user._id) {
     return <div>Loading user...</div>;
@@ -103,9 +186,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   // Organization validation and setup
   if (!user.organization || !user.organization.name) {
     user.organization = {
-      name: user._id === 'jayraj' ? 'RLA' : user._id === 'testadmin' ? 'TestCorp' : 'Task Management', 
+      name: user._id === 'jayraj' ? 'RLA' : user._id === 'testadmin' ? 'TestCorp' : 'My Company', 
       type: 'company'
     };
+  } else {
+    // Override organization name based on user ID
+    if (user._id === 'jayraj') {
+      user.organization.name = 'RLA';
+    } else if (user._id === 'testadmin') {
+      user.organization.name = 'TestCorp';
+    }
   }
 
   // Auto-refresh data every 30 seconds - DISABLED for performance
@@ -452,6 +542,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   };
 
   const handleTaskApproval = async (taskId: string, action: 'approve' | 'reject') => {
+    if (action === 'reject') {
+      setRejectingTaskId(taskId);
+      setShowRejectModal(true);
+      return;
+    }
+    
     try {
       console.log('🔄 Attempting task approval:', { taskId, action });
       const token = sessionStorage.getItem("jwt-token");
@@ -469,9 +565,86 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       // Refresh tasks to show newly approved tasks
       refreshData();
       
-      showToast(`Task ${action}d successfully! ${action === 'approve' ? '✅' : '❌'}`, "success");
+      showToast(`Task ${action}d successfully! ✅`, "success");
     } catch (err: any) {
       console.error('❌ Task approval error:', err);
+      showToast("Error: " + (err.response?.data?.message || err.message), "error");
+    }
+  };
+
+  const handleRejectSubmit = async () => {
+    if (!rejectionReason.trim()) {
+      showToast('Rejection reason is required', 'error');
+      return;
+    }
+    if (rejectionReason.length > 200) {
+      showToast('Rejection reason must be 200 characters or less', 'error');
+      return;
+    }
+    
+    try {
+      const token = sessionStorage.getItem("jwt-token");
+      await axios.post(`/tasks/${rejectingTaskId}/reject`, {
+        reason: rejectionReason
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const res = await axios.get("/tasks/pending-approvals", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPendingTaskApprovals(res.data);
+      refreshData();
+      
+      setShowRejectModal(false);
+      setRejectionReason('');
+      setRejectingTaskId('');
+      showToast('Task rejected successfully! ❌', 'success');
+    } catch (err: any) {
+      console.error('❌ Task rejection error:', err);
+      showToast('Error: ' + (err.response?.data?.message || err.message), 'error');
+    }
+  };
+
+  const handleApproveTask = async (taskId: string) => {
+    try {
+      const token = sessionStorage.getItem("jwt-token");
+      await axios.patch(`/tasks/${taskId}`, { 
+        approval_status: 'approved'
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // Update both tasks and assignedTasks states
+      setTasks(prev => prev.map(t => 
+        t._id === taskId ? { ...t, approvalStatus: 'approved', approval_status: 'approved' } : t
+      ));
+      setAssignedTasks(prev => prev.map(t => 
+        t._id === taskId ? { ...t, approvalStatus: 'approved', approval_status: 'approved' } : t
+      ));
+      
+      showToast("Task approved! ✅", "success");
+    } catch (err: any) {
+      showToast("Error: " + (err.response?.data?.message || err.message), "error");
+    }
+  };
+  
+  const handleRejectTask = async (taskId: string, reason: string) => {
+    try {
+      const token = sessionStorage.getItem("jwt-token");
+      await axios.patch(`/tasks/${taskId}`, { 
+        status: 'Working on it',
+        rejection_reason: reason,
+        approval_status: 'rejected'
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setAssignedTasks(prev => prev.map(t => 
+        t._id === taskId ? { ...t, status: 'Working on it', rejectionReason: reason, approvalStatus: 'rejected' } : t
+      ));
+      showToast("Task rejected and moved to Working on it! ❌", "success");
+    } catch (err: any) {
       showToast("Error: " + (err.response?.data?.message || err.message), "error");
     }
   };
@@ -511,19 +684,81 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     );
   };
 
-  // Filter tasks based on search and status
+  // Filter tasks based on search, status, and priority only
   const filteredTasks = tasks.filter(task => {
-    const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         task.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = task.title.toLowerCase().includes(searchDebounce.toLowerCase()) ||
+                         task.description.toLowerCase().includes(searchDebounce.toLowerCase());
     const matchesStatus = filterStatus === 'all' || task.status === filterStatus;
-    return matchesSearch && matchesStatus;
+    const matchesPriority = filterPriority === 'all' || task.priority.toString() === filterPriority;
+    
+    return matchesSearch && matchesStatus && matchesPriority;
   });
+
+  // Tasks Board: Show tasks where I am in assignedTo (I am the assignee)
+  const tasksAssignedToMe = filteredTasks.filter(task => {
+    if (Array.isArray(task.assignedTo)) {
+      return task.assignedTo.some(u => {
+        const userId = typeof u === 'object' ? u._id : u;
+        return String(userId) === String(user._id);
+      });
+    }
+    const assignedToId = typeof task.assignedTo === 'object' ? task.assignedTo._id : task.assignedTo;
+    return String(assignedToId) === String(user._id);
+  });
+
+  // Get unique users who have tasks assigned
+  const usersWithTasks = Array.from(new Set(
+    tasks.flatMap(task => {
+      if (Array.isArray(task.assignedTo)) {
+        return task.assignedTo.map(u => typeof u === 'object' ? u._id : u);
+      }
+      return typeof task.assignedTo === 'object' ? [task.assignedTo._id] : [task.assignedTo];
+    })
+  )).map(userId => users.find(u => u._id === userId)).filter(Boolean) as User[];
+
+  // Format timestamp (relative for recent, absolute for old)
+  const formatTimestamp = (date: string | undefined) => {
+    if (!date) return '';
+    const now = new Date();
+    const taskDate = new Date(date);
+    const diffMs = now.getTime() - taskDate.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+    
+    if (diffHours < 1) return 'Just now';
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 2) return `${diffDays}d ago`;
+    return taskDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  // Calculate completion percentages for users
+  const getUserCompletionStats = (userId: string) => {
+    const tasksTo = tasks.filter(t => {
+      if (Array.isArray(t.assignedTo)) {
+        return t.assignedTo.some(u => (typeof u === 'object' ? u._id : u) === userId);
+      }
+      return (typeof t.assignedTo === 'object' ? t.assignedTo._id : t.assignedTo) === userId;
+    });
+    const tasksBy = tasks.filter(t => (typeof t.assignedBy === 'object' ? t.assignedBy?._id : t.assignedBy) === userId);
+    
+    const completedTo = tasksTo.filter(t => t.status === 'Done').length;
+    const completedBy = tasksBy.filter(t => t.status === 'Done').length;
+    
+    return {
+      toCount: tasksTo.length,
+      toCompleted: completedTo,
+      toPercentage: tasksTo.length > 0 ? Math.round((completedTo / tasksTo.length) * 100) : 0,
+      byCount: tasksBy.length,
+      byCompleted: completedBy,
+      byPercentage: tasksBy.length > 0 ? Math.round((completedBy / tasksBy.length) * 100) : 0
+    };
+  };
 
   const kanbanColumns = ["Not Started", "Working on it", "Stuck", "Done"];
   const getKanbanTasks = (): KanbanTasksType => {
     const columns: KanbanTasksType = {};
     kanbanColumns.forEach(col => columns[col] = []);
-    filteredTasks.forEach(task => {
+    tasksAssignedToMe.forEach(task => {
       if (columns[task.status]) columns[task.status].push(task);
     });
     return columns;
@@ -563,10 +798,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     return new Date(task.dueDate) < new Date(new Date().toDateString());
   };
 
-  const totalTasks = filteredTasks.length;
-  const doneTasks = filteredTasks.filter(t => t.status === "Done").length;
-  const inProgressTasks = filteredTasks.filter(t => t.status === "Working on it").length;
-  const stuckTasks = filteredTasks.filter(t => t.status === "Stuck").length;
+  const totalTasks = tasksAssignedToMe.length;
+  const doneTasks = tasksAssignedToMe.filter(t => t.status === "Done").length;
+  const inProgressTasks = tasksAssignedToMe.filter(t => t.status === "Working on it").length;
+  const stuckTasks = tasksAssignedToMe.filter(t => t.status === "Stuck").length;
 
   let content = null;
   if (nav === "profile") {
@@ -732,15 +967,33 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       <div>
         {/* Dynamic Controls */}
         <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
             <label style={{ fontWeight: 600, color: theme === 'dark' ? '#ffffff' : '#000000' }}>Search:</label>
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search tasks..."
-              style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, minWidth: 200, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+              style={{ padding: "6px 32px 6px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, minWidth: 200, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
             />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                style={{
+                  position: 'absolute',
+                  right: 8,
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  fontSize: 16,
+                  padding: 4
+                }}
+                title="Clear search"
+              >
+                ×
+              </button>
+            )}
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -755,6 +1008,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               <option value="Working on it">Working on it</option>
               <option value="Stuck">Stuck</option>
               <option value="Done">Done</option>
+            </select>
+          </div>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <select
+              value={filterPriority}
+              onChange={(e) => setFilterPriority(e.target.value)}
+              style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+            >
+              <option value="all">All Priority</option>
+              <option value="5">⭐⭐⭐⭐⭐ High</option>
+              <option value="4">⭐⭐⭐⭐ Medium-High</option>
+              <option value="3">⭐⭐⭐ Medium</option>
+              <option value="2">⭐⭐ Low-Medium</option>
+              <option value="1">⭐ Low</option>
             </select>
           </div>
           
@@ -830,9 +1098,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                               {...provided.draggableProps}
                               {...provided.dragHandleProps}
                               className="task-card"
+                              title={task.rejectionReason ? `Rejected: ${task.rejectionReason}` : ''}
                               style={{
-                                background: isOverdue(task) ? "#fff0f0" : theme === 'dark' ? "#4b5563" : "#fff",
-                                border: isOverdue(task) ? "2px solid #ef4444" : "1.5px solid #dbeafe",
+                                background: task.rejectionReason ? '#fee2e2' : isOverdue(task) ? "#fff0f0" : theme === 'dark' ? "#4b5563" : "#fff",
+                                border: task.rejectionReason ? '2px solid #fca5a5' : isOverdue(task) ? "2px solid #ef4444" : "1.5px solid #dbeafe",
                                 borderRadius: 8,
                                 marginBottom: 8,
                                 boxShadow: "0 1px 4px #c7d2fe22",
@@ -909,6 +1178,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                 </button>
                               </div>
                               
+                              {/* Approved Tick Mark */}
+                              {(task as any).approvalStatus === 'approved' && (
+                                <div style={{ position: 'absolute', top: 8, right: 8, color: '#22c55e', fontSize: 20, fontWeight: 'bold' }}>✓</div>
+                              )}
+                              
                               <div style={{ fontWeight: 600, fontSize: 14, color: theme === 'dark' ? '#ffffff' : '#22223b', paddingRight: 60 }}>
                                 {task.title}
                                 <span style={{ float: "right", marginRight: 60 }}>{renderStars(task.priority)}</span>
@@ -917,6 +1191,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                               {task.company && (
                                 <div style={{ fontSize: 12, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 2 }}>
                                   <b>Company:</b> {task.company}
+                                </div>
+                              )}
+                              {task.rejectionReason && (
+                                <div style={{
+                                  fontSize: 12,
+                                  color: '#dc2626',
+                                  background: '#fee2e2',
+                                  padding: '6px 8px',
+                                  borderRadius: 6,
+                                  marginBottom: 6,
+                                  border: '1px solid #fca5a5'
+                                }}>
+                                  <b>❌ Rejected:</b> {task.rejectionReason}
                                 </div>
                               )}
                               {task.assignedBy && (
@@ -946,6 +1233,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                               {isOverdue(task) && (
                                 <div style={{ color: "#ef4444", fontWeight: 700, marginBottom: 2, fontSize: 11 }}>
                                   Overdue!
+                                </div>
+                              )}
+                              {task.rejectionReason && (
+                                <div style={{ color: "#dc2626", fontSize: 11, marginBottom: 4, fontStyle: 'italic' }}>
+                                  ❌ Rejected
+                                </div>
+                              )}
+                              {task.createdAt && (
+                                <div style={{ color: "#9ca3af", fontSize: 10, marginTop: 4 }}>
+                                  Created {formatTimestamp(task.createdAt)}
                                 </div>
                               )}
                               <div style={{
@@ -983,7 +1280,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
         
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-          {filteredTasks.map(task => (
+          {tasksAssignedToMe.map(task => (
             <div key={task._id} style={{
               background: isOverdue(task) ? "#fff0f0" : theme === 'dark' ? "#4b5563" : "#fff",
               border: isOverdue(task) ? "2px solid #ef4444" : "1.5px solid #dbeafe",
@@ -1022,7 +1319,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           ))}
         </div>
         
-        {filteredTasks.length === 0 && (
+        {tasksAssignedToMe.length === 0 && (
           <div style={{ textAlign: "center", color: "#64748b", fontSize: 16, marginTop: 40 }}>
             No tasks found. Create your first task!
           </div>
@@ -1030,8 +1327,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       </div>
     );
   } else if (nav === "completed") {
-    // Completed Tasks View
-    const completedTasks = filteredTasks.filter(t => t.status === "Done");
+    // Completed Tasks View - only show tasks that are Done
+    const completedTasks = tasksAssignedToMe.filter(t => t.status === "Done");
+    
     content = (
       <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22" }}>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
@@ -1046,45 +1344,106 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-          {completedTasks.map(task => (
-            <div key={task._id} style={{
-              background: theme === 'dark' ? "#4b5563" : "#f9fafb",
-              border: "1.5px solid #22c55e",
-              borderRadius: 10,
-              padding: 16,
-              boxShadow: "0 1px 4px #22c55e22",
-              position: "relative",
-              opacity: 0.9
-            }}>
-              <div style={{ position: "absolute", top: 8, right: 8, background: "#22c55e", color: "white", borderRadius: "50%", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>✓</div>
-              <div style={{ fontWeight: 600, fontSize: 16, color: theme === 'dark' ? '#ffffff' : '#22223b', paddingRight: 30 }}>
-                {task.title}
-                <span style={{ float: "right", marginRight: 30 }}>{renderStars(task.priority)}</span>
-              </div>
-              <div style={{ color: theme === 'dark' ? '#e5e7eb' : '#475569', marginBottom: 8 }}>{task.description}</div>
-              {task.company && (
-                <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 3 }}>
-                  <b>Company:</b> {task.company}
-                </div>
-              )}
-              {task.dueDate && (
-                <div style={{ color: "#22c55e", fontSize: 13, marginBottom: 4 }}>
-                  <FaCalendar style={{ marginRight: 4 }} />
-                  Completed: {new Date(task.dueDate).toLocaleDateString()}
-                </div>
-              )}
-              <div style={{
-                fontWeight: 600,
-                background: "#22c55e22",
-                color: "#22c55e",
-                borderRadius: 8,
-                padding: "2px 10px",
-                display: "inline-block"
+          {completedTasks.map(task => {
+            const taskAssignedBy = typeof task.assignedBy === 'object' ? task.assignedBy?._id : task.assignedBy;
+            const isCreator = taskAssignedBy === user._id || taskAssignedBy === user.id;
+            // Check both camelCase and snake_case for approval status
+            const isApproved = (task as any).approvalStatus === 'approved' || (task as any).approval_status === 'approved';
+            
+            console.log('DEBUG COMPLETED TASK:', {
+              title: task.title,
+              taskAssignedBy,
+              userId: user._id,
+              isCreator,
+              isApproved,
+              showButtons: isCreator && !isApproved
+            });
+            
+            return (
+              <div key={task._id} style={{
+                background: theme === 'dark' ? "#4b5563" : "#f9fafb",
+                border: "1.5px solid #22c55e",
+                borderRadius: 10,
+                padding: 16,
+                boxShadow: "0 1px 4px #22c55e22",
+                position: "relative",
+                opacity: 0.9
               }}>
-                ✅ {task.status}
+                {isApproved && (
+                  <div style={{ position: "absolute", top: 8, right: 8, color: "#22c55e", fontSize: 20 }}>✓</div>
+                )}
+                <div style={{ fontWeight: 600, fontSize: 16, color: theme === 'dark' ? '#ffffff' : '#22223b', paddingRight: 30 }}>
+                  {task.title}
+                  <span style={{ float: "right", marginRight: 30 }}>{renderStars(task.priority)}</span>
+                </div>
+                <div style={{ color: theme === 'dark' ? '#e5e7eb' : '#475569', marginBottom: 8 }}>{task.description}</div>
+                {task.company && (
+                  <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 3 }}>
+                    <b>Company:</b> {task.company}
+                  </div>
+                )}
+                {task.dueDate && (
+                  <div style={{ color: "#22c55e", fontSize: 13, marginBottom: 4 }}>
+                    <FaCalendar style={{ marginRight: 4 }} />
+                    Completed: {new Date(task.dueDate).toLocaleDateString()}
+                  </div>
+                )}
+                <div style={{
+                  fontWeight: 600,
+                  background: "#22c55e22",
+                  color: "#22c55e",
+                  borderRadius: 8,
+                  padding: "2px 10px",
+                  display: "inline-block",
+                  marginBottom: 8
+                }}>
+                  Done
+                </div>
+                
+                {isCreator && !isApproved && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button
+                      onClick={() => handleApproveTask(task._id)}
+                      style={{
+                        flex: 1,
+                        background: '#10b981',
+                        color: 'white',
+                        border: 'none',
+                        padding: '8px 12px',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ✅ Approve
+                    </button>
+                    <button
+                      onClick={() => {
+                        const reason = prompt('Enter rejection reason:');
+                        if (reason && reason.trim()) {
+                          handleRejectTask(task._id, reason.trim());
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        background: '#ef4444',
+                        color: 'white',
+                        border: 'none',
+                        padding: '8px 12px',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ❌ Reject
+                    </button>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         
         {completedTasks.length === 0 && (
@@ -1096,44 +1455,99 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     );
   } else if (nav === "calendar") {
     // Calendar View
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    
     content = (
-      <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 700, margin: "0 auto" }}>
-        <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
-          <FaCalendarAlt style={{ marginRight: 8 }} /> Calendar
-        </div>
-        <div className="calendar-grid" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {calendarDates.map(day => (
-            <div
-              key={day}
-              onClick={() => setSelectedDate(day.toString())}
-              className="calendar-day"
-              style={{
-                width: 38, height: 38, lineHeight: "38px", textAlign: "center",
-                borderRadius: "50%", cursor: "pointer",
-                background: selectedDate === day.toString() ? "#2563eb" : "#e0e7ef",
-                color: selectedDate === day.toString() ? "#fff" : "#22223b",
-                fontWeight: 600, fontSize: 16
-              }}
+      <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 900, margin: "0 auto" }}>
+        <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div><FaCalendarAlt style={{ marginRight: 8 }} /> Calendar</div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <select
+              value={calendarMonth}
+              onChange={(e) => setCalendarMonth(Number(e.target.value))}
+              style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
             >
+              {monthNames.map((month, idx) => (
+                <option key={idx} value={idx}>{month}</option>
+              ))}
+            </select>
+            <select
+              value={calendarYear}
+              onChange={(e) => setCalendarYear(Number(e.target.value))}
+              style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+            >
+              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 12 }}>
+          {dayNames.map(day => (
+            <div key={day} style={{ textAlign: 'center', fontWeight: 600, color: theme === 'dark' ? '#9ca3af' : '#6b7280', fontSize: 14, padding: 8 }}>
               {day}
             </div>
           ))}
         </div>
+        
+        <div className="calendar-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+          {Array.from({ length: firstDayOfMonth }).map((_, i) => (
+            <div key={`empty-${i}`} style={{ height: 38 }} />
+          ))}
+          {calendarDates.map(day => {
+            const isToday = day === today.getDate() && calendarMonth === today.getMonth() && calendarYear === today.getFullYear();
+            const isSelected = selectedDate === day.toString();
+            const hasTasks = tasksAssignedToMe.some(t => t.dueDate && new Date(t.dueDate).getDate() === day && new Date(t.dueDate).getMonth() === calendarMonth && new Date(t.dueDate).getFullYear() === calendarYear);
+            
+            return (
+              <div
+                key={day}
+                onClick={() => setSelectedDate(day.toString())}
+                className="calendar-day"
+                style={{
+                  height: 38,
+                  lineHeight: '38px',
+                  textAlign: 'center',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  background: isSelected ? '#2563eb' : isToday ? '#dbeafe' : theme === 'dark' ? '#4b5563' : '#f3f4f6',
+                  color: isSelected ? '#fff' : theme === 'dark' ? '#ffffff' : '#1f2937',
+                  fontWeight: isToday || isSelected ? 700 : 500,
+                  fontSize: 14,
+                  border: isToday && !isSelected ? '2px solid #2563eb' : 'none',
+                  position: 'relative'
+                }}
+              >
+                {day}
+                {hasTasks && (
+                  <div style={{ position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)', width: 4, height: 4, borderRadius: '50%', background: isSelected ? '#fff' : '#ef4444' }} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+        
         <div style={{ marginTop: 24 }}>
-          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 8, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
-            Tasks for {selectedDate ? `Day ${selectedDate}` : "this month"}:
+          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 12, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
+            Tasks for {monthNames[calendarMonth]} {selectedDate}, {calendarYear}:
           </div>
-          {filteredTasks.filter(t => t.dueDate && new Date(t.dueDate).getDate().toString() === selectedDate).length === 0 && (
-            <div style={{ color: "#64748b" }}>No tasks for this day.</div>
+          {tasksAssignedToMe.filter(t => t.dueDate && new Date(t.dueDate).getDate().toString() === selectedDate && new Date(t.dueDate).getMonth() === calendarMonth && new Date(t.dueDate).getFullYear() === calendarYear).length === 0 && (
+            <div style={{ color: '#64748b', padding: 20, textAlign: 'center', background: theme === 'dark' ? '#4b5563' : '#f8fafc', borderRadius: 8 }}>No tasks for this day.</div>
           )}
-          {filteredTasks.filter(t => t.dueDate && new Date(t.dueDate).getDate().toString() === selectedDate).map(task => (
+          {tasksAssignedToMe.filter(t => t.dueDate && new Date(t.dueDate).getDate().toString() === selectedDate && new Date(t.dueDate).getMonth() === calendarMonth && new Date(t.dueDate).getFullYear() === calendarYear).map(task => (
             <div key={task._id} style={{
               background: isOverdue(task) ? "#fff0f0" : theme === 'dark' ? "#4b5563" : "#f9fafb",
               border: isOverdue(task) ? "2px solid #ef4444" : "1.5px solid #dbeafe",
               borderRadius: 10,
               padding: 16,
               marginBottom: 12,
-              boxShadow: "0 1px 4px #c7d2fe22"
+              boxShadow: "0 1px 4px #c7d2fe22",
+              cursor: 'pointer'
+            }} onClick={() => {
+              setSelectedTaskDetails(task);
+              setShowTaskDetailsModal(true);
             }}>
               <div style={{ fontWeight: 600, fontSize: 16, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
                 {task.title}
@@ -1370,7 +1784,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               {assignedKanbanTasks[col].length === 0 && (
                 <div style={{ color: "#64748b", fontSize: 14 }}>No tasks</div>
               )}
-              {assignedKanbanTasks[col].map(task => (
+              {assignedKanbanTasks[col].map(task => {
+                const isApproved = (task as any).approvalStatus === 'approved';
+                const isDone = task.status === 'Done';
+                
+                return (
                 <div key={task._id} style={{
                   background: theme === 'dark' ? "#6b7280" : "#fff",
                   border: "1.5px solid #dbeafe",
@@ -1380,6 +1798,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   boxShadow: "0 1px 4px #c7d2fe22",
                   position: "relative"
                 }}>
+                  {isApproved && (
+                    <div style={{ position: "absolute", top: 8, right: 8, color: "#22c55e", fontSize: 20 }}>✓</div>
+                  )}
                   {/* Action Buttons */}
                   <div style={{ position: "absolute", top: 8, right: 8, display: "flex", gap: 4, zIndex: 2 }}>
                     <button
@@ -1496,8 +1917,51 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                       <b>Remark:</b> {task.completionRemark}
                     </div>
                   )}
+                  
+                  {isDone && !isApproved && (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                      <button
+                        onClick={() => handleApproveTask(task._id)}
+                        style={{
+                          flex: 1,
+                          background: '#10b981',
+                          color: 'white',
+                          border: 'none',
+                          padding: '8px 12px',
+                          borderRadius: 6,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ✅ Approve
+                      </button>
+                      <button
+                        onClick={() => {
+                          const reason = prompt('Enter rejection reason:');
+                          if (reason && reason.trim()) {
+                            handleRejectTask(task._id, reason.trim());
+                          }
+                        }}
+                        style={{
+                          flex: 1,
+                          background: '#ef4444',
+                          color: 'white',
+                          border: 'none',
+                          padding: '8px 12px',
+                          borderRadius: 6,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ❌ Reject
+                      </button>
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           ))}
         </div>
@@ -1507,6 +1971,156 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             No tasks assigned yet. Create your first task!
           </div>
         )}
+      </div>
+    );
+  } else if (nav === "adduser" && user.role === 'admin') {
+    // Add User for Admin
+    const [newUserName, setNewUserName] = useState("");
+    const [newUserEmail, setNewUserEmail] = useState("");
+    const [newUserUserId, setNewUserUserId] = useState("");
+    const [newUserPassword, setNewUserPassword] = useState("");
+    const [showNewUserPassword, setShowNewUserPassword] = useState(false);
+    const [addUserLoading, setAddUserLoading] = useState(false);
+    
+    const handleAddUser = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setAddUserLoading(true);
+      
+      try {
+        const token = sessionStorage.getItem("jwt-token");
+        await axios.post("/auth/admin/create-user", {
+          name: newUserName,
+          email: newUserEmail,
+          userId: newUserUserId,
+          password: newUserPassword
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        showToast("User created successfully! 🎉", "success");
+        setNewUserName("");
+        setNewUserEmail("");
+        setNewUserUserId("");
+        setNewUserPassword("");
+        
+        // Refresh users list
+        const res = await axios.get("/auth/users", { headers: { Authorization: `Bearer ${token}` } });
+        setUsers(res.data);
+      } catch (err: any) {
+        showToast("Error: " + (err.response?.data?.message || err.message), "error");
+      } finally {
+        setAddUserLoading(false);
+      }
+    };
+    
+    content = (
+      <div style={{ maxWidth: 600, margin: "0 auto" }}>
+        <div style={{
+          background: theme === 'dark' ? "#374151" : "#fff",
+          boxShadow: "0 4px 24px #c7d2fe33",
+          borderRadius: 16,
+          padding: 32
+        }}>
+          <div style={{ fontWeight: 700, fontSize: 22, color: "#2563eb", marginBottom: 24 }}>👥 Add New User</div>
+          
+          <form onSubmit={handleAddUser} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            <div>
+              <label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>User Name</label>
+              <input
+                value={newUserName}
+                onChange={(e) => setNewUserName(e.target.value)}
+                placeholder="Full Name"
+                required
+                style={{ padding: 12, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#ddd'}`, borderRadius: 8, width: "100%", background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+              />
+            </div>
+            
+            <div>
+              <label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Email</label>
+              <input
+                type="email"
+                value={newUserEmail}
+                onChange={(e) => setNewUserEmail(e.target.value)}
+                placeholder="user@company.com"
+                required
+                style={{ padding: 12, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#ddd'}`, borderRadius: 8, width: "100%", background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+              />
+            </div>
+            
+            <div>
+              <label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>User ID</label>
+              <input
+                value={newUserUserId}
+                onChange={(e) => setNewUserUserId(e.target.value)}
+                placeholder="username"
+                required
+                style={{ padding: 12, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#ddd'}`, borderRadius: 8, width: "100%", background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+              />
+            </div>
+            
+            <div style={{ position: 'relative' }}>
+              <label style={{ color: theme === 'dark' ? '#ffffff' : "#22223b" }}>Password</label>
+              <input
+                type={showNewUserPassword ? "text" : "password"}
+                value={newUserPassword}
+                onChange={(e) => setNewUserPassword(e.target.value)}
+                placeholder="Password"
+                required
+                style={{ padding: 12, paddingRight: 45, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#ddd'}`, borderRadius: 8, width: "100%", background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewUserPassword(!showNewUserPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '32px',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#6b7280',
+                  fontSize: '16px'
+                }}
+              >
+                {showNewUserPassword ? '👁️' : '👁️🗨️'}
+              </button>
+            </div>
+            
+            <button type="submit" disabled={addUserLoading} style={{
+              fontWeight: 600, fontSize: "1.1rem", background: addUserLoading ? "#ccc" : "#2563eb",
+              color: "#fff", padding: "12px 24px", borderRadius: 8, border: "none",
+              cursor: addUserLoading ? "not-allowed" : "pointer", display: "flex", alignItems: "center",
+              justifyContent: "center", gap: 8, marginTop: 8
+            }}>
+              {addUserLoading ? (
+                <>
+                  <LoadingSpinner size="small" color="white" />
+                  Creating User...
+                </>
+              ) : (
+                "Add User"
+              )}
+            </button>
+          </form>
+          
+          <div style={{ 
+            marginTop: 24, 
+            padding: 16, 
+            background: theme === 'dark' ? "#1f2937" : "#f0f9ff", 
+            borderRadius: 8, 
+            border: "1px solid #3b82f6" 
+          }}>
+            <div style={{ color: "#3b82f6", fontWeight: 600, marginBottom: 8 }}>
+              📝 Add User Information:
+            </div>
+            <div style={{ color: theme === 'dark' ? '#d1d5db' : "#64748b", fontSize: 14 }}>
+              • Users will be added directly to your company<br/>
+              • They can login immediately with the provided credentials<br/>
+              • Users will have access to the task management system<br/>
+              • You can assign tasks to them once they're created
+            </div>
+          </div>
+        </div>
       </div>
     );
   } else if (nav === "userapprovals" && user.role === 'admin') {
@@ -1604,8 +2218,28 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         )}
         
         {/* User Management Section */}
-        <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 16, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
-          👥 User Management ({pendingUsers.length})
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div style={{ fontWeight: 600, fontSize: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
+            👥 User Management ({pendingUsers.length})
+          </div>
+          <button
+            onClick={() => setNav('adduser')}
+            style={{
+              background: '#2563eb',
+              color: '#fff',
+              border: 'none',
+              padding: '10px 20px',
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}
+          >
+            <FaPlus /> Add User
+          </button>
         </div>
         
         {pendingUsers.length === 0 ? (
@@ -1665,9 +2299,44 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     <b>User ID:</b> {pendingUser.userId || pendingUser.user_id || pendingUser._id}
                   </div>
                   
-                  <div style={{ fontSize: 14, color: "#2563eb", marginBottom: 12 }}>
+                  <div style={{ fontSize: 14, color: "#2563eb", marginBottom: 8 }}>
                     <b>Status:</b> {pendingUser.account_status || 'Unknown'}
                   </div>
+                  
+                  {(() => {
+                    const stats = getUserCompletionStats(pendingUser._id || pendingUser.id);
+                    return (
+                      <div style={{ marginTop: 12, padding: 12, background: theme === 'dark' ? '#1f2937' : '#f0f9ff', borderRadius: 8, fontSize: 13 }}>
+                        <div style={{ marginBottom: 6, color: theme === 'dark' ? '#d1d5db' : '#374151' }}>
+                          <b>Tasks TO:</b> {stats.toCompleted}/{stats.toCount} ({stats.toPercentage}%)
+                        </div>
+                        <div style={{ color: theme === 'dark' ? '#d1d5db' : '#374151' }}>
+                          <b>Tasks BY:</b> {stats.byCompleted}/{stats.byCount} ({stats.byPercentage}%)
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  
+                  <button
+                    onClick={() => {
+                      setSelectedUserForTasks(pendingUser);
+                      setShowUserTasksModal(true);
+                    }}
+                    style={{
+                      width: '100%',
+                      marginTop: 12,
+                      padding: '8px 12px',
+                      borderRadius: 6,
+                      border: '1px solid #2563eb',
+                      background: 'transparent',
+                      color: '#2563eb',
+                      cursor: 'pointer',
+                      fontSize: 12,
+                      fontWeight: 600
+                    }}
+                  >
+                    👁️ View Tasks
+                  </button>
                   
                   <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
                     {isPending && (
@@ -1757,6 +2426,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   const unreadCount = notifications.filter(n => !n.isRead && !n.is_read).length;
 
+  // Close mobile menu on navigation
+  useEffect(() => {
+    if (window.innerWidth < 768) {
+      setIsMobileMenuOpen(false);
+    }
+  }, [nav]);
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: theme === 'dark' ? 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)' : 'linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%)' }}>
       <style>
@@ -1771,10 +2447,39 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
           }
+          @media (max-width: 768px) {
+            .desktop-sidebar {
+              transform: translateX(-100%);
+              transition: transform 0.3s ease;
+            }
+            .desktop-sidebar.mobile-open {
+              transform: translateX(0);
+              z-index: 1001;
+            }
+            .mobile-overlay {
+              display: none;
+            }
+            .mobile-overlay.active {
+              display: block;
+              position: fixed;
+              top: 0;
+              left: 0;
+              width: 100vw;
+              height: 100vh;
+              background: rgba(0,0,0,0.5);
+              z-index: 1000;
+            }
+          }
         `}
       </style>
       
-      <div style={{
+      {/* Mobile Overlay */}
+      <div 
+        className={`mobile-overlay ${isMobileMenuOpen ? 'active' : ''}`}
+        onClick={() => setIsMobileMenuOpen(false)}
+      />
+      
+      <div className={`desktop-sidebar ${isMobileMenuOpen ? 'mobile-open' : ''}`} style={{
         width: '280px',
         background: theme === 'dark' ? 'linear-gradient(180deg, #374151 0%, #1f2937 100%)' : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
         borderRight: theme === 'dark' ? '1px solid #4b5563' : '1px solid #e2e8f0',
@@ -1822,7 +2527,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             { key: 'assignedtasks', icon: FaUser, label: 'Tasks Assigned' },
             { key: 'list', icon: FaTasks, label: 'Task List' },
             { key: 'completed', icon: FaCheckCircle, label: 'Completed Tasks' },
-            ...(user.role === 'admin' ? [{ key: 'userapprovals', icon: FaUser, label: 'User Management' }] : []),
+            ...(user.role === 'admin' ? [
+              { key: 'userapprovals', icon: FaUser, label: 'User Management' }
+            ] : []),
             { key: 'calendar', icon: FaCalendarAlt, label: 'Calendar' },
             { key: 'analytics', icon: FaChartBar, label: 'Analytics' }
           ].map(({ key, icon: Icon, label }) => (
@@ -1877,14 +2584,45 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           alignItems: 'center',
           justifyContent: 'space-between'
         }}>
+          {/* Mobile Hamburger */}
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            style={{
+              display: 'none',
+              background: 'transparent',
+              border: 'none',
+              fontSize: 24,
+              cursor: 'pointer',
+              color: theme === 'dark' ? '#ffffff' : '#1f2937',
+              padding: 8
+            }}
+            className="mobile-hamburger"
+          >
+            ☰
+          </button>
+          
           <h1 style={{
             fontSize: '28px',
             fontWeight: '800',
             color: theme === 'dark' ? '#ffffff' : '#1f2937',
             margin: 0
           }}>
-            {user.organization?.name} Task Management System
+            Task Management System
           </h1>
+
+          <style>
+            {`
+              @media (max-width: 768px) {
+                .mobile-hamburger {
+                  display: block !important;
+                }
+                .desktop-sidebar ~ div {
+                  margin-left: 0 !important;
+                  width: 100vw !important;
+                }
+              }
+            `}
+          </style>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button
@@ -1908,6 +2646,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             </button>
             <div style={{ position: "relative" }}>
               <button
+                aria-label="notifications"
                 style={{
                   background: theme === 'dark' ? "#4b5563" : "#f3f4f6",
                   border: "1px solid #d1d5db",
@@ -1951,9 +2690,388 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           {content}
         </div>
 
+        {/* Rejection Modal */}
+        {showRejectModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 2000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }} onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowRejectModal(false);
+              setRejectionReason('');
+              setRejectingTaskId('');
+            }
+          }}>
+            <div style={{
+              background: theme === 'dark' ? '#374151' : '#fff',
+              borderRadius: 12,
+              padding: 32,
+              maxWidth: 500,
+              width: '90%',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+            }} onClick={(e) => e.stopPropagation()}>
+              <h3 style={{ margin: '0 0 16px 0', color: theme === 'dark' ? '#ffffff' : '#1f2937', fontSize: 20 }}>❌ Reject Task</h3>
+              <p style={{ color: theme === 'dark' ? '#d1d5db' : '#6b7280', marginBottom: 16, fontSize: 14 }}>
+                Please provide a reason for rejecting this task (required, max 200 characters):
+              </p>
+              <textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="Enter rejection reason..."
+                maxLength={200}
+                style={{
+                  width: '100%',
+                  minHeight: 100,
+                  padding: 12,
+                  borderRadius: 8,
+                  border: `1px solid ${theme === 'dark' ? '#4b5563' : '#ddd'}`,
+                  background: theme === 'dark' ? '#1f2937' : '#fff',
+                  color: theme === 'dark' ? '#ffffff' : '#000000',
+                  fontSize: 14,
+                  resize: 'vertical'
+                }}
+              />
+              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4, textAlign: 'right' }}>
+                {rejectionReason.length}/200
+              </div>
+              <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+                <button
+                  onClick={() => {
+                    setShowRejectModal(false);
+                    setRejectionReason('');
+                    setRejectingTaskId('');
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '10px 20px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    background: theme === 'dark' ? '#4b5563' : '#f3f4f6',
+                    color: theme === 'dark' ? '#ffffff' : '#374151',
+                    cursor: 'pointer',
+                    fontWeight: 600
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRejectSubmit}
+                  disabled={!rejectionReason.trim()}
+                  style={{
+                    flex: 1,
+                    padding: '10px 20px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: rejectionReason.trim() ? '#ef4444' : '#9ca3af',
+                    color: '#fff',
+                    cursor: rejectionReason.trim() ? 'pointer' : 'not-allowed',
+                    fontWeight: 600
+                  }}
+                >
+                  Reject Task
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* User Tasks Modal */}
+        {showUserTasksModal && selectedUserForTasks && (() => {
+          const userTasks = tasks.filter(t => {
+            if (Array.isArray(t.assignedTo)) {
+              return t.assignedTo.some(u => (typeof u === 'object' ? u._id : u) === selectedUserForTasks._id);
+            }
+            return (typeof t.assignedTo === 'object' ? t.assignedTo._id : t.assignedTo) === selectedUserForTasks._id;
+          });
+          const filteredUserTasks = userTasksFilter === 'all' ? userTasks : userTasks.filter(t => t.status === userTasksFilter);
+          
+          return (
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              width: '100vw',
+              height: '100vh',
+              background: 'rgba(0,0,0,0.5)',
+              zIndex: 2000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 20
+            }} onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setShowUserTasksModal(false);
+                setSelectedUserForTasks(null);
+                setUserTasksFilter('all');
+              }
+            }}>
+              <div style={{
+                background: theme === 'dark' ? '#374151' : '#fff',
+                borderRadius: 12,
+                padding: 32,
+                maxWidth: 900,
+                width: '100%',
+                maxHeight: '90vh',
+                overflow: 'auto',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+              }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <h3 style={{ margin: 0, color: theme === 'dark' ? '#ffffff' : '#1f2937', fontSize: 22 }}>
+                    📋 Tasks for {selectedUserForTasks.name}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setShowUserTasksModal(false);
+                      setSelectedUserForTasks(null);
+                      setUserTasksFilter('all');
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      fontSize: 28,
+                      cursor: 'pointer',
+                      color: theme === 'dark' ? '#9ca3af' : '#6b7280'
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                
+                <div style={{ marginBottom: 20 }}>
+                  <select
+                    value={userTasksFilter}
+                    onChange={(e) => setUserTasksFilter(e.target.value)}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: 6,
+                      border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`,
+                      background: theme === 'dark' ? '#1f2937' : '#fff',
+                      color: theme === 'dark' ? '#ffffff' : '#000000'
+                    }}
+                  >
+                    <option value="all">All Tasks ({userTasks.length})</option>
+                    <option value="Not Started">Not Started ({userTasks.filter(t => t.status === 'Not Started').length})</option>
+                    <option value="Working on it">Working on it ({userTasks.filter(t => t.status === 'Working on it').length})</option>
+                    <option value="Stuck">Stuck ({userTasks.filter(t => t.status === 'Stuck').length})</option>
+                    <option value="Done">Done ({userTasks.filter(t => t.status === 'Done').length})</option>
+                  </select>
+                </div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+                  {filteredUserTasks.map(task => (
+                    <div
+                      key={task._id}
+                      style={{
+                        background: theme === 'dark' ? '#4b5563' : '#f8fafc',
+                        border: `1.5px solid ${statusColors[task.status]}`,
+                        borderRadius: 10,
+                        padding: 16,
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => {
+                        setSelectedTaskDetails(task);
+                        setShowTaskDetailsModal(true);
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, fontSize: 16, color: theme === 'dark' ? '#ffffff' : '#1f2937', marginBottom: 8 }}>
+                        {task.title}
+                      </div>
+                      <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : '#6b7280', marginBottom: 8 }}>
+                        {task.description}
+                      </div>
+                      <div style={{
+                        display: 'inline-block',
+                        padding: '4px 8px',
+                        borderRadius: 6,
+                        background: statusColors[task.status] + '22',
+                        color: statusColors[task.status],
+                        fontSize: 12,
+                        fontWeight: 600
+                      }}>
+                        {task.status}
+                      </div>
+                      <div style={{ marginTop: 8, fontSize: 12, color: theme === 'dark' ? '#9ca3af' : '#6b7280' }}>
+                        {renderStars(task.priority)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                {filteredUserTasks.length === 0 && (
+                  <div style={{ textAlign: 'center', color: '#6b7280', padding: 40 }}>
+                    No tasks found for this filter.
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Task Details Modal */}
+        {showTaskDetailsModal && selectedTaskDetails && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 2000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20
+          }} onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowTaskDetailsModal(false);
+              setSelectedTaskDetails(null);
+            }
+          }}>
+            <div style={{
+              background: theme === 'dark' ? '#374151' : '#fff',
+              borderRadius: 12,
+              padding: 32,
+              maxWidth: 600,
+              width: '100%',
+              maxHeight: '90vh',
+              overflow: 'auto',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+            }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+                <h3 style={{ margin: 0, color: theme === 'dark' ? '#ffffff' : '#1f2937', fontSize: 22, flex: 1 }}>
+                  📝 Task Details
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowTaskDetailsModal(false);
+                    setSelectedTaskDetails(null);
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    fontSize: 28,
+                    cursor: 'pointer',
+                    color: theme === 'dark' ? '#9ca3af' : '#6b7280'
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+              
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', fontWeight: 600 }}>Title</div>
+                <div style={{ fontSize: 18, fontWeight: 600, color: theme === 'dark' ? '#ffffff' : '#1f2937' }}>
+                  {selectedTaskDetails.title}
+                </div>
+              </div>
+              
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', fontWeight: 600 }}>Description</div>
+                <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : '#374151' }}>
+                  {selectedTaskDetails.description}
+                </div>
+              </div>
+              
+              {selectedTaskDetails.company && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', fontWeight: 600 }}>Company</div>
+                  <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : '#374151' }}>
+                    {selectedTaskDetails.company}
+                  </div>
+                </div>
+              )}
+              
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', fontWeight: 600 }}>Status</div>
+                <div style={{
+                  display: 'inline-block',
+                  padding: '6px 12px',
+                  borderRadius: 8,
+                  background: statusColors[selectedTaskDetails.status] + '22',
+                  color: statusColors[selectedTaskDetails.status],
+                  fontSize: 14,
+                  fontWeight: 600
+                }}>
+                  {selectedTaskDetails.status}
+                </div>
+              </div>
+              
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', fontWeight: 600 }}>Priority</div>
+                <div>{renderStars(selectedTaskDetails.priority)}</div>
+              </div>
+              
+              {selectedTaskDetails.dueDate && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', fontWeight: 600 }}>Due Date</div>
+                  <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : '#374151' }}>
+                    {new Date(selectedTaskDetails.dueDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                  </div>
+                </div>
+              )}
+              
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', fontWeight: 600 }}>Assigned To</div>
+                <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : '#374151' }}>
+                  {Array.isArray(selectedTaskDetails.assignedTo)
+                    ? selectedTaskDetails.assignedTo.map(u => typeof u === 'object' ? u.name : users.find(user => user._id === u)?.name || u).join(', ')
+                    : typeof selectedTaskDetails.assignedTo === 'object'
+                    ? selectedTaskDetails.assignedTo.name
+                    : users.find(u => u._id === selectedTaskDetails.assignedTo)?.name || 'Unknown'}
+                </div>
+              </div>
+              
+              {selectedTaskDetails.assignedBy && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', fontWeight: 600 }}>Assigned By</div>
+                  <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : '#374151' }}>
+                    {typeof selectedTaskDetails.assignedBy === 'object'
+                      ? selectedTaskDetails.assignedBy.name
+                      : users.find(u => u._id === selectedTaskDetails.assignedBy)?.name || 'Unknown'}
+                  </div>
+                </div>
+              )}
+              
+              {selectedTaskDetails.completionRemark && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', fontWeight: 600 }}>Completion Remark</div>
+                  <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : '#374151' }}>
+                    {selectedTaskDetails.completionRemark}
+                  </div>
+                </div>
+              )}
+              
+              {selectedTaskDetails.stuckReason && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', fontWeight: 600 }}>Stuck Reason</div>
+                  <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : '#374151' }}>
+                    {selectedTaskDetails.stuckReason}
+                  </div>
+                </div>
+              )}
+              
+              <div style={{ marginTop: 24, padding: 16, background: theme === 'dark' ? '#1f2937' : '#f0f9ff', borderRadius: 8 }}>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', fontWeight: 600 }}>Task History</div>
+                <div style={{ fontSize: 13, color: theme === 'dark' ? '#d1d5db' : '#374151' }}>
+                  • Current Status: {selectedTaskDetails.status}<br/>
+                  {isOverdue(selectedTaskDetails) && '• Status: OVERDUE ⚠️'}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Notifications Panel */}
         {showNotifications && (
-          <div style={{
+          <div className="notifications-panel" style={{
             position: 'fixed',
             top: 80,
             right: 20,

@@ -10,6 +10,7 @@ import SetPassword from "./pages/SetPassword";
 import SetCredentials from "./pages/SetCredentials";
 import CompleteAccount from "./pages/CompleteAccount";
 import SelectRole from "./pages/SelectRole";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 // User type (optional, for TypeScript)
 interface User {
@@ -80,27 +81,29 @@ function App() {
 
   // 4. Pass user and onLogout to Dashboard
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/superadmin/dashboard" element={<SuperAdminDashboard user={user || {_id: 'loading', name: 'Loading...', email: ''}} onLogout={handleLogout} />} />
-        <Route path="/login" element={<Login setUser={setUser} />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/auth/callback" element={<AuthCallback setUser={setUser} />} />
-        <Route path="/select-role" element={<SelectRole />} />
-        <Route path="/complete-account" element={<CompleteAccount setUser={setUser} />} />
-        <Route path="/setup-password" element={<SetPassword />} />
-        <Route path="/setup-credentials" element={<SetCredentials />} />
-        <Route path="/pending-approval" element={<PendingApproval user={user || {_id: 'loading', name: 'Loading...', email: '', accountStatus: 'pending'}} onLogout={handleLogout} />} />
-        <Route path="/" element={<Navigate to="/dashboard" />} />
-        <Route element={<ProtectedRoute />}>
-          <Route
-            path="/dashboard"
-            element={<Dashboard user={user || {_id: 'loading', name: 'Loading...', email: ''}} onLogout={handleLogout} />}
-          />
-        </Route>
-        <Route path="*" element={<div>404 Not Found</div>} />
-      </Routes>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/superadmin/dashboard" element={<SuperAdminDashboard user={user || {_id: 'loading', name: 'Loading...', email: ''}} onLogout={handleLogout} />} />
+          <Route path="/login" element={<Login setUser={setUser} />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/auth/callback" element={<AuthCallback setUser={setUser} />} />
+          <Route path="/select-role" element={<SelectRole />} />
+          <Route path="/complete-account" element={<CompleteAccount setUser={setUser} />} />
+          <Route path="/setup-password" element={<SetPassword />} />
+          <Route path="/setup-credentials" element={<SetCredentials />} />
+          <Route path="/pending-approval" element={<PendingApproval user={user || {_id: 'loading', name: 'Loading...', email: '', accountStatus: 'pending'}} onLogout={handleLogout} />} />
+          <Route path="/" element={<Navigate to="/dashboard" />} />
+          <Route element={<ProtectedRoute />}>
+            <Route
+              path="/dashboard"
+              element={<Dashboard user={user || {_id: 'loading', name: 'Loading...', email: ''}} onLogout={handleLogout} />}
+            />
+          </Route>
+          <Route path="*" element={<div>404 Not Found</div>} />
+        </Routes>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

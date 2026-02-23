@@ -1317,6 +1317,112 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
+// Super Admin: Create Super Admin
+router.post('/superadmin/create-super-admin', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser || !currentUser.is_super_admin) {
+      return res.status(403).json({ message: 'Access denied. Super admin privileges required.' });
+    }
+    
+    const { name, userId, email, password } = req.body;
+    
+    if (!name || !userId || !email || !password) {
+      return res.status(400).json({ message: 'All fields are required.' });
+    }
+    
+    const existingUser = await User.findByUserId(userId);
+    if (existingUser) {
+      return res.status(400).json({ message: 'User ID already in use.' });
+    }
+
+    const existingEmail = await User.findByEmail(email);
+    if (existingEmail) {
+      return res.status(400).json({ message: 'Email already in use.' });
+    }
+
+    const user = await User.create({ 
+      name, 
+      userId, 
+      email, 
+      password,
+      authProvider: 'local',
+      role: 'admin',
+      isSuperAdmin: true,
+      accountStatus: 'active'
+    });
+    
+    res.status(201).json({ 
+      message: 'Super admin created successfully.',
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        userId: user.user_id,
+        role: user.role,
+        isSuperAdmin: true
+      }
+    });
+  } catch (err) {
+    console.error('Create super admin error:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
+// Admin: Create User (Add User functionality)
+router.post('/admin/create-user', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    if (!currentUser || currentUser.role !== 'admin' || !currentUser.company) {
+      return res.status(403).json({ message: 'Access denied. Company admin privileges required.' });
+    }
+    
+    const { name, userId, email, password } = req.body;
+    
+    if (!name || !userId || !email || !password) {
+      return res.status(400).json({ message: 'All fields are required.' });
+    }
+    
+    const existingUser = await User.findByUserId(userId);
+    if (existingUser) {
+      return res.status(400).json({ message: 'User ID already in use.' });
+    }
+
+    const existingEmail = await User.findByEmail(email);
+    if (existingEmail) {
+      return res.status(400).json({ message: 'Email already in use.' });
+    }
+
+    const user = await User.create({ 
+      name, 
+      userId, 
+      email, 
+      password,
+      authProvider: 'local',
+      role: 'user',
+      company: currentUser.company,
+      accountStatus: 'active'
+    });
+    
+    res.status(201).json({ 
+      message: 'User created successfully.',
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        userId: user.user_id,
+        company: user.company,
+        role: user.role
+      }
+    });
+  } catch (err) {
+    console.error('Create user error:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
 // Super Admin: Delete Company
 router.delete('/superadmin/delete-company/:companyCode', authenticateToken, async (req, res) => {
   try {
