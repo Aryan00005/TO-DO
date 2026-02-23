@@ -29,12 +29,10 @@ class Task {
       throw new Error('Task must have a company assigned');
     }
     
-    // NEW: Tasks are NOT auto-approved, they need creator approval after completion
-    let approvalStatus = null; // No approval status until task is completed and creator approves
-    let assignedByRole = creator?.role || 'user';
-    let assignedToRole = 'user';
+    // Check if any assignee is an admin
+    let approvalStatus = 'approved'; // Default to approved
+    let hasAdminAssignee = false;
     
-    // Check if any assignee is an admin (for tracking only, no auto-approval)
     if (assignedTo && assignedTo.length > 0) {
       for (const assignee of assignedTo) {
         let userId = assignee;
@@ -44,11 +42,9 @@ class Task {
             .select('id, role')
             .eq('name', assignee)
             .single();
-          if (user) {
-            userId = user.id;
-            if (user.role === 'admin') {
-              assignedToRole = 'admin';
-            }
+          if (user?.role === 'admin') {
+            hasAdminAssignee = true;
+            break;
           }
         } else {
           const { data: user } = await supabase
@@ -57,10 +53,16 @@ class Task {
             .eq('id', parseInt(assignee))
             .single();
           if (user?.role === 'admin') {
-            assignedToRole = 'admin';
+            hasAdminAssignee = true;
+            break;
           }
         }
       }
+    }
+    
+    // If admin is assigned, set to pending
+    if (hasAdminAssignee) {
+      approvalStatus = 'pending';
     }
     
     const { data: task, error: taskError } = await supabase
@@ -71,12 +73,10 @@ class Task {
         assigned_by: assignedBy,
         priority,
         due_date: dueDate,
-        company: taskCompany, // Use determined company
+        company: taskCompany,
         created_by_admin: createdByAdmin,
-        status: 'Not Started',
-        approval_status: approvalStatus,
-        assigned_by_role: assignedByRole,
-        assigned_to_role: assignedToRole
+        status: approvalStatus === 'pending' ? 'Pending Approval' : 'Not Started',
+        approval_status: approvalStatus
       })
       .select()
       .single();

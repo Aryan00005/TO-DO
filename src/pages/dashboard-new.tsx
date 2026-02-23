@@ -77,7 +77,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [description, setDescription] = useState("");
   const [assignedTo, setAssignedTo] = useState<string[]>([]);
   const [priority, setPriority] = useState(3);
-  const [dueDate, setDueDate] = useState("");
+  const [dueDate, setDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [assignedTasks, setAssignedTasks] = useState<Task[]>([]);
@@ -95,6 +95,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [pendingUsers, setPendingUsers] = useState<User[]>([]);
   const [pendingTaskApprovals, setPendingTaskApprovals] = useState<Task[]>([]);
   const [filterPriority, setFilterPriority] = useState<string>('all');
+  const [filterDateRange, setFilterDateRange] = useState<string>('all');
+  const [filterAssignedBy, setFilterAssignedBy] = useState<string>('all');
+  const [filterAssignedTo, setFilterAssignedTo] = useState<string>('all');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectingTaskId, setRejectingTaskId] = useState<string>('');
   const [rejectionReason, setRejectionReason] = useState<string>('');
@@ -103,10 +106,35 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [userTasksFilter, setUserTasksFilter] = useState<string>('all');
   const [showTaskDetailsModal, setShowTaskDetailsModal] = useState(false);
   const [selectedTaskDetails, setSelectedTaskDetails] = useState<Task | null>(null);
+  const [showStuckModal, setShowStuckModal] = useState(false);
+  const [stuckReason, setStuckReason] = useState('');
+  const [stuckTaskId, setStuckTaskId] = useState('');
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [searchDebounce, setSearchDebounce] = useState('');
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [flippedCards, setFlippedCards] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const toggleFlipCard = (taskId: string) => {
+    setFlippedCards(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(taskId)) {
+        newSet.delete(taskId);
+      } else {
+        newSet.add(taskId);
+      }
+      return newSet;
+    });
+  };
 
   const today = new Date();
   const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
@@ -230,6 +258,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   }, [user._id, onLogout]);
 
   const updateTaskStatus = async (taskId: string, newStatus: string) => {
+    // If moving to Stuck, show modal for reason
+    if (newStatus === 'Stuck') {
+      setStuckTaskId(taskId);
+      setShowStuckModal(true);
+      return;
+    }
+    
     // Update UI immediately
     setTasks(prev => prev.map(task => 
       task._id === taskId ? { ...task, status: newStatus } : task
@@ -247,6 +282,34 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       // Revert on error
       refreshData();
       showToast("Failed to update task", "error");
+    }
+  };
+
+  const handleStuckSubmit = async () => {
+    if (!stuckReason.trim()) {
+      showToast('Stuck reason is required', 'error');
+      return;
+    }
+    
+    try {
+      const token = sessionStorage.getItem("jwt-token");
+      await axios.patch(`/tasks/${stuckTaskId}`, { 
+        status: 'Stuck',
+        stuckReason: stuckReason.trim()
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setTasks(prev => prev.map(task => 
+        task._id === stuckTaskId ? { ...task, status: 'Stuck', stuckReason: stuckReason.trim() } : task
+      ));
+      
+      setShowStuckModal(false);
+      setStuckReason('');
+      setStuckTaskId('');
+      showToast('Task marked as Stuck', 'success');
+    } catch (err: any) {
+      showToast('Error: ' + (err.response?.data?.message || err.message), 'error');
     }
   };
 
@@ -272,13 +335,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     setDescription(task.description);
     setCompany(task.company || '');
     
-    // Handle single or multiple assignees
+    // Handle single or multiple assignees - normalize to string IDs
     if (Array.isArray(task.assignedTo)) {
-      setAssignedTo(task.assignedTo.map(u => typeof u === 'object' ? u._id : u));
+      setAssignedTo(task.assignedTo.map(u => String(typeof u === 'object' ? (u._id || u.id) : u)));
     } else if (typeof task.assignedTo === 'object' && task.assignedTo !== null) {
-      setAssignedTo([task.assignedTo._id]);
+      setAssignedTo([String(task.assignedTo._id || task.assignedTo.id)]);
     } else if (task.assignedTo) {
-      setAssignedTo([task.assignedTo]);
+      setAssignedTo([String(task.assignedTo)]);
     } else {
       setAssignedTo([]);
     }
@@ -309,16 +372,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     setNav('assigntasks');
     showToast("Task copied for creation!", "success");
   };
-
-  useEffect(() => {
-    // Load users only once
-    const token = sessionStorage.getItem("jwt-token");
-    if (users.length === 0) {
-      axios.get("/auth/users", { headers: { Authorization: `Bearer ${token}` } })
-        .then(res => setUsers(res.data))
-        .catch(err => setUsers([user]));
-    }
-  }, []);
 
   useEffect(() => {
     // Load initial data only once
@@ -406,28 +459,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     try {
       const token = sessionStorage.getItem("jwt-token");
       
-      // Optimistic update - add task immediately
-      const newTask = {
-        _id: Date.now().toString(),
-        title,
-        description,
-        status: 'Not Started',
-        priority,
-        dueDate,
-        company,
-        assignedTo: assignedTo.map(id => users.find(u => u._id === id) || { _id: id, name: 'Unknown' }),
-        assignedBy: { _id: user._id, name: user.name }
-      };
-      
-      setTasks(prev => [newTask, ...prev]);
+      // Check if any assignee is an admin (for new tasks only)
+      const hasAdminAssignee = !editingTask && assignedTo.some(id => 
+        users.find(u => (u._id || u.id) === id)?.role === 'admin'
+      );
       
       // Reset form immediately
-      setTitle(""); setDescription(""); setAssignedTo([]); setPriority(3); setDueDate(""); setCompany("");
+      setTitle(""); setDescription(""); setAssignedTo([]); setPriority(3); setDueDate(new Date().toISOString().split('T')[0]); setCompany("");
       setEditingTask(null);
       
-      showToast(editingTask ? "Task updated! 🎉" : "Task created! 🎉", "success");
+      if (hasAdminAssignee) {
+        showToast("Task sent for admin approval! ⏳", "success");
+      } else {
+        showToast(editingTask ? "Task updated! 🎉" : "Task created! 🎉", "success");
+      }
       
-      // Make API call in background
+      // Make API call
       if (editingTask) {
         await axios.patch(`/tasks/${editingTask._id}`, { 
           title, description, assignedTo, priority, dueDate, company 
@@ -440,17 +487,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         });
       }
       
-      // Refresh only tasks in background
+      // Refresh data
       refreshData();
       
-      // Also refresh assigned tasks if on that view
-      if (nav === "assignedtasks") {
-        const token = sessionStorage.getItem("jwt-token");
-        const res = await axios.get(`/tasks/assignedBy/${user._id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setAssignedTasks(res.data);
+      // Redirect to assigned tasks view
+      if (!editingTask) {
+        setNav('assignedtasks');
       }
+      
+      // Refresh assigned tasks
+      const res = await axios.get(`/tasks/assignedBy/${user._id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setAssignedTasks(res.data);
     } catch (err: any) {
       showToast("Error: " + (err.response?.data?.message || err.message), "error");
     } finally {
@@ -615,13 +664,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Update both tasks and assignedTasks states
-      setTasks(prev => prev.map(t => 
-        t._id === taskId ? { ...t, approvalStatus: 'approved', approval_status: 'approved' } : t
-      ));
-      setAssignedTasks(prev => prev.map(t => 
-        t._id === taskId ? { ...t, approvalStatus: 'approved', approval_status: 'approved' } : t
-      ));
+      // Refresh data to get updated approval status
+      await refreshData();
+      
+      // Refresh assigned tasks if on that view
+      if (nav === 'assignedtasks') {
+        const res = await axios.get(`/tasks/assignedBy/${user._id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setAssignedTasks(res.data);
+      }
       
       showToast("Task approved! ✅", "success");
     } catch (err: any) {
@@ -640,9 +692,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      setAssignedTasks(prev => prev.map(t => 
-        t._id === taskId ? { ...t, status: 'Working on it', rejectionReason: reason, approvalStatus: 'rejected' } : t
-      ));
+      // Refresh data to get updated status
+      await refreshData();
+      
+      // Refresh assigned tasks if on that view
+      if (nav === 'assignedtasks') {
+        const res = await axios.get(`/tasks/assignedBy/${user._id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setAssignedTasks(res.data);
+      }
+      
       showToast("Task rejected and moved to Working on it! ❌", "success");
     } catch (err: any) {
       showToast("Error: " + (err.response?.data?.message || err.message), "error");
@@ -684,14 +744,57 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     );
   };
 
-  // Filter tasks based on search, status, and priority only
+  // Filter tasks based on search, status, priority, date range, assigned by, assigned to
   const filteredTasks = tasks.filter(task => {
     const matchesSearch = task.title.toLowerCase().includes(searchDebounce.toLowerCase()) ||
                          task.description.toLowerCase().includes(searchDebounce.toLowerCase());
     const matchesStatus = filterStatus === 'all' || task.status === filterStatus;
     const matchesPriority = filterPriority === 'all' || task.priority.toString() === filterPriority;
     
-    return matchesSearch && matchesStatus && matchesPriority;
+    // Date range filter
+    let matchesDateRange = true;
+    if (filterDateRange !== 'all' && task.dueDate) {
+      const taskDate = new Date(task.dueDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      if (filterDateRange === 'today') {
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        matchesDateRange = taskDate >= today && taskDate < tomorrow;
+      } else if (filterDateRange === 'week') {
+        const weekFromNow = new Date(today);
+        weekFromNow.setDate(weekFromNow.getDate() + 7);
+        matchesDateRange = taskDate >= today && taskDate < weekFromNow;
+      } else if (filterDateRange === 'month') {
+        const monthFromNow = new Date(today);
+        monthFromNow.setMonth(monthFromNow.getMonth() + 1);
+        matchesDateRange = taskDate >= today && taskDate < monthFromNow;
+      }
+    }
+    
+    // Assigned By filter
+    let matchesAssignedBy = true;
+    if (filterAssignedBy !== 'all') {
+      const assignedById = typeof task.assignedBy === 'object' ? task.assignedBy?._id : task.assignedBy;
+      matchesAssignedBy = String(assignedById) === filterAssignedBy;
+    }
+    
+    // Assigned To filter
+    let matchesAssignedTo = true;
+    if (filterAssignedTo !== 'all') {
+      if (Array.isArray(task.assignedTo)) {
+        matchesAssignedTo = task.assignedTo.some(u => {
+          const userId = typeof u === 'object' ? u._id : u;
+          return String(userId) === filterAssignedTo;
+        });
+      } else {
+        const assignedToId = typeof task.assignedTo === 'object' ? task.assignedTo._id : task.assignedTo;
+        matchesAssignedTo = String(assignedToId) === filterAssignedTo;
+      }
+    }
+    
+    return matchesSearch && matchesStatus && matchesPriority && matchesDateRange && matchesAssignedBy && matchesAssignedTo;
   });
 
   // Tasks Board: Show tasks where I am in assignedTo (I am the assignee)
@@ -705,6 +808,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const assignedToId = typeof task.assignedTo === 'object' ? task.assignedTo._id : task.assignedTo;
     return String(assignedToId) === String(user._id);
   });
+
+  // Task List: For regular users show only their tasks, for admin show all company tasks
+  const taskListTasks = user.role === 'admin' ? filteredTasks : tasksAssignedToMe;
 
   // Get unique users who have tasks assigned
   const usersWithTasks = Array.from(new Set(
@@ -1061,7 +1167,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
         
         <DragDropContext onDragEnd={onDragEnd}>
-          <div className="kanban-container" style={{ display: "flex", gap: 16, overflowX: "auto", maxWidth: "100%" }}>
+          <div className="kanban-container" style={{ display: "flex", gap: 16, overflowX: "auto" }}>
             {kanbanColumns.map(col => {
               const tasksArray = kanbanTasks[col] || [];
               const tasksToRender = sortTasks(tasksArray, kanbanSort);
@@ -1073,9 +1179,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                       {...provided.droppableProps}
                       className="kanban-column"
                       style={{
-                        width: "280px",
-                        maxWidth: "280px",
-                        flexShrink: 0,
+                        minWidth: "280px",
+                        flex: 1,
                         background: theme === 'dark' ? "#374151" : "#f8fafc",
                         border: theme === 'dark' ? "2px solid #4b5563" : "2px solid #e2e8f0",
                         borderRadius: 12,
@@ -1090,14 +1195,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                       {tasksToRender.length === 0 && (
                         <div style={{ color: "#64748b", fontSize: 14 }}>No tasks</div>
                       )}
-                      {tasksToRender.map((task, idx) => (
+                      {tasksToRender.map((task, idx) => {
+                        const isStuck = task.status === 'Stuck';
+                        const isFlipped = flippedCards.has(task._id);
+                        
+                        return (
                         <Draggable draggableId={task._id} index={idx} key={task._id}>
                           {(provided: DraggableProvided, snapshot) => (
                             <div
                               ref={provided.innerRef}
                               {...provided.draggableProps}
                               {...provided.dragHandleProps}
-                              className="task-card"
+                              className={isStuck ? "task-card flip-card" : "task-card"}
                               title={task.rejectionReason ? `Rejected: ${task.rejectionReason}` : ''}
                               style={{
                                 background: task.rejectionReason ? '#fee2e2' : isOverdue(task) ? "#fff0f0" : theme === 'dark' ? "#4b5563" : "#fff",
@@ -1109,19 +1218,224 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                 cursor: snapshot.isDragging ? 'grabbing' : 'grab',
                                 userSelect: 'none',
                                 padding: 12,
+                                overflow: 'hidden',
                                 ...provided.draggableProps.style
                               }}
                             >
-                              {/* Task Action Buttons */}
-                              <div style={{ 
-                                position: 'absolute', 
-                                top: 8, 
-                                right: 8, 
-                                display: 'flex', 
-                                gap: 4, 
-                                opacity: 0,
-                                transition: 'opacity 0.2s'
-                              }} className="task-actions">
+                              {isStuck ? (
+                                <div className={`flip-card-inner ${isFlipped ? 'flipped' : ''}`} style={{ minHeight: '200px' }}>
+                                  {/* Front Side */}
+                                  <div className="flip-card-front">
+                                    {/* Task Action Buttons */}
+                                    <div style={{ 
+                                      position: 'absolute', 
+                                      top: 8, 
+                                      right: 8, 
+                                      display: 'flex', 
+                                      gap: 4, 
+                                      opacity: 0,
+                                      transition: 'opacity 0.2s',
+                                      zIndex: 10
+                                    }} className="task-actions">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleFlipCard(task._id);
+                                        }}
+                                        style={{
+                                          background: '#8b5cf6',
+                                          color: 'white',
+                                          border: 'none',
+                                          borderRadius: 4,
+                                          padding: '4px 6px',
+                                          cursor: 'pointer',
+                                          fontSize: 10
+                                        }}
+                                        title="View Stuck Reason"
+                                      >
+                                        ℹ️
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          editTask(task);
+                                        }}
+                                        style={{
+                                          background: '#2563eb',
+                                          color: 'white',
+                                          border: 'none',
+                                          borderRadius: 4,
+                                          padding: '4px 6px',
+                                          cursor: 'pointer',
+                                          fontSize: 10
+                                        }}
+                                        title="Edit Task"
+                                      >
+                                        <FaEdit size={10} />
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          duplicateTask(task);
+                                        }}
+                                        style={{
+                                          background: '#16a34a',
+                                          color: 'white',
+                                          border: 'none',
+                                          borderRadius: 4,
+                                          padding: '4px 6px',
+                                          cursor: 'pointer',
+                                          fontSize: 10
+                                        }}
+                                        title="Duplicate Task"
+                                      >
+                                        <FaCopy size={10} />
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          deleteTask(task._id);
+                                        }}
+                                        style={{
+                                          background: '#ef4444',
+                                          color: 'white',
+                                          border: 'none',
+                                          borderRadius: 4,
+                                          padding: '4px 6px',
+                                          cursor: 'pointer',
+                                          fontSize: 10
+                                        }}
+                                        title="Delete Task"
+                                      >
+                                        <FaTrash size={10} />
+                                      </button>
+                                    </div>
+                                    
+                                    <div style={{ fontWeight: 600, fontSize: 14, color: theme === 'dark' ? '#ffffff' : '#22223b', paddingRight: 60 }}>
+                                      {task.title}
+                                      <span style={{ float: "right", marginRight: 60 }}>{renderStars(task.priority)}</span>
+                                    </div>
+                                    <div style={{ color: theme === 'dark' ? '#e5e7eb' : '#475569', marginBottom: 6, fontSize: 13 }}>{task.description}</div>
+                                    {task.company && (
+                                      <div style={{ fontSize: 12, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 2 }}>
+                                        <b>Company:</b> {task.company}
+                                      </div>
+                                    )}
+                                    {task.assignedBy && (
+                                      <div style={{ color: "#64748b", fontSize: 11, marginBottom: 2 }}>
+                                        <b>Assigned By:</b>{" "}
+                                        {typeof task.assignedBy === "object" && task.assignedBy !== null
+                                          ? task.assignedBy.name
+                                          : users.find(u => (u._id || u.id) === task.assignedBy)?.name || "Unknown"}
+                                      </div>
+                                    )}
+                                    {task.assignedTo && (
+                                      <div style={{ color: "#64748b", fontSize: 11, marginBottom: 2 }}>
+                                        <b>Assigned To:</b>{" "}
+                                        {Array.isArray(task.assignedTo) 
+                                          ? task.assignedTo.map(u => typeof u === 'object' ? u.name : users.find(user => (user._id || user.id) === u)?.name || u).join(', ')
+                                          : typeof task.assignedTo === "object" && task.assignedTo !== null
+                                          ? task.assignedTo.name
+                                          : users.find(u => (u._id || u.id) === task.assignedTo)?.name || "Unknown"}
+                                      </div>
+                                    )}
+                                    {task.dueDate && (
+                                      <div style={{ color: "#2563eb", fontSize: 11, marginBottom: 2 }}>
+                                        <FaCalendar style={{ marginRight: 4 }} />
+                                        Due: {new Date(task.dueDate).toLocaleDateString()}
+                                      </div>
+                                    )}
+                                    {isOverdue(task) && (
+                                      <div style={{ color: "#ef4444", fontWeight: 700, marginBottom: 2, fontSize: 11 }}>
+                                        Overdue!
+                                      </div>
+                                    )}
+                                    {task.createdAt && (
+                                      <div style={{ color: "#9ca3af", fontSize: 10, marginTop: 4 }}>
+                                        Created {formatTimestamp(task.createdAt)}
+                                      </div>
+                                    )}
+                                    <div style={{
+                                      fontWeight: 600,
+                                      background: statusColors[task.status] + "22",
+                                      color: statusColors[task.status],
+                                      borderRadius: 6,
+                                      padding: "2px 8px",
+                                      display: "inline-block",
+                                      marginBottom: 4,
+                                      fontSize: 11
+                                    }}>
+                                      {task.status}
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Back Side */}
+                                  <div className="flip-card-back">
+                                    <div style={{
+                                      background: theme === 'dark' ? "#4b5563" : "#fff",
+                                      borderRadius: 8,
+                                      padding: 12,
+                                      minHeight: '200px',
+                                      border: "1.5px solid #ef4444"
+                                    }}>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleFlipCard(task._id);
+                                      }}
+                                      style={{
+                                        position: 'absolute',
+                                        top: 8,
+                                        right: 8,
+                                        background: '#8b5cf6',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: 4,
+                                        padding: '4px 8px',
+                                        cursor: 'pointer',
+                                        fontSize: 10,
+                                        zIndex: 10
+                                      }}
+                                    >
+                                      ← Back
+                                    </button>
+                                    <div style={{ fontWeight: 700, fontSize: 16, color: '#ef4444', marginBottom: 12, paddingRight: 50 }}>
+                                      ⚠️ Stuck Reason
+                                    </div>
+                                    <div style={{
+                                      color: theme === 'dark' ? '#e5e7eb' : '#374151',
+                                      fontSize: 14,
+                                      lineHeight: 1.6,
+                                      padding: '12px',
+                                      background: theme === 'dark' ? '#374151' : '#fef2f2',
+                                      borderRadius: 8,
+                                      border: '1px solid #fca5a5'
+                                    }}>
+                                      {task.stuckReason || 'No reason provided'}
+                                    </div>
+                                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${theme === 'dark' ? '#6b7280' : '#e5e7eb'}` }}>
+                                      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>
+                                        <b>Task:</b> {task.title}
+                                      </div>
+                                      <div style={{ fontSize: 11, color: '#64748b' }}>
+                                        <b>Priority:</b> {renderStars(task.priority)}
+                                      </div>
+                                    </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  {/* Task Action Buttons */}
+                                  <div style={{ 
+                                    position: 'absolute', 
+                                    top: 8, 
+                                    right: 8, 
+                                    display: 'flex', 
+                                    gap: 4, 
+                                    opacity: 0,
+                                    transition: 'opacity 0.2s'
+                                  }} className="task-actions">
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -1177,6 +1491,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                   <FaTrash size={10} />
                                 </button>
                               </div>
+                              
+                              {/* Pending Badge */}
+                              {(task as any).approvalStatus === 'pending' && (
+                                <div style={{ 
+                                  position: 'absolute', 
+                                  top: 8, 
+                                  right: 8, 
+                                  background: '#f59e0b', 
+                                  color: 'white', 
+                                  padding: '2px 8px', 
+                                  borderRadius: 12, 
+                                  fontSize: 10, 
+                                  fontWeight: 600 
+                                }}>
+                                  PENDING
+                                </div>
+                              )}
                               
                               {/* Approved Tick Mark */}
                               {(task as any).approvalStatus === 'approved' && (
@@ -1256,11 +1587,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                 fontSize: 11
                               }}>
                                 {task.status}
-                              </div>
+                                  </div>
+                                </>
+                              )}
                             </div>
                           )}
                         </Draggable>
-                      ))}
+                      );})}
                       {provided.placeholder}
                     </div>
                   )}
@@ -1276,11 +1609,72 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     content = (
       <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22" }}>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
-          <FaTasks style={{ marginRight: 8 }} /> All Tasks ({filteredTasks.length})
+          <FaTasks style={{ marginRight: 8 }} /> {user.role === 'admin' ? 'All Company Tasks' : 'My Tasks'} ({taskListTasks.length})
+        </div>
+        
+        {/* Filters */}
+        <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 16, flexWrap: 'wrap' }}>
+          <select
+            value={filterDateRange}
+            onChange={(e) => setFilterDateRange(e.target.value)}
+            style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+          >
+            <option value="all">All Time</option>
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="month">This Month</option>
+          </select>
+          
+          <select
+            value={filterAssignedBy}
+            onChange={(e) => setFilterAssignedBy(e.target.value)}
+            style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+          >
+            <option value="all">All Assigned By</option>
+            {users.map(u => (
+              <option key={u._id || u.id} value={u._id || u.id}>{u.name}</option>
+            ))}
+          </select>
+          
+          <select
+            value={filterAssignedTo}
+            onChange={(e) => setFilterAssignedTo(e.target.value)}
+            style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+          >
+            <option value="all">All Assigned To</option>
+            {users.map(u => (
+              <option key={u._id || u.id} value={u._id || u.id}>{u.name}</option>
+            ))}
+          </select>
+          
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+          >
+            <option value="all">All Status</option>
+            <option value="Not Started">Not Started</option>
+            <option value="Working on it">Working on it</option>
+            <option value="Stuck">Stuck</option>
+            <option value="Done">Done</option>
+          </select>
+          
+          <select
+            value={filterPriority}
+            onChange={(e) => setFilterPriority(e.target.value)}
+            style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+          >
+            <option value="all">All Priority</option>
+            <option value="5">⭐⭐⭐⭐⭐ High</option>
+            <option value="4">⭐⭐⭐⭐ Medium-High</option>
+            <option value="3">⭐⭐⭐ Medium</option>
+            <option value="2">⭐⭐ Low-Medium</option>
+            <option value="1">⭐ Low</option>
+          </select>
         </div>
         
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-          {tasksAssignedToMe.map(task => (
+          {taskListTasks.map(task => (
             <div key={task._id} style={{
               background: isOverdue(task) ? "#fff0f0" : theme === 'dark' ? "#4b5563" : "#fff",
               border: isOverdue(task) ? "2px solid #ef4444" : "1.5px solid #dbeafe",
@@ -1319,7 +1713,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           ))}
         </div>
         
-        {tasksAssignedToMe.length === 0 && (
+        {taskListTasks.length === 0 && (
           <div style={{ textAlign: "center", color: "#64748b", fontSize: 16, marginTop: 40 }}>
             No tasks found. Create your first task!
           </div>
@@ -1328,23 +1722,71 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     );
   } else if (nav === "completed") {
     // Completed Tasks View - only show tasks that are Done
-    const completedTasks = tasksAssignedToMe.filter(t => t.status === "Done");
+    const completedTasksList = user.role === 'admin' ? filteredTasks.filter(t => t.status === "Done") : tasksAssignedToMe.filter(t => t.status === "Done");
     
     content = (
       <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22" }}>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
-           Completed Tasks ({completedTasks.length})
+           {user.role === 'admin' ? 'All Completed Tasks' : 'My Completed Tasks'} ({completedTasksList.length})
+        </div>
+        
+        {/* Filters */}
+        <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 16, flexWrap: 'wrap' }}>
+          <select
+            value={filterDateRange}
+            onChange={(e) => setFilterDateRange(e.target.value)}
+            style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+          >
+            <option value="all">All Time</option>
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="month">This Month</option>
+          </select>
+          
+          <select
+            value={filterAssignedBy}
+            onChange={(e) => setFilterAssignedBy(e.target.value)}
+            style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+          >
+            <option value="all">All Assigned By</option>
+            {users.map(u => (
+              <option key={u._id || u.id} value={u._id || u.id}>{u.name}</option>
+            ))}
+          </select>
+          
+          <select
+            value={filterAssignedTo}
+            onChange={(e) => setFilterAssignedTo(e.target.value)}
+            style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+          >
+            <option value="all">All Assigned To</option>
+            {users.map(u => (
+              <option key={u._id || u.id} value={u._id || u.id}>{u.name}</option>
+            ))}
+          </select>
+          
+          <select
+            value={filterPriority}
+            onChange={(e) => setFilterPriority(e.target.value)}
+            style={{ padding: "6px 12px", borderRadius: 6, border: `1px solid ${theme === 'dark' ? '#4b5563' : '#dbeafe'}`, background: theme === 'dark' ? '#1f2937' : '#fff', color: theme === 'dark' ? '#ffffff' : '#000000' }}
+          >
+            <option value="all">All Priority</option>
+            <option value="5">⭐⭐⭐⭐⭐ High</option>
+            <option value="4">⭐⭐⭐⭐ Medium-High</option>
+            <option value="3">⭐⭐⭐ Medium</option>
+            <option value="2">⭐⭐ Low-Medium</option>
+            <option value="1">⭐ Low</option>
+          </select>
         </div>
         
         <div style={{ background: theme === 'dark' ? "#22c55e22" : "#f0fdf4", border: "1px solid #22c55e", borderRadius: 8, padding: 16, marginBottom: 20 }}>
           <div style={{ color: "#22c55e", fontWeight: 600 }}>
-             Great job! You've completed {completedTasks.length} out of {totalTasks} tasks 
-            ({totalTasks > 0 ? Math.round((completedTasks.length / totalTasks) * 100) : 0}% completion rate)
+             Great job! You've completed {completedTasksList.length} tasks
           </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-          {completedTasks.map(task => {
+          {completedTasksList.map(task => {
             const taskAssignedBy = typeof task.assignedBy === 'object' ? task.assignedBy?._id : task.assignedBy;
             const isCreator = taskAssignedBy === user._id || taskAssignedBy === user.id;
             // Check both camelCase and snake_case for approval status
@@ -1380,6 +1822,24 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 {task.company && (
                   <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 3 }}>
                     <b>Company:</b> {task.company}
+                  </div>
+                )}
+                {task.assignedBy && (
+                  <div style={{ color: "#64748b", fontSize: 11, marginBottom: 2 }}>
+                    <b>Assigned By:</b>{" "}
+                    {typeof task.assignedBy === "object" && task.assignedBy !== null
+                      ? task.assignedBy.name
+                      : users.find(u => (u._id || u.id) === task.assignedBy)?.name || "Unknown"}
+                  </div>
+                )}
+                {task.assignedTo && (
+                  <div style={{ color: "#64748b", fontSize: 11, marginBottom: 2 }}>
+                    <b>Assigned To:</b>{" "}
+                    {Array.isArray(task.assignedTo) 
+                      ? task.assignedTo.map(u => typeof u === 'object' ? u.name : users.find(user => (user._id || user.id) === u)?.name || u).join(', ')
+                      : typeof task.assignedTo === "object" && task.assignedTo !== null
+                      ? task.assignedTo.name
+                      : users.find(u => (u._id || u.id) === task.assignedTo)?.name || "Unknown"}
                   </div>
                 )}
                 {task.dueDate && (
@@ -1446,7 +1906,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           })}
         </div>
         
-        {completedTasks.length === 0 && (
+        {completedTasksList.length === 0 && (
           <div style={{ textAlign: "center", color: "#64748b", fontSize: 16, marginTop: 40 }}>
             No completed tasks yet. Keep working! 💪
           </div>
@@ -1459,7 +1919,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     
     content = (
-      <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 900, margin: "0 auto" }}>
+      <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22" }}>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div><FaCalendarAlt style={{ marginRight: 8 }} /> Calendar</div>
           <div style={{ display: 'flex', gap: 12 }}>
@@ -1671,12 +2131,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 <input
                   type="checkbox"
                   id={`user-${u._id || u.id}`}
-                  checked={assignedTo.includes(u._id || u.id)}
+                  checked={assignedTo.includes(String(u._id || u.id))}
                   onChange={(e) => {
+                    const userId = String(u._id || u.id);
                     if (e.target.checked) {
-                      setAssignedTo([...assignedTo, u._id || u.id]);
+                      setAssignedTo([...assignedTo, userId]);
                     } else {
-                      setAssignedTo(assignedTo.filter(id => id !== (u._id || u.id)));
+                      setAssignedTo(assignedTo.filter(id => id !== userId));
                     }
                   }}
                   style={{ cursor: 'pointer' }}
@@ -1732,7 +2193,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             type="button" 
             onClick={() => {
               setEditingTask(null);
-              setTitle(''); setDescription(''); setAssignedTo([]); setPriority(3); setDueDate(''); setCompany('');
+              setTitle(''); setDescription(''); setAssignedTo([]); setPriority(3); setDueDate(new Date().toISOString().split('T')[0]); setCompany('');
             }}
             style={{
               fontWeight: 600, fontSize: "1rem", background: "#6b7280",
@@ -1760,7 +2221,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     });
 
     content = (
-      <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 1200, margin: "0 auto" }}>
+      <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22" }}>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
           <FaUser style={{ marginRight: 8 }} /> Tasks You Assigned ({assignedTasks.length})
         </div>
@@ -2126,7 +2587,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   } else if (nav === "userapprovals" && user.role === 'admin') {
     // User Approvals for Admin
     content = (
-      <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22", maxWidth: 1200, margin: "0 auto" }}>
+      <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22" }}>
         <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
           Admin Dashboard
         </div>
@@ -2447,6 +2908,37 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
           }
+          .flip-card {
+            perspective: 1000px;
+            position: relative;
+          }
+          .flip-card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+            transform: rotateY(0deg);
+          }
+          .flip-card-inner.flipped {
+            transform: rotateY(180deg);
+          }
+          .flip-card-front, .flip-card-back {
+            width: 100%;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+          }
+          .flip-card-front {
+            position: relative;
+          }
+          .flip-card-back {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: rotateY(180deg);
+          }
           @media (max-width: 768px) {
             .desktop-sidebar {
               transform: translateX(-100%);
@@ -2479,8 +2971,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         onClick={() => setIsMobileMenuOpen(false)}
       />
       
-      <div className={`desktop-sidebar ${isMobileMenuOpen ? 'mobile-open' : ''}`} style={{
-        width: '280px',
+      <div 
+        className={`desktop-sidebar ${isMobileMenuOpen ? 'mobile-open' : ''}`} 
+        onMouseEnter={() => !isMobile && setIsSidebarExpanded(true)}
+        onMouseLeave={() => !isMobile && setIsSidebarExpanded(false)}
+        style={{
+        width: isMobile ? '280px' : (isSidebarExpanded ? '280px' : '50px'),
         background: theme === 'dark' ? 'linear-gradient(180deg, #374151 0%, #1f2937 100%)' : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
         borderRight: theme === 'dark' ? '1px solid #4b5563' : '1px solid #e2e8f0',
         display: 'flex',
@@ -2490,33 +2986,41 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         top: 0,
         height: '100vh',
         boxShadow: theme === 'dark' ? '4px 0 20px rgba(0,0,0,0.3)' : '4px 0 20px rgba(0,0,0,0.08)',
-        overflowY: 'auto'
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        transition: 'width 0.3s ease'
       }}>
         <div style={{
-          padding: '32px 24px',
+          padding: (isMobile || isSidebarExpanded) ? '32px 24px' : '20px 4px',
           borderBottom: theme === 'dark' ? '1px solid #4b5563' : '1px solid #e2e8f0',
           textAlign: 'center',
-          background: theme === 'dark' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.05)'
+          background: theme === 'dark' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.05)',
+          transition: 'padding 0.3s ease'
         }}>
           <div style={{
-            width: '80px',
-            height: '80px',
+            width: (isMobile || isSidebarExpanded) ? '80px' : '42px',
+            height: (isMobile || isSidebarExpanded) ? '80px' : '42px',
             borderRadius: '50%',
             background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: '#fff',
-            fontSize: '24px',
+            fontSize: (isMobile || isSidebarExpanded) ? '24px' : '16px',
             fontWeight: 'bold',
-            margin: '0 auto 12px auto'
+            margin: '0 auto 12px auto',
+            transition: 'all 0.3s ease'
           }}>
             {getInitials(user.name)}
           </div>
-          <div style={{ fontWeight: '600', fontSize: '18px', color: theme === 'dark' ? '#fff' : '#1f2937' }}>
-            {user.name}
-          </div>
-          <div style={{ color: '#6b7280', fontSize: '14px' }}>{user.email}</div>
+          {(isMobile || isSidebarExpanded) && (
+            <>
+              <div style={{ fontWeight: '600', fontSize: '18px', color: theme === 'dark' ? '#fff' : '#1f2937' }}>
+                {user.name}
+              </div>
+              <div style={{ color: '#6b7280', fontSize: '14px' }}>{user.email}</div>
+            </>
+          )}
         </div>
 
         <div style={{ flex: 1, padding: '16px 0' }}>
@@ -2540,17 +3044,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
-                padding: '14px 24px',
-                margin: '4px 12px',
+                padding: (isMobile || isSidebarExpanded) ? '14px 24px' : '10px 4px',
+                margin: (isMobile || isSidebarExpanded) ? '4px 12px' : '4px 4px',
                 cursor: 'pointer',
                 background: nav === key ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' : 'transparent',
                 color: nav === key ? '#fff' : (theme === 'dark' ? '#d1d5db' : '#4b5563'),
                 borderRadius: '12px',
-                transition: 'all 0.3s ease'
+                transition: 'all 0.3s ease',
+                justifyContent: (isMobile || isSidebarExpanded) ? 'flex-start' : 'center'
               }}
             >
-              <Icon size={16} />
-              <span style={{ fontWeight: nav === key ? '600' : '500' }}>{label}</span>
+              <Icon size={(isMobile || isSidebarExpanded) ? 18 : 22} />
+              {(isMobile || isSidebarExpanded) && <span style={{ fontWeight: nav === key ? '600' : '500' }}>{label}</span>}
             </div>
           ))}
         </div>
@@ -2562,20 +3067,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               display: 'flex',
               alignItems: 'center',
               gap: '12px',
-              padding: '12px 16px',
+              padding: (isMobile || isSidebarExpanded) ? '12px 16px' : '10px 4px',
               cursor: 'pointer',
               color: '#ef4444',
               fontWeight: '600',
-              borderRadius: '12px'
+              borderRadius: '12px',
+              justifyContent: (isMobile || isSidebarExpanded) ? 'flex-start' : 'center'
             }}
           >
-            <FaSignOutAlt size={16} />
-            <span>Logout</span>
+            <FaSignOutAlt size={(isMobile || isSidebarExpanded) ? 18 : 22} />
+            {(isMobile || isSidebarExpanded) && <span>Logout</span>}
           </div>
         </div>
       </div>
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginLeft: '280px', minHeight: '100vh', width: 'calc(100vw - 280px)' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginLeft: isMobile ? 0 : (isSidebarExpanded ? '280px' : '50px'), minHeight: '100vh', width: isMobile ? '100vw' : (isSidebarExpanded ? 'calc(100vw - 280px)' : 'calc(100vw - 50px)'), transition: 'all 0.3s ease' }}>
         <div style={{
           background: theme === 'dark' ? 'rgba(55, 65, 81, 0.95)' : 'rgba(255, 255, 255, 0.95)',
           borderBottom: theme === 'dark' ? '1px solid rgba(75, 85, 99, 0.3)' : '1px solid rgba(226, 232, 240, 0.3)',
@@ -2660,7 +3166,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   transition: "all 0.2s ease",
                   color: theme === 'dark' ? '#ffffff' : "#6b7280"
                 }}
-                onClick={() => setShowNotifications(!showNotifications)}
+                onClick={() => {
+                  setShowNotifications(!showNotifications);
+                  if (!showNotifications) {
+                    const token = sessionStorage.getItem("jwt-token");
+                    axios.patch(`/notifications/all/${user._id}/read`, {}, {
+                      headers: { Authorization: `Bearer ${token}` }
+                    }).then(() => refreshData()).catch(err => console.error('Error marking as read:', err));
+                  }
+                }}
               >
                 <FaBell size={22} />
               </button>
@@ -2689,6 +3203,95 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         <div style={{ padding: '24px 32px', flex: 1, background: theme === 'dark' ? '#1e293b' : '#f8fafc', minHeight: 'calc(100vh - 80px)' }}>
           {content}
         </div>
+
+        {/* Stuck Reason Modal */}
+        {showStuckModal && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 2000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }} onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowStuckModal(false);
+              setStuckReason('');
+              setStuckTaskId('');
+            }
+          }}>
+            <div style={{
+              background: theme === 'dark' ? '#374151' : '#fff',
+              borderRadius: 12,
+              padding: 32,
+              maxWidth: 500,
+              width: '90%',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+            }} onClick={(e) => e.stopPropagation()}>
+              <h3 style={{ margin: '0 0 16px 0', color: theme === 'dark' ? '#ffffff' : '#1f2937', fontSize: 20 }}>⚠️ Task Stuck</h3>
+              <p style={{ color: theme === 'dark' ? '#d1d5db' : '#6b7280', marginBottom: 16, fontSize: 14 }}>
+                Please provide a reason why this task is stuck:
+              </p>
+              <textarea
+                value={stuckReason}
+                onChange={(e) => setStuckReason(e.target.value)}
+                placeholder="Enter reason..."
+                style={{
+                  width: '100%',
+                  minHeight: 100,
+                  padding: 12,
+                  borderRadius: 8,
+                  border: `1px solid ${theme === 'dark' ? '#4b5563' : '#ddd'}`,
+                  background: theme === 'dark' ? '#1f2937' : '#fff',
+                  color: theme === 'dark' ? '#ffffff' : '#000000',
+                  fontSize: 14,
+                  resize: 'vertical'
+                }}
+              />
+              <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+                <button
+                  onClick={() => {
+                    setShowStuckModal(false);
+                    setStuckReason('');
+                    setStuckTaskId('');
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '10px 20px',
+                    borderRadius: 8,
+                    border: '1px solid #d1d5db',
+                    background: theme === 'dark' ? '#4b5563' : '#f3f4f6',
+                    color: theme === 'dark' ? '#ffffff' : '#374151',
+                    cursor: 'pointer',
+                    fontWeight: 600
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleStuckSubmit}
+                  disabled={!stuckReason.trim()}
+                  style={{
+                    flex: 1,
+                    padding: '10px 20px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: stuckReason.trim() ? '#ef4444' : '#9ca3af',
+                    color: '#fff',
+                    cursor: stuckReason.trim() ? 'pointer' : 'not-allowed',
+                    fontWeight: 600
+                  }}
+                >
+                  Mark as Stuck
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Rejection Modal */}
         {showRejectModal && (

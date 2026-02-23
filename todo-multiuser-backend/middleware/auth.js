@@ -12,7 +12,6 @@ module.exports = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Use decoded.id because you sign with { id: user._id }
     if (!decoded.id) {
       return res.status(401).json({ message: 'Invalid token payload' });
     }
@@ -22,10 +21,16 @@ module.exports = async (req, res, next) => {
       return res.status(401).json({ message: 'User not found' });
     }
 
-    req.user = user; // Attach the user document to the request
+    req.user = user;
     next();
   } catch (err) {
-    console.error('Auth middleware error:', err);
-    res.status(401).json({ message: 'Token is not valid' });
+    console.error('Auth middleware error:', {
+      message: err.message,
+      details: err.stack,
+      hint: err.code === 'ECONNREFUSED' ? 'Database connection refused' : 
+            err.code === 'ETIMEDOUT' ? 'Database connection timeout' : '',
+      code: err.code || ''
+    });
+    res.status(401).json({ message: 'Authentication failed', error: err.message });
   }
 };
