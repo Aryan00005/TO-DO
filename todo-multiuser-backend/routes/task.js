@@ -622,7 +622,8 @@ router.post('/:taskId/approve', auth, async (req, res) => {
       .from('tasks')
       .update({ 
         approval_status: 'approved',
-        status: 'Not Started'
+        status: 'Not Started',
+        approved_at: new Date().toISOString()
       })
       .eq('id', req.params.taskId)
       .select()
