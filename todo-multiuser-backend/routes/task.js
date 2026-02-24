@@ -388,7 +388,8 @@ router.patch('/:taskId', auth, async (req, res) => {
         'Not Started': ['Working on it', 'Stuck', 'Done'],
         'Working on it': ['Stuck', 'Done', 'Not Started'],
         'Stuck': ['Working on it', 'Done', 'Not Started'],
-        'Done': ['Working on it', 'Stuck', 'Not Started']
+        'Done': ['Working on it', 'Stuck', 'Not Started'],
+        'Pending Approval': ['Not Started', 'Working on it', 'Stuck', 'Done'] // Allow any transition from Pending
       };
       
       // Validate status progression
