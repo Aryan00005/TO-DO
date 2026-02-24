@@ -345,7 +345,6 @@ router.patch('/:taskId', auth, async (req, res) => {
       const updateData = {};
       if (approval_status === 'approved') {
         updateData.approval_status = 'approved';
-        updateData.approved_at = new Date().toISOString();
       } else if (approval_status) {
         updateData.approval_status = approval_status;
       }
@@ -405,6 +404,11 @@ router.patch('/:taskId', auth, async (req, res) => {
       const updateData = { status };
       if (stuckReason) {
         updateData.stuck_reason = stuckReason;
+      }
+      
+      // When moving to Done, set approval_status to pending
+      if (status === 'Done') {
+        updateData.approval_status = 'pending';
       }
       
       const { data: updatedTask, error } = await supabase
@@ -623,8 +627,7 @@ router.post('/:taskId/approve', auth, async (req, res) => {
       .from('tasks')
       .update({ 
         approval_status: 'approved',
-        status: 'Not Started',
-        approved_at: new Date().toISOString()
+        status: 'Not Started'
       })
       .eq('id', req.params.taskId)
       .select()
@@ -753,8 +756,7 @@ router.delete('/cleanup/old-approved', auth, async (req, res) => {
       .from('tasks')
       .delete()
       .eq('approval_status', 'approved')
-      .not('approved_at', 'is', null)
-      .lt('approved_at', thirtyDaysAgo.toISOString())
+      .lt('updated_at', thirtyDaysAgo.toISOString())
       .select();
     
     if (error) throw error;
@@ -762,7 +764,7 @@ router.delete('/cleanup/old-approved', auth, async (req, res) => {
     res.json({ 
       message: `Cleanup completed. ${deletedTasks?.length || 0} approved tasks older than 30 days were deleted.`,
       deletedCount: deletedTasks?.length || 0,
-      deletedTasks: deletedTasks?.map(t => ({ id: t.id, title: t.title, approved_at: t.approved_at }))
+      deletedTasks: deletedTasks?.map(t => ({ id: t.id, title: t.title, updated_at: t.updated_at }))
     });
   } catch (err) {
     console.error('Cleanup error:', err);

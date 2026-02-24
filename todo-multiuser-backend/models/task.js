@@ -311,7 +311,10 @@ class Task {
     
     const { data, error } = await supabase
       .from('tasks')
-      .update({ approval_status: 'approved' })
+      .update({ 
+        approval_status: 'approved',
+        status: 'Not Started'
+      })
       .eq('id', taskId)
       .eq('approval_status', 'pending')
       .select()

@@ -112,3 +112,22 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5500;
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
+
+// Schedule daily cleanup of old completed tasks (runs at 2 AM daily)
+const { cleanupOldDoneTasks } = require('./utils/taskCleanup');
+
+setInterval(async () => {
+  const now = new Date();
+  // Run cleanup at 2 AM
+  if (now.getHours() === 2 && now.getMinutes() === 0) {
+    console.log('🕐 Running scheduled cleanup...');
+    try {
+      const result = await cleanupOldDoneTasks();
+      console.log(`✅ Cleanup completed: ${result.deletedCount} tasks deleted`);
+    } catch (error) {
+      console.error('❌ Scheduled cleanup failed:', error);
+    }
+  }
+}, 60000); // Check every minute
+
+console.log('⏰ Scheduled task cleanup enabled (runs daily at 2 AM)');

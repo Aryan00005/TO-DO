@@ -120,7 +120,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           return {
             ...task,
             status: userAssignment?.status || task.status || 'Not Started',
-            stuckReason: userAssignment?.completionRemark || task.stuckReason || ''
+            stuckReason: userAssignment?.completionRemark || task.stuckReason || '',
+            approvalStatus: task.approval_status || task.approvalStatus,
+            rejectionReason: task.rejection_reason || task.rejectionReason
           };
         });
         setTasks(processedTasks);
@@ -209,17 +211,44 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const handleApproveTask = async (taskId: string) => {
     try {
       const token = sessionStorage.getItem("jwt-token");
+      console.log('Approving task:', taskId);
+      
       await axios.patch(`/tasks/${taskId}`, { 
         approval_status: 'approved'
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      setTasks(prev => prev.map(t => 
-        t._id === taskId ? { ...t, approvalStatus: 'approved' } : t
-      ));
+      console.log('Approval successful, re-fetching tasks...');
+      
+      // Re-fetch tasks to get updated data
+      const res = await axios.get(`/tasks/assignedTo/${user._id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      console.log('Raw tasks from server:', res.data);
+      
+      const processedTasks = res.data.map((task: any) => {
+        const userAssignment = task.assigneeStatuses?.find((s: any) => s.user.toString() === user._id || s.user === user._id);
+        const processed = {
+          ...task,
+          status: userAssignment?.status || task.status || 'Not Started',
+          stuckReason: userAssignment?.completionRemark || task.stuckReason || '',
+          approvalStatus: task.approval_status || task.approvalStatus,
+          rejectionReason: task.rejection_reason || task.rejectionReason
+        };
+        if (task._id === taskId) {
+          console.log('Approved task after processing:', processed);
+        }
+        return processed;
+      });
+      
+      console.log('Setting tasks state...');
+      setTasks(processedTasks);
+      
       showToast("Task approved! ✅", "success");
     } catch (err: any) {
+      console.error('Approval error:', err);
       showToast("Error: " + (err.response?.data?.message || err.message), "error");
     }
   };
@@ -229,8 +258,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       const token = sessionStorage.getItem("jwt-token");
       await axios.patch(`/tasks/${taskId}`, { 
         status: 'Working on it',
-        rejectionReason: reason,
-        approvalStatus: 'rejected'
+        rejection_reason: reason,
+        approval_status: 'rejected'
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -240,6 +269,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       ));
       showToast("Task rejected and moved to Working on it! ❌", "success");
     } catch (err: any) {
+      console.error('Rejection error:', err);
       showToast("Error: " + (err.response?.data?.message || err.message), "error");
     }
   };
@@ -276,7 +306,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         return {
           ...task,
           status: userAssignment?.status || 'Not Started',
-          stuckReason: userAssignment?.completionRemark || ''
+          stuckReason: userAssignment?.completionRemark || '',
+          approvalStatus: task.approval_status || task.approvalStatus,
+          rejectionReason: task.rejection_reason || task.rejectionReason
         };
       });
       setTasks(processedTasks);
@@ -414,7 +446,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         return {
           ...task,
           status: userAssignment?.status || 'Not Started',
-          stuckReason: userAssignment?.completionRemark || ''
+          stuckReason: userAssignment?.completionRemark || '',
+          approvalStatus: task.approval_status || task.approvalStatus,
+          rejectionReason: task.rejection_reason || task.rejectionReason
         };
       });
       setTasks(processedTasks);
@@ -736,7 +770,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               {completedTasks.map((task) => {
                 const taskAssignedBy = typeof task.assignedBy === 'object' ? task.assignedBy?._id : task.assignedBy;
                 const isCreator = taskAssignedBy === user._id || taskAssignedBy === user.id;
-                const isApproved = (task as any).approvalStatus === 'approved';
+                const isApproved = task.approvalStatus === 'approved' || (task as any).approval_status === 'approved';
                 
                 return (
                   <div
