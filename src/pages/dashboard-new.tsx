@@ -664,7 +664,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Refresh data to get updated approval status
+      // Refresh data to get updated approval status with approved_at
       await refreshData();
       
       // Refresh assigned tasks if on that view
@@ -1789,8 +1789,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           {completedTasksList.map(task => {
             const taskAssignedBy = typeof task.assignedBy === 'object' ? task.assignedBy?._id : task.assignedBy;
             const isCreator = taskAssignedBy === user._id || taskAssignedBy === user.id;
-            // Check both camelCase and snake_case for approval status
-            const isApproved = (task as any).approvalStatus === 'approved' || (task as any).approval_status === 'approved';
+            // Check both camelCase and snake_case for approval status AND approved_at timestamp
+            const isApproved = (task as any).approvalStatus === 'approved' || 
+                              (task as any).approval_status === 'approved' || 
+                              !!(task as any).approved_at;
             
             console.log('DEBUG COMPLETED TASK:', {
               title: task.title,
@@ -1798,6 +1800,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               userId: user._id,
               isCreator,
               isApproved,
+              approved_at: (task as any).approved_at,
               showButtons: isCreator && !isApproved
             });
             
@@ -2246,7 +2249,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 <div style={{ color: "#64748b", fontSize: 14 }}>No tasks</div>
               )}
               {assignedKanbanTasks[col].map(task => {
-                const isApproved = (task as any).approvalStatus === 'approved';
+                const isApproved = (task as any).approvalStatus === 'approved' || 
+                                  (task as any).approval_status === 'approved' || 
+                                  !!(task as any).approved_at;
                 const isDone = task.status === 'Done';
                 
                 return (

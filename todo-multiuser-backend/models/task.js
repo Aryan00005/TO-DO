@@ -137,7 +137,20 @@ class Task {
       
       for (const userId of userIds) {
         try {
-          await Notification.create(userId, `New task assigned: "${title}" by ${creatorName}`);
+          // Check if this user is an admin
+          const { data: assigneeUser } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', userId)
+            .single();
+          
+          if (assigneeUser?.role === 'admin' && hasAdminAssignee) {
+            // Admin gets approval request notification
+            await Notification.create(userId, `Task approval required: "${title}" assigned by ${creatorName}`);
+          } else {
+            // Regular user gets normal assignment notification
+            await Notification.create(userId, `New task assigned: "${title}" by ${creatorName}`);
+          }
         } catch (notifError) {
           console.error('Notification creation failed:', notifError);
         }

@@ -343,9 +343,13 @@ router.patch('/:taskId', auth, async (req, res) => {
       }
       
       const updateData = {};
-      if (approval_status) {
+      if (approval_status === 'approved') {
+        updateData.approval_status = 'approved';
+        updateData.approved_at = new Date().toISOString();
+      } else if (approval_status) {
         updateData.approval_status = approval_status;
       }
+      
       if (rejection_reason) {
         updateData.status = 'Working on it';
         updateData.approval_status = 'rejected';
