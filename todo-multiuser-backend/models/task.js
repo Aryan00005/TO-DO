@@ -165,7 +165,7 @@ class Task {
     
     const userIdInt = parseInt(userId);
     
-    // Get ONLY tasks where user is in task_assignments table
+    // Get ONLY tasks where user is in task_assignments table AND approved
     const { data: assignedTasks, error: assignedError } = await supabase
       .from('tasks')
       .select(`
@@ -175,6 +175,7 @@ class Task {
         )
       `)
       .eq('task_assignments.user_id', userIdInt)
+      .eq('approval_status', 'approved')
       .order('created_at', { ascending: false });
     
     if (assignedError) {
@@ -182,7 +183,7 @@ class Task {
       throw assignedError;
     }
     
-    console.log('Tasks assigned TO user (before filtering):', assignedTasks?.length || 0);
+    console.log('Tasks assigned TO user (approved only):', assignedTasks?.length || 0);
     
     // Filter: Keep task if user is assignee (even if also creator for self-assigned)
     // This is correct - if user is in task_assignments, they should see it in Task Board
@@ -393,14 +394,15 @@ class Task {
     
     console.log('All tasks fetched:', allTasks?.length || 0);
     
-    // NEW LOGIC: Show only tasks where user is creator OR assignee
+    // NEW LOGIC: Show only tasks where user is creator OR assignee (and approved)
     const visibleTasks = allTasks.filter(task => {
       const isCreator = task.assigned_by === userIdInt;
       const isAssigned = task.task_assignments?.some(a => a.user_id === userIdInt);
+      const isApproved = task.approval_status === 'approved';
       
-      // Show if user is creator OR assigned to this task (no approval check needed)
+      // Show if user is creator (always) OR assigned AND approved
       if (isCreator) return true;
-      if (isAssigned) return true;
+      if (isAssigned && isApproved) return true;
       return false;
     });
     
