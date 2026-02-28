@@ -116,6 +116,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [flippedCards, setFlippedCards] = useState<Set<string>>(new Set());
+  const [newUserName, setNewUserName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserUserId, setNewUserUserId] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [showNewUserPassword, setShowNewUserPassword] = useState(false);
+  const [addUserLoading, setAddUserLoading] = useState(false);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -2470,13 +2476,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     );
   } else if (nav === "adduser" && user.role === 'admin') {
     // Add User for Admin
-    const [newUserName, setNewUserName] = useState("");
-    const [newUserEmail, setNewUserEmail] = useState("");
-    const [newUserUserId, setNewUserUserId] = useState("");
-    const [newUserPassword, setNewUserPassword] = useState("");
-    const [showNewUserPassword, setShowNewUserPassword] = useState(false);
-    const [addUserLoading, setAddUserLoading] = useState(false);
-    
     const handleAddUser = async (e: React.FormEvent) => {
       e.preventDefault();
       setAddUserLoading(true);
