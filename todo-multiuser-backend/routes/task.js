@@ -7,9 +7,6 @@ const auth = require('../middleware/auth');
 // Create a task
 router.post('/', auth, async (req, res) => {
   try {
-    console.log('📝 Creating task with request:', req.body);
-    console.log('👤 User creating task:', req.user.id);
-    
     const { title, description, assignedTo, priority = 3, dueDate, company } = req.body;
     
     if (!title || !description || !assignedTo) {
@@ -17,13 +14,9 @@ router.post('/', auth, async (req, res) => {
     }
 
     const assigneeArray = Array.isArray(assignedTo) ? assignedTo : [assignedTo];
-    console.log('👥 Assignees:', assigneeArray);
     
-    // Check if creator is admin
     const creator = await User.findById(req.user.id);
     const createdByAdmin = creator && creator.role === 'admin';
-    
-    console.log('👤 Creator details:', { id: creator?.id, role: creator?.role, company: creator?.company });
     
     const task = await Task.create({
       title,
@@ -36,9 +29,6 @@ router.post('/', auth, async (req, res) => {
       createdByAdmin
     });
     
-    console.log('✅ Task created successfully:', task.id);
-    
-    // Return task with proper ID mapping
     const responseTask = {
       ...task,
       _id: task.id.toString(),

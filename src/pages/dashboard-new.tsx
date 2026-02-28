@@ -232,7 +232,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   //   const interval = setInterval(() => {
   //     refreshData();
   //   }, 30000);
-  //   return () => clearInterval(interval);
+  //   return () => c learInterval(interval);
   // }, [autoRefresh, user._id]);
 
   const refreshData = useCallback(async () => {
@@ -602,8 +602,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Remove the approved task from pending list immediately
-      setPendingTaskApprovals(prev => prev.filter(t => t._id !== taskId));
+      // Refresh pending task approvals
+      const res = await axios.get("/tasks/pending-approvals", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPendingTaskApprovals(res.data);
       
       // Refresh tasks to show newly approved tasks
       refreshData();
@@ -633,9 +636,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Remove the rejected task from pending list immediately
-      setPendingTaskApprovals(prev => prev.filter(t => t._id !== rejectingTaskId));
-      
+      const res = await axios.get("/tasks/pending-approvals", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPendingTaskApprovals(res.data);
       refreshData();
       
       setShowRejectModal(false);
@@ -683,19 +687,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Update both assignedTasks and tasks state
       setAssignedTasks(prev => prev.map(t => 
         t._id === taskId ? { ...t, status: 'Working on it', rejectionReason: reason, approvalStatus: 'rejected' } : t
       ));
-      
-      setTasks(prev => prev.map(t => 
-        t._id === taskId ? { ...t, status: 'Working on it', rejectionReason: reason, approvalStatus: 'rejected' } : t
-      ));
-      
       showToast("Task rejected and moved to Working on it! ❌", "success");
-      
-      // Refresh data to ensure all views are updated
-      refreshData();
     } catch (err: any) {
       showToast("Error: " + (err.response?.data?.message || err.message), "error");
     }
@@ -831,40 +826,32 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   // Calculate completion percentages for users
   const getUserCompletionStats = (userId: string) => {
-    console.log('=== Getting stats for user:', userId);
-    console.log('Total tasks in system:', tasks.length);
+    console.log('Getting stats for user:', userId);
+    console.log('All tasks:', tasks.length);
     
-    // Tasks assigned TO this user (where they are assignee)
     const tasksTo = tasks.filter(t => {
       if (Array.isArray(t.assignedTo)) {
-        const found = t.assignedTo.some(u => {
+        return t.assignedTo.some(u => {
           const uId = typeof u === 'object' ? (u._id || u.id) : u;
-          const match = String(uId) === String(userId);
-          if (match) console.log('Found TO match:', t.title);
-          return match;
+          return String(uId) === String(userId);
         });
-        return found;
       }
       const assignedToId = typeof t.assignedTo === 'object' ? (t.assignedTo._id || t.assignedTo.id) : t.assignedTo;
-      const match = String(assignedToId) === String(userId);
-      if (match) console.log('Found TO match:', t.title);
-      return match;
+      return String(assignedToId) === String(userId);
     });
     
-    // Tasks assigned BY this user (where they are creator)
     const tasksBy = tasks.filter(t => {
       const assignedById = typeof t.assignedBy === 'object' ? (t.assignedBy?._id || t.assignedBy?.id) : t.assignedBy;
-      const match = String(assignedById) === String(userId);
-      if (match) console.log('Found BY match:', t.title);
-      return match;
+      return String(assignedById) === String(userId);
     });
     
-    console.log('Tasks TO user:', tasksTo.length, 'Tasks BY user:', tasksBy.length);
+    console.log('Tasks TO user:', tasksTo.length);
+    console.log('Tasks BY user:', tasksBy.length);
     
     const completedTo = tasksTo.filter(t => t.status === 'Done').length;
     const completedBy = tasksBy.filter(t => t.status === 'Done').length;
     
-    const stats = {
+    return {
       toCount: tasksTo.length,
       toCompleted: completedTo,
       toPercentage: tasksTo.length > 0 ? Math.round((completedTo / tasksTo.length) * 100) : 0,
@@ -872,9 +859,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       byCompleted: completedBy,
       byPercentage: tasksBy.length > 0 ? Math.round((completedBy / tasksBy.length) * 100) : 0
     };
-    
-    console.log('Stats result:', stats);
-    return stats;
   };
 
   const kanbanColumns = ["Not Started", "Working on it", "Stuck", "Done"];
@@ -1526,16 +1510,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                 </div>
                               )}
                               
-                              {/* Approved Tick Mark - Only show in Done column when approved */}
-                              {(() => {
-                                const approvalStatus = (task as any).approvalStatus || (task as any).approval_status;
-                                const isDone = task.status === 'Done';
-                                const isApproved = approvalStatus === 'approved';
-                                console.log('Task:', task.title, 'Status:', task.status, 'ApprovalStatus:', approvalStatus, 'Show tick?', isDone && isApproved);
-                                return isDone && isApproved ? (
-                                  <div style={{ position: 'absolute', top: 8, right: 8, color: '#22c55e', fontSize: 20, fontWeight: 'bold' }}>✓</div>
-                                ) : null;
-                              })()}
+                              {/* Approved Tick Mark - Only show in Done column */}
+                              {task.status === 'Done' && (task as any).approvalStatus === 'approved' && (
+                                <div style={{ position: 'absolute', top: 8, right: 8, color: '#22c55e', fontSize: 20, fontWeight: 'bold' }}>✓</div>
+                              )}
                               
                               <div style={{ fontWeight: 600, fontSize: 14, color: theme === 'dark' ? '#ffffff' : '#22223b', paddingRight: 60 }}>
                                 {task.title}
@@ -1716,22 +1694,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   <b>Company:</b> {task.company}
                 </div>
               )}
-              <div style={{ fontSize: 13, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 4 }}>
-                <b>Assigned By:</b> {
-                  typeof task.assignedBy === 'object' && task.assignedBy !== null
-                    ? task.assignedBy.name
-                    : users.find(u => (u._id || u.id) === task.assignedBy)?.name || 'Unknown'
-                }
-              </div>
-              <div style={{ fontSize: 13, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 8 }}>
-                <b>Assigned To:</b> {
-                  Array.isArray(task.assignedTo)
-                    ? task.assignedTo.map(u => typeof u === 'object' ? u.name : users.find(user => (user._id || user.id) === u)?.name || u).join(', ')
-                    : typeof task.assignedTo === 'object' && task.assignedTo !== null
-                    ? task.assignedTo.name
-                    : users.find(u => (u._id || u.id) === task.assignedTo)?.name || 'Unknown'
-                }
-              </div>
               {task.dueDate && (
                 <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
                   <FaCalendar style={{ marginRight: 4 }} />
@@ -2774,12 +2736,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             <FaPlus /> Add User
           </button>
         </div>
-        
+
         {pendingUsers.length === 0 ? (
-          <div style={{ 
-            textAlign: "center", 
-            color: "#64748b", 
-            fontSize: 16, 
+          <div style={{
+            textAlign: "center",
+            color: "#64748b",
+            fontSize: 16,
             marginTop: 40,
             background: theme === 'dark' ? "#4b5563" : "#f8fafc",
             padding: 32,
@@ -2796,7 +2758,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               const isPending = pendingUser.account_status === 'pending';
               const isActive = pendingUser.account_status === 'active';
               const isInactive = pendingUser.account_status === 'inactive';
-              
+
               return (
                 <div key={pendingUser._id || pendingUser.id} style={{
                   background: theme === 'dark' ? "#4b5563" : "#fff5f5",
@@ -2806,15 +2768,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   boxShadow: isPending ? "0 2px 8px #f59e0b44" : isActive ? "0 2px 8px #22c55e44" : isInactive ? "0 2px 8px #6b728044" : "0 2px 8px #ef444444",
                   position: "relative"
                 }}>
-                  <div style={{ 
-                    position: "absolute", 
-                    top: 8, 
-                    right: 8, 
+                  <div style={{
+                    position: "absolute",
+                    top: 8,
+                    right: 8,
                     background: isPending ? "#f59e0b" : isActive ? "#22c55e" : isInactive ? "#6b7280" : "#ef4444", 
-                    color: "white", 
-                    padding: "2px 8px", 
-                    borderRadius: 12, 
-                    fontSize: 11, 
+                    color: "white",
+                    padding: "2px 8px",
+                    borderRadius: 12,
+                    fontSize: 11,
                     fontWeight: 600 
                   }}>
                     {isPending ? 'PENDING' : isActive ? 'ACTIVE' : isInactive ? 'INACTIVE' : 'REJECTED'}
@@ -2829,7 +2791,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   </div>
                   
                   <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 8 }}>
-                    <b>User ID:</b> {pendingUser.userId || pendingUser.user_id || pendingUser._id}
+                    <b>User ID:</b> {pendingUser.userId || (pendingUser as any).user_id || pendingUser._id}
                   </div>
                   
                   <div style={{ fontSize: 14, color: "#2563eb", marginBottom: 8 }}>
@@ -2875,7 +2837,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     {isPending && (
                       <>
                         <button
-                          onClick={() => handleUserApproval(pendingUser.id || pendingUser._id, 'approve')}
+                          onClick={() => handleUserApproval((pendingUser.id || pendingUser._id) as string, 'approve')}
                           style={{
                             background: "#22c55e",
                             color: "white",
@@ -2891,7 +2853,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                           ✅ Approve
                         </button>
                         <button
-                          onClick={() => handleUserApproval(pendingUser.id || pendingUser._id, 'reject')}
+                          onClick={() => handleUserApproval((pendingUser.id || pendingUser._id) as string, 'reject')}
                           style={{
                             background: "#ef4444",
                             color: "white",
@@ -2911,7 +2873,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     
                     {(isActive || isInactive) && (
                       <button
-                        onClick={() => handleUserToggle(pendingUser.id || pendingUser._id, pendingUser.account_status)}
+                        onClick={() => handleUserToggle((pendingUser.id || pendingUser._id) as string, pendingUser.account_status || 'pending')}
                         style={{
                           background: isActive ? "#6b7280" : "#22c55e",
                           color: "white",
@@ -2930,7 +2892,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     
                     {(isActive || isInactive || pendingUser.account_status === 'rejected') && (
                       <button
-                        onClick={() => handleUserRemoval(pendingUser.id || pendingUser._id)}
+                        onClick={() => handleUserRemoval((pendingUser.id || pendingUser._id) as string)}
                         style={{
                           background: "#dc2626",
                           color: "white",
