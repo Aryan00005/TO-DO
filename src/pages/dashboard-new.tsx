@@ -2660,12 +2660,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     position: "absolute", 
                     top: 8, 
                     right: 8, 
-                    background: "#f59e0b", 
-                    color: "white", 
+                    background: "#fef3c7", 
+                    color: "#92400e", 
                     padding: "2px 8px", 
                     borderRadius: 12, 
                     fontSize: 11, 
-                    fontWeight: 600 
+                    fontWeight: 600,
+                    border: "1px solid #f59e0b"
                   }}>
                     PENDING APPROVAL
                   </div>
