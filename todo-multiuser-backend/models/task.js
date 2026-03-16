@@ -165,7 +165,7 @@ class Task {
     
     const userIdInt = parseInt(userId);
     
-    // Get ONLY tasks where user is in task_assignments table AND approved
+    // Get tasks where user is in task_assignments table AND approved, OR user is the creator (self-assigned)
     const { data: assignedTasks, error: assignedError } = await supabase
       .from('tasks')
       .select(`
@@ -177,26 +177,38 @@ class Task {
       .eq('task_assignments.user_id', userIdInt)
       .eq('approval_status', 'approved')
       .order('created_at', { ascending: false });
+
+    // Also get self-assigned tasks (where user is creator AND assignee)
+    const { data: selfAssignedTasks } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        task_assignments!inner(
+          user_id
+        )
+      `)
+      .eq('assigned_by', userIdInt)
+      .eq('task_assignments.user_id', userIdInt)
+      .eq('approval_status', 'approved')
+      .order('created_at', { ascending: false });
+
+    // Merge and deduplicate
+    const allAssigned = [...(assignedTasks || []), ...(selfAssignedTasks || [])];
+    const uniqueAssigned = allAssigned.filter((task, index, self) =>
+      index === self.findIndex(t => t.id === task.id)
+    );
+    // Replace assignedTasks reference below with uniqueAssigned
+    const mergedAssignedTasks = uniqueAssigned;
     
     if (assignedError) {
       console.error('Error fetching assigned tasks:', assignedError);
       throw assignedError;
     }
     
-    console.log('Tasks assigned TO user (approved only):', assignedTasks?.length || 0);
-    
-    // Filter: Keep task if user is assignee (even if also creator for self-assigned)
-    // This is correct - if user is in task_assignments, they should see it in Task Board
-    
-    if (assignedTasks && assignedTasks.length > 0) {
-      console.log('Task details:');
-      assignedTasks.forEach(t => {
-        console.log(`  - Task ${t.id}: "${t.title}" | Created by: ${t.assigned_by} | User is assignee: YES`);
-      });
-    }
+    console.log('Tasks assigned TO user (approved only, including self-assigned):', mergedAssignedTasks.length);
     
     // Populate assignee and creator details
-    const populatedTasks = await Promise.all((assignedTasks || []).map(async (task) => {
+    const populatedTasks = await Promise.all(mergedAssignedTasks.map(async (task) => {
       // Get creator details
       const { data: creator } = await supabase
         .from('users')

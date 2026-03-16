@@ -1503,12 +1503,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                   position: 'absolute', 
                                   top: 8, 
                                   right: 8, 
-                                  background: '#f59e0b', 
-                                  color: 'white', 
+                                  background: '#fef3c7', 
+                                  color: '#92400e', 
                                   padding: '2px 8px', 
                                   borderRadius: 12, 
                                   fontSize: 10, 
-                                  fontWeight: 600 
+                                  fontWeight: 600,
+                                  border: '1px solid #f59e0b'
                                 }}>
                                   PENDING
                                 </div>
@@ -1696,6 +1697,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               {task.company && (
                 <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 3 }}>
                   <b>Company:</b> {task.company}
+                </div>
+              )}
+              {task.assignedBy && (
+                <div style={{ fontSize: 13, color: theme === 'dark' ? '#d1d5db' : '#555', marginBottom: 3 }}>
+                  <b>Assigned By:</b>{' '}
+                  {typeof task.assignedBy === 'object' ? task.assignedBy.name : users.find(u => (u._id || u.id) === task.assignedBy)?.name || 'Unknown'}
+                </div>
+              )}
+              {task.assignedTo && (
+                <div style={{ fontSize: 13, color: theme === 'dark' ? '#d1d5db' : '#555', marginBottom: 3 }}>
+                  <b>Assigned To:</b>{' '}
+                  {Array.isArray(task.assignedTo)
+                    ? task.assignedTo.map(u => typeof u === 'object' ? u.name : users.find(user => (user._id || user.id) === u)?.name || u).join(', ')
+                    : typeof task.assignedTo === 'object' && task.assignedTo !== null
+                    ? task.assignedTo.name
+                    : users.find(u => (u._id || u.id) === task.assignedTo)?.name || 'Unknown'}
                 </div>
               )}
               {task.dueDate && (
