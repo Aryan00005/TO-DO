@@ -493,10 +493,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       // Refresh data
       refreshData();
       
-      // Redirect to assigned tasks view
-      if (!editingTask) {
-        setNav('assignedtasks');
-      }
+      // Redirect to assigned tasks view (both create and edit)
+      setNav('assignedtasks');
       
       // Refresh assigned tasks
       const res = await axios.get(`/tasks/assignedBy/${user._id}`, {
