@@ -29,11 +29,10 @@ class Task {
       throw new Error('Task must have a company assigned');
     }
     
-    let approvalStatus = 'approved'; // Default for admin tasks
-    let assignedByRole = creator?.role || 'user';
-    let assignedToRole = 'user';
+    // Check if any assignee is an admin
+    let approvalStatus = 'approved'; // Default to approved
+    let hasAdminAssignee = false;
     
-    // Check if any assignee is an admin (for user->admin approval)
     if (assignedTo && assignedTo.length > 0) {
       for (const assignee of assignedTo) {
         let userId = assignee;
@@ -43,12 +42,9 @@ class Task {
             .select('id, role')
             .eq('name', assignee)
             .single();
-          if (user) {
-            userId = user.id;
-            if (user.role === 'admin' && creator?.role !== 'admin') {
-              approvalStatus = 'pending'; // User assigning to admin needs approval
-              assignedToRole = 'admin';
-            }
+          if (user?.role === 'admin') {
+            hasAdminAssignee = true;
+            break;
           }
         } else {
           const { data: user } = await supabase
@@ -56,17 +52,17 @@ class Task {
             .select('role')
             .eq('id', parseInt(assignee))
             .single();
-          if (user?.role === 'admin' && creator?.role !== 'admin') {
-            approvalStatus = 'pending'; // User assigning to admin needs approval
-            assignedToRole = 'admin';
+          if (user?.role === 'admin') {
+            hasAdminAssignee = true;
+            break;
           }
         }
       }
     }
     
-    // Admin tasks are always approved and visible
-    if (creator?.role === 'admin') {
-      approvalStatus = 'approved';
+    // If admin is assigned, set to pending
+    if (hasAdminAssignee) {
+      approvalStatus = 'pending';
     }
     
     const { data: task, error: taskError } = await supabase
@@ -77,12 +73,10 @@ class Task {
         assigned_by: assignedBy,
         priority,
         due_date: dueDate,
-        company: taskCompany, // Use determined company
+        company: taskCompany,
         created_by_admin: createdByAdmin,
-        status: 'Not Started',
-        approval_status: approvalStatus,
-        assigned_by_role: assignedByRole,
-        assigned_to_role: assignedToRole
+        status: approvalStatus === 'pending' ? 'Pending Approval' : 'Not Started',
+        approval_status: approvalStatus
       })
       .select()
       .single();
@@ -131,51 +125,34 @@ class Task {
       
       console.log('Assignments created successfully');
       
-      // Create notifications for assigned users (only if task is approved)
-      if (approvalStatus === 'approved') {
-        const Notification = require('./notification');
-        const { data: creatorData } = await supabase
-          .from('users')
-          .select('name')
-          .eq('id', assignedBy)
-          .single();
-        
-        const creatorName = creatorData?.name || 'Someone';
-        
-        for (const userId of userIds) {
-          try {
+      // Create notifications for assigned users (always notify, regardless of approval)
+      const Notification = require('./notification');
+      const { data: creatorData } = await supabase
+        .from('users')
+        .select('name')
+        .eq('id', assignedBy)
+        .single();
+      
+      const creatorName = creatorData?.name || 'Someone';
+      
+      for (const userId of userIds) {
+        try {
+          // Check if this user is an admin
+          const { data: assigneeUser } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', userId)
+            .single();
+          
+          if (assigneeUser?.role === 'admin' && hasAdminAssignee) {
+            // Admin gets approval request notification
+            await Notification.create(userId, `Task approval required: "${title}" assigned by ${creatorName}`);
+          } else {
+            // Regular user gets normal assignment notification
             await Notification.create(userId, `New task assigned: "${title}" by ${creatorName}`);
-          } catch (notifError) {
-            console.error('Notification creation failed:', notifError);
           }
-        }
-      } else if (approvalStatus === 'pending') {
-        // Create approval notification for admin when user assigns task to admin
-        const Notification = require('./notification');
-        const { data: creatorData } = await supabase
-          .from('users')
-          .select('name')
-          .eq('id', assignedBy)
-          .single();
-        
-        const creatorName = creatorData?.name || 'Someone';
-        
-        // Find ALL admin users to notify (not just in same company)
-        const { data: adminUsers } = await supabase
-          .from('users')
-          .select('id')
-          .eq('role', 'admin')
-          .eq('account_status', 'active');
-        
-        if (adminUsers && adminUsers.length > 0) {
-          for (const admin of adminUsers) {
-            try {
-              await Notification.create(admin.id, `Task approval required: "${title}" assigned by ${creatorName}`);
-              console.log(`Approval notification sent to admin ${admin.id}`);
-            } catch (notifError) {
-              console.error('Admin notification creation failed:', notifError);
-            }
-          }
+        } catch (notifError) {
+          console.error('Notification creation failed:', notifError);
         }
       }
     }
@@ -184,20 +161,11 @@ class Task {
   }
 
   static async findAssignedToUser(userId) {
-    console.log('Finding tasks for user ID:', userId);
+    console.log('Finding tasks assigned TO user ID:', userId);
     
-    // Get user's company first
-    const { data: currentUser } = await supabase
-      .from('users')
-      .select('company')
-      .eq('id', userId)
-      .single();
+    const userIdInt = parseInt(userId);
     
-    if (!currentUser) {
-      throw new Error('User not found');
-    }
-    
-    // Get tasks where user is assigned with full details - filtered by company
+    // Get tasks where user is in task_assignments table AND approved, OR user is the creator (self-assigned)
     const { data: assignedTasks, error: assignedError } = await supabase
       .from('tasks')
       .select(`
@@ -206,32 +174,41 @@ class Task {
           user_id
         )
       `)
-      .eq('task_assignments.user_id', userId)
-      .eq('company', currentUser.company) // Company filter
+      .eq('task_assignments.user_id', userIdInt)
+      .eq('approval_status', 'approved')
       .order('created_at', { ascending: false });
-    
-    if (assignedError) throw assignedError;
-    
-    // Get tasks created by user - filtered by company
-    const { data: createdTasks, error: createdError } = await supabase
+
+    // Also get self-assigned tasks (where user is creator AND assignee)
+    const { data: selfAssignedTasks } = await supabase
       .from('tasks')
-      .select('*')
-      .eq('assigned_by', userId)
-      .eq('company', currentUser.company) // Company filter
+      .select(`
+        *,
+        task_assignments!inner(
+          user_id
+        )
+      `)
+      .eq('assigned_by', userIdInt)
+      .eq('task_assignments.user_id', userIdInt)
+      .eq('approval_status', 'approved')
       .order('created_at', { ascending: false });
+
+    // Merge and deduplicate
+    const allAssigned = [...(assignedTasks || []), ...(selfAssignedTasks || [])];
+    const uniqueAssigned = allAssigned.filter((task, index, self) =>
+      index === self.findIndex(t => t.id === task.id)
+    );
+    // Replace assignedTasks reference below with uniqueAssigned
+    const mergedAssignedTasks = uniqueAssigned;
     
-    if (createdError) throw createdError;
+    if (assignedError) {
+      console.error('Error fetching assigned tasks:', assignedError);
+      throw assignedError;
+    }
     
-    // Combine and deduplicate
-    const taskMap = new Map();
-    [...(assignedTasks || []), ...(createdTasks || [])].forEach(task => {
-      taskMap.set(task.id, task);
-    });
-    
-    const tasks = Array.from(taskMap.values());
+    console.log('Tasks assigned TO user (approved only, including self-assigned):', mergedAssignedTasks.length);
     
     // Populate assignee and creator details
-    const populatedTasks = await Promise.all(tasks.map(async (task) => {
+    const populatedTasks = await Promise.all(mergedAssignedTasks.map(async (task) => {
       // Get creator details
       const { data: creator } = await supabase
         .from('users')
@@ -255,6 +232,9 @@ class Task {
         _id: task.id.toString(),
         dueDate: task.due_date,
         stuckReason: task.stuck_reason,
+        approvalStatus: task.approval_status,
+        approval_status: task.approval_status,
+        approved_at: task.approved_at,
         assignedBy: creator ? { _id: creator.id.toString(), name: creator.name, email: creator.email } : null,
         assignedTo: assignees.length === 1 ? 
           { _id: assignees[0].id.toString(), name: assignees[0].name, email: assignees[0].email } : 
@@ -262,6 +242,7 @@ class Task {
       };
     }));
     
+    console.log('Returning', populatedTasks.length, 'populated tasks to Task Board');
     return populatedTasks;
   }
 
@@ -293,6 +274,9 @@ class Task {
         _id: task.id.toString(),
         dueDate: task.due_date,
         stuckReason: task.stuck_reason,
+        approvalStatus: task.approval_status,
+        approval_status: task.approval_status,
+        approved_at: task.approved_at,
         assignedTo: assignees.length === 1 ? 
           { _id: assignees[0].id.toString(), name: assignees[0].name, email: assignees[0].email } : 
           assignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
@@ -339,7 +323,10 @@ class Task {
     
     const { data, error } = await supabase
       .from('tasks')
-      .update({ approval_status: 'approved' })
+      .update({ 
+        approval_status: 'approved',
+        status: 'Not Started'
+      })
       .eq('id', taskId)
       .eq('approval_status', 'pending')
       .select()
@@ -428,15 +415,15 @@ class Task {
     
     console.log('All tasks fetched:', allTasks?.length || 0);
     
-    // NEW LOGIC: Show only tasks where user is creator OR assignee
+    // NEW LOGIC: Show only tasks where user is creator OR assignee (and approved)
     const visibleTasks = allTasks.filter(task => {
       const isCreator = task.assigned_by === userIdInt;
       const isAssigned = task.task_assignments?.some(a => a.user_id === userIdInt);
+      const isApproved = task.approval_status === 'approved';
       
-      // Only show if user is creator OR assigned to this task
-      // AND task must be approved (unless user is creator)
+      // Show if user is creator (always) OR assigned AND approved
       if (isCreator) return true;
-      if (isAssigned && task.approval_status === 'approved') return true;
+      if (isAssigned && isApproved) return true;
       return false;
     });
     
@@ -468,6 +455,9 @@ class Task {
         _id: task.id.toString(),
         dueDate: task.due_date,
         stuckReason: task.stuck_reason,
+        approvalStatus: task.approval_status,
+        approval_status: task.approval_status,
+        approved_at: task.approved_at,
         assignedBy: creator ? { _id: creator.id.toString(), name: creator.name, email: creator.email } : null,
         assignedTo: displayAssignees.length === 1 ? 
           { _id: displayAssignees[0].id.toString(), name: displayAssignees[0].name, email: displayAssignees[0].email } : 

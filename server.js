@@ -1,15 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-
-// Validate critical environment variables
-if (!process.env.JWT_SECRET) {
-  console.error('❌ CRITICAL: JWT_SECRET is missing!');
-  if (process.env.VERCEL !== '1') {
-    process.exit(1);
-  }
-}
-
 const passport = require('./config/passport');
 const { testConnection } = require('./config/database');
 const { rateLimiters, securityHeaders, sanitizeInput, securityLogger } = require('./middleware/security');
@@ -52,10 +43,8 @@ app.get('/health', (req, res) => {
 // Initialize Passport
 app.use(passport.initialize());
 
-// Test PostgreSQL connection (skip in serverless cold start)
-if (process.env.VERCEL !== '1') {
-  testConnection();
-}
+// Test PostgreSQL connection
+testConnection();
 
 // Debug: Log environment variables
 console.log('🔍 Environment check:');
@@ -122,10 +111,23 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5500;
+app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
 
-// Only start server if not in serverless environment
-if (process.env.VERCEL !== '1') {
-  app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
-}
+// Schedule daily cleanup of old completed tasks (runs at 2 AM daily)
+const { cleanupOldDoneTasks } = require('./utils/taskCleanup');
 
-module.exports = app;
+setInterval(async () => {
+  const now = new Date();
+  // Run cleanup at 2 AM
+  if (now.getHours() === 2 && now.getMinutes() === 0) {
+    console.log('🕐 Running scheduled cleanup...');
+    try {
+      const result = await cleanupOldDoneTasks();
+      console.log(`✅ Cleanup completed: ${result.deletedCount} tasks deleted`);
+    } catch (error) {
+      console.error('❌ Scheduled cleanup failed:', error);
+    }
+  }
+}, 60000); // Check every minute
+
+console.log('⏰ Scheduled task cleanup enabled (runs daily at 2 AM)');

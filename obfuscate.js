@@ -13,7 +13,7 @@ const filesToObfuscate = [
   'middleware/auth.js',
   'models/task.js',
   'models/user.js',
-  'models/notification.js', 
+  'models/notification.js',
   'models/organization.js',
   'routes/auth.js',
   'routes/task.js',
@@ -61,35 +61,35 @@ async function obfuscateFiles() {
   try {
     // Ensure output directory exists
     await fs.ensureDir(outputDir);
-    
-    console.log('🔒 Starting code obfuscation...');
-    
+
+    console.log(' Starting code obfuscation...');
+
     for (const file of filesToObfuscate) {
       const sourcePath = path.join(sourceDir, file);
       const outputPath = path.join(outputDir, file);
-      
+
       if (await fs.pathExists(sourcePath)) {
         // Ensure output subdirectory exists
         await fs.ensureDir(path.dirname(outputPath));
-        
+
         // Read source file
         const sourceCode = await fs.readFile(sourcePath, 'utf8');
-        
+
         // Obfuscate code
         const obfuscatedResult = JavaScriptObfuscator.obfuscate(sourceCode, obfuscationOptions);
-        
+
         // Write obfuscated code
         await fs.writeFile(outputPath, obfuscatedResult.getObfuscatedCode());
-        
-        console.log(`✅ Obfuscated: ${file}`);
+
+        console.log(` Obfuscated: ${file}`);
       } else {
-        console.log(`⚠️  File not found: ${file}`);
+        console.log(`  File not found: ${file}`);
       }
     }
-    
+
     // Copy package.json and other necessary files
     await fs.copy('./package.json', path.join(outputDir, 'package.json'));
-    
+
     // Copy .env files if they exist
     if (await fs.pathExists('./.env')) {
       await fs.copy('./.env', path.join(outputDir, '.env'));
@@ -98,11 +98,11 @@ async function obfuscateFiles() {
       await fs.copy('./.env.production', path.join(outputDir, '.env.production'));
     }
     
-    console.log('🎉 Code obfuscation completed successfully!');
-    console.log('📁 Obfuscated files are in the ./dist directory');
+    console.log(' Code obfuscation completed successfully!');
+    console.log(' Obfuscated files are in the ./dist directory');
     
   } catch (error) {
-    console.error('❌ Error during obfuscation:', error);
+    console.error(' Error during obfuscation:', error);
     process.exit(1);
   }
 }

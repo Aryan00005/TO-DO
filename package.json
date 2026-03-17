@@ -8,7 +8,13 @@
     "build": "npm install && npm run obfuscate",
     "obfuscate": "node obfuscate-dashboard-safe.js",
     "obfuscate:old": "node obfuscate.js",
-    "postinstall": "echo 'Dependencies installed successfully'"
+    "postinstall": "echo 'Dependencies installed successfully'",
+    "test": "node tests/run-all-tests.js",
+    "test:phase1": "node tests/phase1-health.js",
+    "test:phase2": "node tests/phase2-auth.js",
+    "test:phase3": "node tests/phase3-tasks.js",
+    "test:phase4": "node tests/phase4-admin.js",
+    "test:phase5": "node tests/phase5-security.js"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -28,6 +34,7 @@
     "passport-google-oauth20": "^2.0.0"
   },
   "devDependencies": {
+    "axios": "^1.13.5",
     "fs-extra": "^11.3.3",
     "javascript-obfuscator": "^4.2.2",
     "nodemon": "^3.1.11"

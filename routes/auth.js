@@ -74,7 +74,7 @@ router.get('/google/callback',
       const user = req.user;
 
       if (!user) {
-        console.error('❌ No user returned from Google OAuth');
+        console.error(' No user returned from Google OAuth');
         return res.redirect(`${process.env.FRONTEND_URL}/login?error=oauth_failed`);
       }
 
@@ -186,7 +186,7 @@ router.post('/admin/login', async (req, res) => {
     if (!userId || !password) {
       return res.status(400).json({ message: 'Email/UserID and password are required.' });
     }
-    
+
     // Find user by userId OR email
     let user = await User.findByUserId(userId);
     if (!user) {
