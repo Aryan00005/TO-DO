@@ -3,21 +3,7 @@ const bcrypt = require('bcryptjs');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false
-    },
-    global: {
-      fetch: (...args) => {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
-        return fetch(args[0], { ...args[1], signal: controller.signal })
-          .finally(() => clearTimeout(timeout));
-      }
-    }
-  }
+  process.env.SUPABASE_SERVICE_KEY
 );
 
 class User {
