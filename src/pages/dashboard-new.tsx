@@ -1689,6 +1689,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               boxShadow: "0 1px 4px #c7d2fe22",
               position: "relative"
             }}>
+              {(task as any).approvalStatus === 'pending' && (
+                <div style={{ position: 'absolute', top: 8, right: 8, background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 12, fontSize: 10, fontWeight: 600, border: '1px solid #f59e0b' }}>
+                  PENDING APPROVAL
+                </div>
+              )}
               <div style={{ fontWeight: 600, fontSize: 16, color: theme === 'dark' ? '#ffffff' : '#22223b' }}>
                 {task.title}
                 <span style={{ float: "right" }}>{renderStars(task.priority)}</span>
