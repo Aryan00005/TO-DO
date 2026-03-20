@@ -66,6 +66,19 @@ const getInitials = (name: string) => {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 };
 
+const normalizeTask = (t: any): Task => ({
+  ...t,
+  _id: String(t._id || t.id),
+  assignedTo: t.assignedTo || t.assigned_to,
+  assignedBy: t.assignedBy || t.assigned_by,
+  dueDate: t.dueDate || t.due_date,
+  completionRemark: t.completionRemark || t.completion_remark,
+  stuckReason: t.stuckReason || t.stuck_reason,
+  rejectionReason: t.rejectionReason || t.rejection_reason,
+  approvalStatus: t.approvalStatus || t.approval_status,
+  approved_at: t.approved_at,
+});
+
 const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const { theme, toggleTheme } = useTheme();
   const { showToast, ToastContainer } = useToast();
@@ -115,13 +128,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [searchDebounce, setSearchDebounce] = useState('');
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [flippedCards, setFlippedCards] = useState<Set<string>>(new Set());
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserUserId, setNewUserUserId] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
   const [showNewUserPassword, setShowNewUserPassword] = useState(false);
   const [addUserLoading, setAddUserLoading] = useState(false);
+  const adminDataFetchedAt = React.useRef<number>(0);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -129,18 +142,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
-
-  const toggleFlipCard = (taskId: string) => {
-    setFlippedCards(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(taskId)) {
-        newSet.delete(taskId);
-      } else {
-        newSet.add(taskId);
-      }
-      return newSet;
-    });
-  };
 
   const today = new Date();
   const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
@@ -238,21 +239,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   //   const interval = setInterval(() => {
   //     refreshData();
   //   }, 30000);
-  //   return () => c learInterval(interval);
+  //   return () => clearInterval(interval);
   // }, [autoRefresh, user._id]);
 
   const refreshData = useCallback(async () => {
     setIsRefreshing(true);
     try {
       const token = sessionStorage.getItem("jwt-token");
-      
-      const [tasksRes, notificationsRes] = await Promise.all([
+      const [tasksRes, notificationsRes, assignedRes] = await Promise.all([
         axios.get(`/tasks/visible`, { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get(`/notifications/${user._id}`, { headers: { Authorization: `Bearer ${token}` } })
+        axios.get(`/notifications/${user._id}`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`/tasks/assignedBy/${user._id}`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
-      
-      setTasks(tasksRes.data);
+      setTasks(tasksRes.data.map(normalizeTask));
       setNotifications(notificationsRes.data);
+      setAssignedTasks(assignedRes.data.map(normalizeTask));
       setLastUpdated(new Date());
     } catch (err: any) {
       if (err.response?.status === 401) {
@@ -264,28 +265,28 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   }, [user._id, onLogout]);
 
   const updateTaskStatus = async (taskId: string, newStatus: string) => {
-    // If moving to Stuck, show modal for reason
     if (newStatus === 'Stuck') {
       setStuckTaskId(taskId);
       setShowStuckModal(true);
       return;
     }
     
-    // Update UI immediately
+    // Update UI immediately — update both tasks and assignedTasks
     setTasks(prev => prev.map(task => 
+      task._id === taskId ? { ...task, status: newStatus } : task
+    ));
+    setAssignedTasks(prev => prev.map(task =>
       task._id === taskId ? { ...task, status: newStatus } : task
     ));
     
     showToast(`Task moved to ${newStatus}!`, "success");
     
-    // Update in background
     try {
       const token = sessionStorage.getItem("jwt-token");
       await axios.patch(`/tasks/${taskId}`, { status: newStatus }, {
         headers: { Authorization: `Bearer ${token}` }
       });
     } catch (err: any) {
-      // Revert on error
       refreshData();
       showToast("Failed to update task", "error");
     }
@@ -321,16 +322,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   const deleteTask = async (taskId: string) => {
     if (!window.confirm('Are you sure you want to delete this task?')) return;
-    
+
+    // Optimistic: remove immediately
+    setTasks(prev => prev.filter(t => t._id !== taskId));
+    setAssignedTasks(prev => prev.filter(t => t._id !== taskId));
+    showToast("Task deleted successfully!", "success");
+
     try {
       const token = sessionStorage.getItem("jwt-token");
       await axios.delete(`/tasks/${taskId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
-      setTasks(prev => prev.filter(task => task._id !== taskId));
-      showToast("Task deleted successfully!", "success");
     } catch (err) {
+      // Revert on failure
+      refreshData();
       showToast("Failed to delete task", "error");
     }
   };
@@ -389,7 +394,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           axios.get("/auth/users", { headers: { Authorization: `Bearer ${token}` } }),
           axios.get(`/notifications/${user._id}`, { headers: { Authorization: `Bearer ${token}` } })
         ]);
-        setTasks(tasksRes.data);
+        setTasks(tasksRes.data.map(normalizeTask));
         setUsers(usersRes.data);
         setNotifications(notificationsRes.data);
       } catch (err) {
@@ -399,50 +404,36 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     loadInitialData();
   }, [user._id]);
 
+  // Load assignedTasks once on mount only — handleCreate updates it optimistically after that
   useEffect(() => {
-    if (nav === "assignedtasks") {
-      const token = sessionStorage.getItem("jwt-token");
-      axios.get(`/tasks/assignedBy/${user._id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-        .then(res => {
-          console.log('Assigned tasks response:', res.data);
-          setAssignedTasks(res.data);
-        })
-        .catch(err => {
-          console.error("Error fetching assigned tasks:", err);
-          showToast("Error loading assigned tasks: " + (err.response?.data?.message || err.message), "error");
-        });
-    }
-  }, [nav, user._id]);
+    const token = sessionStorage.getItem("jwt-token");
+    axios.get(`/tasks/assignedBy/${user._id}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => setAssignedTasks(res.data.map(normalizeTask)))
+      .catch(() => {});
+  }, [user._id]);
 
-  // Fetch pending users and task approvals for admin
+  // Fetch pending users and task approvals for admin — cached for 60s
   useEffect(() => {
     if (nav === "userapprovals" && user.role === 'admin') {
+      const now = Date.now();
+      if (now - adminDataFetchedAt.current < 60_000) return;
+      adminDataFetchedAt.current = now;
+
       const token = sessionStorage.getItem("jwt-token");
-      
-      // Fetch users
-      axios.get("/auth/admin/all-users", {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      .then(res => {
-        setPendingUsers(res.data);
-      })
-      .catch(err => {
-        console.error("Error fetching all users:", err);
-        showToast("Error loading users: " + (err.response?.data?.message || err.message), "error");
-      });
-      
-      // Fetch pending task approvals
-      axios.get("/tasks/pending-approvals", {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      .then(res => {
-        setPendingTaskApprovals(res.data);
-      })
-      .catch(err => {
-        console.error("Error fetching pending task approvals:", err);
-      });
+      Promise.all([
+        axios.get("/auth/admin/all-users", { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get("/tasks/pending-approvals", { headers: { Authorization: `Bearer ${token}` } })
+      ])
+        .then(([usersRes, approvalsRes]) => {
+          setPendingUsers(usersRes.data);
+          setPendingTaskApprovals(approvalsRes.data);
+        })
+        .catch(err => {
+          adminDataFetchedAt.current = 0;
+          showToast("Error loading admin data: " + (err.response?.data?.message || err.message), "error");
+        });
     }
   }, [nav, user._id, user.role, showToast]);
 
@@ -458,245 +449,210 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     
     setValidationErrors([]);
     setLoading(true);
-    
+
+    const token = sessionStorage.getItem("jwt-token");
+    // Capture values before resetting form
+    const taskTitle = title;
+    const taskDescription = description;
+    const taskAssignedTo = assignedTo;
+    const taskPriority = priority;
+    const taskDueDate = dueDate;
+    const taskCompany = company;
+    const taskEditing = editingTask;
+
+    const hasAdminAssignee = !editingTask && assignedTo.some(id =>
+      users.find(u => (u._id || u.id) === id)?.role === 'admin'
+    );
+
+    // Build optimistic task for instant UI update
+    const optimisticId = `optimistic-${Date.now()}`;
+    // Resolve user objects from IDs so names display immediately
+    const resolvedAssignedTo = taskAssignedTo.map(id => {
+      const found = users.find(u => (u._id || u.id) === id);
+      return found ? found : id;
+    });
+    const optimisticTask: Task = {
+      _id: optimisticId,
+      title: taskTitle,
+      description: taskDescription,
+      assignedTo: resolvedAssignedTo,
+      priority: taskPriority,
+      dueDate: taskDueDate,
+      company: taskCompany,
+      status: 'Not Started',
+      assignedBy: user,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Reset form
+    setTitle(""); setDescription(""); setAssignedTo([]); setPriority(3); setDueDate(new Date().toISOString().split('T')[0]); setCompany("");
+    setEditingTask(null);
+    setLoading(false);
+
+    if (!taskEditing) {
+      // Add optimistic task immediately so it shows up right away
+      setAssignedTasks(prev => [optimisticTask, ...prev]);
+      setTasks(prev => [optimisticTask, ...prev]);
+    }
+
+
+
+    if (hasAdminAssignee) {
+      showToast("Task sent for admin approval! ⏳", "success");
+    } else {
+      showToast(taskEditing ? "Task updated! 🎉" : "Task created! 🎉", "success");
+    }
+
+    // For edit: optimistically update state immediately
+    if (taskEditing) {
+      const optimisticEdit: Task = {
+        ...taskEditing,
+        title: taskTitle,
+        description: taskDescription,
+        assignedTo: resolvedAssignedTo,
+        priority: taskPriority,
+        dueDate: taskDueDate,
+        company: taskCompany,
+      };
+      setTasks(prev => prev.map(t => t._id === taskEditing._id ? optimisticEdit : t));
+      setAssignedTasks(prev => prev.map(t => t._id === taskEditing._id ? optimisticEdit : t));
+    }
+
+    // API call in background using captured values
     try {
-      const token = sessionStorage.getItem("jwt-token");
-      
-      // Check if any assignee is an admin (for new tasks only)
-      const hasAdminAssignee = !editingTask && assignedTo.some(id => 
-        users.find(u => (u._id || u.id) === id)?.role === 'admin'
-      );
-      
-      // Reset form immediately
-      setTitle(""); setDescription(""); setAssignedTo([]); setPriority(3); setDueDate(new Date().toISOString().split('T')[0]); setCompany("");
-      setEditingTask(null);
-      
-      if (hasAdminAssignee) {
-        showToast("Task sent for admin approval! ⏳", "success");
-      } else {
-        showToast(editingTask ? "Task updated! 🎉" : "Task created! 🎉", "success");
-      }
-      
-      // Make API call
-      if (editingTask) {
-        await axios.patch(`/tasks/${editingTask._id}`, { 
-          title, description, assignedTo, priority, dueDate, company 
+      if (taskEditing) {
+        const res = await axios.patch(`/tasks/${taskEditing._id}`, {
+          title: taskTitle, description: taskDescription, assignedTo: taskAssignedTo, priority: taskPriority, dueDate: taskDueDate, company: taskCompany
         }, {
           headers: { Authorization: `Bearer ${token}` }
         });
+        const updated = res.data.task || res.data;
+        setTasks(prev => prev.map(t => t._id === taskEditing._id ? { ...t, ...updated, _id: taskEditing._id } : t));
+        setAssignedTasks(prev => prev.map(t => t._id === taskEditing._id ? { ...t, ...updated, _id: taskEditing._id } : t));
       } else {
-        await axios.post("/tasks", { title, description, assignedTo, priority, dueDate, company }, {
+        const res = await axios.post("/tasks", { title: taskTitle, description: taskDescription, assignedTo: taskAssignedTo, priority: taskPriority, dueDate: taskDueDate, company: taskCompany }, {
           headers: { Authorization: `Bearer ${token}` }
         });
+        const created = res.data.task || res.data;
+        // Replace optimistic task with real one from server
+        setTasks(prev => prev.map(t => t._id === optimisticId ? created : t));
+        setAssignedTasks(prev => prev.map(t => t._id === optimisticId ? created : t));
       }
-      
-      // Refresh data
-      refreshData();
-      
-      // Redirect to assigned tasks view (both create and edit)
-      setNav('assignedtasks');
-      
-      // Refresh assigned tasks
-      const res = await axios.get(`/tasks/assignedBy/${user._id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setAssignedTasks(res.data);
     } catch (err: any) {
-      showToast("Error: " + (err.response?.data?.message || err.message), "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUserApproval = async (userId: string, action: 'approve' | 'reject') => {
-    try {
-      console.log('🔄 Attempting user approval:', { userId, action });
-      const token = sessionStorage.getItem("jwt-token");
-      
-      const requestData = {
-        userId,
-        action
-      };
-      console.log('📊 Request data:', requestData);
-      
-      await axios.post("/auth/admin/user-action", requestData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      // Refresh all users
-      const res = await axios.get("/auth/admin/all-users", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setPendingUsers(res.data);
-      
-      showToast(`User ${action}d successfully! 🎉`, "success");
-    } catch (err: any) {
-      console.error('❌ User approval error:', err);
-      console.error('❌ Error response:', err.response?.data);
-      showToast("Error: " + (err.response?.data?.message || err.message), "error");
-    }
-  };
-
-  const handleUserRemoval = async (userId: string) => {
-    if (!window.confirm('Are you sure you want to remove this user? This action cannot be undone.')) return;
-    
-    try {
-      console.log('🔄 Attempting user removal:', userId);
-      const token = sessionStorage.getItem("jwt-token");
-      
-      await axios.delete(`/auth/admin/remove-user/${userId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      // Refresh all users
-      const res = await axios.get("/auth/admin/all-users", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setPendingUsers(res.data);
-      
-      showToast('User removed successfully! 🗑️', "success");
-    } catch (err: any) {
-      console.error('❌ User removal error:', err);
-      showToast("Error: " + (err.response?.data?.message || err.message), "error");
-    }
-  };
-
-  const handleUserToggle = async (userId: string, currentStatus: string) => {
-    const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
-    const action = newStatus === 'active' ? 'activate' : 'deactivate';
-    
-    if (!window.confirm(`Are you sure you want to ${action} this user?`)) return;
-    
-    try {
-      console.log('🔄 Attempting user status toggle:', { userId, currentStatus, newStatus });
-      const token = sessionStorage.getItem("jwt-token");
-      
-      await axios.post("/auth/admin/toggle-user-status", {
-        userId,
-        status: newStatus
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      // Refresh all users
-      const res = await axios.get("/auth/admin/all-users", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setPendingUsers(res.data);
-      
-      showToast(`User ${action}d successfully! ${newStatus === 'active' ? '✅' : '❌'}`, "success");
-    } catch (err: any) {
-      console.error('❌ User toggle error:', err);
-      showToast("Error: " + (err.response?.data?.message || err.message), "error");
-    }
-  };
-
-  const handleTaskApproval = async (taskId: string, action: 'approve' | 'reject') => {
-    if (action === 'reject') {
-      setRejectingTaskId(taskId);
-      setShowRejectModal(true);
-      return;
-    }
-    
-    try {
-      console.log('🔄 Attempting task approval:', { taskId, action });
-      const token = sessionStorage.getItem("jwt-token");
-      
-      await axios.post(`/tasks/${taskId}/${action}`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      // Refresh pending task approvals
-      const res = await axios.get("/tasks/pending-approvals", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setPendingTaskApprovals(res.data);
-      
-      // Refresh tasks to show newly approved tasks
-      refreshData();
-      
-      showToast(`Task ${action}d successfully! ✅`, "success");
-    } catch (err: any) {
-      console.error('❌ Task approval error:', err);
-      showToast("Error: " + (err.response?.data?.message || err.message), "error");
-    }
-  };
-
-  const handleRejectSubmit = async () => {
-    if (!rejectionReason.trim()) {
-      showToast('Rejection reason is required', 'error');
-      return;
-    }
-    if (rejectionReason.length > 200) {
-      showToast('Rejection reason must be 200 characters or less', 'error');
-      return;
-    }
-    
-    try {
-      const token = sessionStorage.getItem("jwt-token");
-      await axios.post(`/tasks/${rejectingTaskId}/reject`, {
-        reason: rejectionReason
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      const res = await axios.get("/tasks/pending-approvals", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setPendingTaskApprovals(res.data);
-      refreshData();
-      
-      setShowRejectModal(false);
-      setRejectionReason('');
-      setRejectingTaskId('');
-      showToast('Task rejected successfully! ❌', 'success');
-    } catch (err: any) {
-      console.error('❌ Task rejection error:', err);
-      showToast('Error: ' + (err.response?.data?.message || err.message), 'error');
-    }
-  };
-
-  const handleApproveTask = async (taskId: string) => {
-    try {
-      const token = sessionStorage.getItem("jwt-token");
-      await axios.patch(`/tasks/${taskId}`, { 
-        approval_status: 'approved'
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      // Update local state immediately
-      setTasks(prev => prev.map(t => 
-        t._id === taskId ? { ...t, approvalStatus: 'approved', approval_status: 'approved' } : t
-      ));
-      setAssignedTasks(prev => prev.map(t => 
-        t._id === taskId ? { ...t, approvalStatus: 'approved', approval_status: 'approved' } : t
-      ));
-      
-      showToast("Task approved! ✅", "success");
-      refreshData();
-    } catch (err: any) {
+      if (taskEditing) {
+        // Revert optimistic edit on failure
+        refreshData();
+      } else {
+        // Remove optimistic task on failure
+        setTasks(prev => prev.filter(t => t._id !== optimisticId));
+        setAssignedTasks(prev => prev.filter(t => t._id !== optimisticId));
+      }
       showToast("Error: " + (err.response?.data?.message || err.message), "error");
     }
   };
   
+  const matchId = (t: Task, taskId: string) =>
+    String(t._id) === String(taskId) || String((t as any).id) === String(taskId);
+
   const handleRejectTask = async (taskId: string, reason: string) => {
+    const update = { status: 'Working on it', rejectionReason: reason, approvalStatus: 'rejected' as const };
+    setFilterStatus('all');
+    setTasks(prev => prev.map(t => matchId(t, taskId) ? { ...t, ...update } : t));
+    setAssignedTasks(prev => prev.map(t => matchId(t, taskId) ? { ...t, ...update } : t));
+    showToast("Task rejected and moved to Working on it! ❌", "success");
     try {
       const token = sessionStorage.getItem("jwt-token");
-      await axios.patch(`/tasks/${taskId}`, { 
+      const res = await axios.patch(`/tasks/${taskId}`, { 
         status: 'Working on it',
         rejection_reason: reason,
         approval_status: 'rejected'
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
-      setAssignedTasks(prev => prev.map(t => 
-        t._id === taskId ? { ...t, status: 'Working on it', rejectionReason: reason, approvalStatus: 'rejected' } : t
-      ));
-      showToast("Task rejected and moved to Working on it! ❌", "success");
     } catch (err: any) {
+      refreshData();
       showToast("Error: " + (err.response?.data?.message || err.message), "error");
+    }
+  };
+
+  const handleApproveTask = async (taskId: string) => {
+    const update = { approvalStatus: 'approved' as const };
+    setTasks(prev => prev.map(t => t._id === taskId ? { ...t, ...update } : t));
+    setAssignedTasks(prev => prev.map(t => t._id === taskId ? { ...t, ...update } : t));
+    showToast('Task approved! ✅', 'success');
+
+    try {
+      const token = sessionStorage.getItem('jwt-token');
+      await axios.patch(`/tasks/${taskId}`, { approval_status: 'approved' }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch (err: any) {
+      refreshData();
+      showToast('Failed to approve task', 'error');
+    }
+  };
+
+  const handleTaskApproval = async (taskId: string, action: 'approve' | 'reject') => {
+    try {
+      const token = sessionStorage.getItem('jwt-token');
+      if (action === 'approve') {
+        await axios.post(`/tasks/${taskId}/approve`, {}, { headers: { Authorization: `Bearer ${token}` } });
+        setPendingTaskApprovals(prev => prev.filter(t => t._id !== taskId));
+        showToast('Task approved! ✅', 'success');
+      } else {
+        await axios.patch(`/tasks/${taskId}`, { approval_status: 'rejected' }, { headers: { Authorization: `Bearer ${token}` } });
+        setPendingTaskApprovals(prev => prev.filter(t => t._id !== taskId));
+        showToast('Task rejected ❌', 'success');
+      }
+    } catch (err: any) {
+      showToast('Error: ' + (err.response?.data?.message || err.message), 'error');
+    }
+  };
+
+  const handleRejectSubmit = async () => {
+    if (!rejectionReason.trim()) return;
+    await handleRejectTask(rejectingTaskId, rejectionReason.trim());
+    setShowRejectModal(false);
+    setRejectionReason('');
+    setRejectingTaskId('');
+  };
+
+  const handleUserApproval = async (userId: string, action: 'approve' | 'reject') => {
+    try {
+      const token = sessionStorage.getItem('jwt-token');
+      await axios.post('/auth/admin/user-action', { userId, action }, { headers: { Authorization: `Bearer ${token}` } });
+      setPendingUsers(prev => prev.map(u => (u._id || u.id) === userId
+        ? { ...u, account_status: action === 'approve' ? 'active' : 'rejected' }
+        : u
+      ));
+      showToast(`User ${action === 'approve' ? 'approved ✅' : 'rejected ❌'}`, 'success');
+    } catch (err: any) {
+      showToast('Error: ' + (err.response?.data?.message || err.message), 'error');
+    }
+  };
+
+  const handleUserToggle = async (userId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+    setPendingUsers(prev => prev.map(u => (u._id || u.id) === userId ? { ...u, account_status: newStatus } : u));
+    try {
+      const token = sessionStorage.getItem('jwt-token');
+      await axios.post('/auth/admin/toggle-user-status', { userId }, { headers: { Authorization: `Bearer ${token}` } });
+    } catch (err: any) {
+      setPendingUsers(prev => prev.map(u => (u._id || u.id) === userId ? { ...u, account_status: currentStatus } : u));
+      showToast('Error: ' + (err.response?.data?.message || err.message), 'error');
+    }
+  };
+
+  const handleUserRemoval = async (userId: string) => {
+    if (!window.confirm('Are you sure you want to remove this user?')) return;
+    setPendingUsers(prev => prev.filter(u => (u._id || u.id) !== userId));
+    try {
+      const token = sessionStorage.getItem('jwt-token');
+      await axios.delete(`/auth/admin/remove-user/${userId}`, { headers: { Authorization: `Bearer ${token}` } });
+      showToast('User removed', 'success');
+    } catch (err: any) {
+      refreshData();
+      showToast('Error: ' + (err.response?.data?.message || err.message), 'error');
     }
   };
 
@@ -739,7 +695,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const filteredTasks = tasks.filter(task => {
     const matchesSearch = task.title.toLowerCase().includes(searchDebounce.toLowerCase()) ||
                          task.description.toLowerCase().includes(searchDebounce.toLowerCase());
-    const matchesStatus = filterStatus === 'all' || task.status === filterStatus;
+    const effectiveStatus = task.rejectionReason ? 'Working on it' :
+      task.status === 'Pending Approval' ? 'Working on it' :
+      !['Not Started', 'Working on it', 'Stuck', 'Done'].includes(task.status) ? 'Working on it' : task.status;
+    const matchesStatus = filterStatus === 'all' || effectiveStatus === filterStatus;
     const matchesPriority = filterPriority === 'all' || task.priority.toString() === filterPriority;
     
     // Date range filter
@@ -788,16 +747,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     return matchesSearch && matchesStatus && matchesPriority && matchesDateRange && matchesAssignedBy && matchesAssignedTo;
   });
 
-  // Tasks Board: Show tasks where I am in assignedTo (I am the assignee)
+  // Tasks Board: only show tasks where logged-in user is assignee (not creator)
   const tasksAssignedToMe = filteredTasks.filter(task => {
-    if (Array.isArray(task.assignedTo)) {
-      return task.assignedTo.some(u => {
-        const userId = typeof u === 'object' ? u._id : u;
-        return String(userId) === String(user._id);
-      });
-    }
-    const assignedToId = typeof task.assignedTo === 'object' ? task.assignedTo._id : task.assignedTo;
-    return String(assignedToId) === String(user._id);
+    const assignedById = typeof task.assignedBy === 'object' ? task.assignedBy?._id : task.assignedBy;
+    return String(assignedById) !== String(user._id);
   });
 
   // Task List: For regular users show only their tasks, for admin show all company tasks
@@ -870,7 +823,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const columns: KanbanTasksType = {};
     kanbanColumns.forEach(col => columns[col] = []);
     tasksAssignedToMe.forEach(task => {
-      if (columns[task.status]) columns[task.status].push(task);
+      let status = task.status;
+      // If rejected by owner, always show in Working on it
+      if (task.rejectionReason) status = 'Working on it';
+      else if (status === 'Pending Approval') status = 'Working on it';
+      if (!columns[status]) status = 'Working on it';
+      columns[status].push({ ...task, status });
     });
     return columns;
   };
@@ -898,8 +856,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     if (sourceCol !== destCol) {
       const sourceTasksSorted = sortTasks(kanbanTasks[sourceCol], kanbanSort);
       const draggedTask = sourceTasksSorted[result.source.index];
-      
-      // Update task status via API
+      setFilterStatus('all'); // reset filter so moved task stays visible
       await updateTaskStatus(draggedTask._id, destCol);
     }
   };
@@ -1150,25 +1107,29 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
             </select>
           </div>
           
-          <button
-            onClick={refreshData}
-            disabled={isRefreshing}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 16px',
-              background: '#2563eb',
-              color: 'white',
-              border: 'none',
-              borderRadius: 6,
-              cursor: isRefreshing ? 'not-allowed' : 'pointer',
-              opacity: isRefreshing ? 0.7 : 1
-            }}
-          >
-            <FaSync className={isRefreshing ? 'fa-spin' : ''} />
-            Refresh
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <button
+              type="button"
+              onClick={refreshData}
+              disabled={isRefreshing}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 16px',
+                background: '#2563eb',
+                color: 'white',
+                border: 'none',
+                borderRadius: 6,
+                cursor: isRefreshing ? 'not-allowed' : 'pointer',
+                opacity: isRefreshing ? 0.7 : 1
+              }}
+            >
+              <FaSync className={isRefreshing ? 'fa-spin' : ''} />
+              Refresh
+            </button>
+            <span style={{ fontSize: 10, color: '#9ca3af' }}>Click if task status changed</span>
+          </div>
         </div>
         
         <DragDropContext onDragEnd={onDragEnd}>
@@ -1200,18 +1161,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                       {tasksToRender.length === 0 && (
                         <div style={{ color: "#64748b", fontSize: 14 }}>No tasks</div>
                       )}
-                      {tasksToRender.map((task, idx) => {
-                        const isStuck = task.status === 'Stuck';
-                        const isFlipped = flippedCards.has(task._id);
-                        
-                        return (
+                      {tasksToRender.map((task, idx) => (
                         <Draggable draggableId={task._id} index={idx} key={task._id}>
                           {(provided: DraggableProvided, snapshot) => (
                             <div
                               ref={provided.innerRef}
                               {...provided.draggableProps}
                               {...provided.dragHandleProps}
-                              className={isStuck ? "task-card flip-card" : "task-card"}
+                              className="task-card"
                               title={task.rejectionReason ? `Rejected: ${task.rejectionReason}` : ''}
                               style={{
                                 background: task.rejectionReason ? '#fee2e2' : isOverdue(task) ? "#fff0f0" : theme === 'dark' ? "#4b5563" : "#fff",
@@ -1223,279 +1180,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                 cursor: snapshot.isDragging ? 'grabbing' : 'grab',
                                 userSelect: 'none',
                                 padding: 12,
-                                minHeight: isStuck ? '200px' : 'auto',
                                 ...provided.draggableProps.style
                               }}
                             >
-                              {isStuck ? (
-                                <div className={`flip-card-inner ${isFlipped ? 'flipped' : ''}`} style={{ minHeight: '200px' }}>
-                                  {/* Front Side */}
-                                  <div className="flip-card-front">
-                                    {/* Task Action Buttons */}
-                                    <div style={{ 
-                                      position: 'absolute', 
-                                      top: 8, 
-                                      right: 8, 
-                                      display: 'flex', 
-                                      gap: 4, 
-                                      opacity: 0,
-                                      transition: 'opacity 0.2s',
-                                      zIndex: 10
-                                    }} className="task-actions">
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          toggleFlipCard(task._id);
-                                        }}
-                                        style={{
-                                          background: '#8b5cf6',
-                                          color: 'white',
-                                          border: 'none',
-                                          borderRadius: 4,
-                                          padding: '4px 6px',
-                                          cursor: 'pointer',
-                                          fontSize: 10
-                                        }}
-                                        title="View Stuck Reason"
-                                      >
-                                        ℹ️
-                                      </button>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          editTask(task);
-                                        }}
-                                        style={{
-                                          background: '#2563eb',
-                                          color: 'white',
-                                          border: 'none',
-                                          borderRadius: 4,
-                                          padding: '4px 6px',
-                                          cursor: 'pointer',
-                                          fontSize: 10
-                                        }}
-                                        title="Edit Task"
-                                      >
-                                        <FaEdit size={10} />
-                                      </button>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          duplicateTask(task);
-                                        }}
-                                        style={{
-                                          background: '#16a34a',
-                                          color: 'white',
-                                          border: 'none',
-                                          borderRadius: 4,
-                                          padding: '4px 6px',
-                                          cursor: 'pointer',
-                                          fontSize: 10
-                                        }}
-                                        title="Duplicate Task"
-                                      >
-                                        <FaCopy size={10} />
-                                      </button>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          deleteTask(task._id);
-                                        }}
-                                        style={{
-                                          background: '#ef4444',
-                                          color: 'white',
-                                          border: 'none',
-                                          borderRadius: 4,
-                                          padding: '4px 6px',
-                                          cursor: 'pointer',
-                                          fontSize: 10
-                                        }}
-                                        title="Delete Task"
-                                      >
-                                        <FaTrash size={10} />
-                                      </button>
-                                    </div>
-                                    
-                                    <div style={{ fontWeight: 600, fontSize: 14, color: theme === 'dark' ? '#ffffff' : '#22223b', paddingRight: 60 }}>
-                                      {task.title}
-                                      <span style={{ float: "right", marginRight: 60 }}>{renderStars(task.priority)}</span>
-                                    </div>
-                                    <div style={{ color: theme === 'dark' ? '#e5e7eb' : '#475569', marginBottom: 6, fontSize: 13 }}>{task.description}</div>
-                                    {task.company && (
-                                      <div style={{ fontSize: 12, color: theme === 'dark' ? '#d1d5db' : "#555", marginBottom: 2 }}>
-                                        <b>Company:</b> {task.company}
-                                      </div>
-                                    )}
-                                    {task.assignedBy && (
-                                      <div style={{ color: "#64748b", fontSize: 11, marginBottom: 2 }}>
-                                        <b>Assigned By:</b>{" "}
-                                        {typeof task.assignedBy === "object" && task.assignedBy !== null
-                                          ? task.assignedBy.name
-                                          : users.find(u => (u._id || u.id) === task.assignedBy)?.name || "Unknown"}
-                                      </div>
-                                    )}
-                                    {task.assignedTo && (
-                                      <div style={{ color: "#64748b", fontSize: 11, marginBottom: 2 }}>
-                                        <b>Assigned To:</b>{" "}
-                                        {Array.isArray(task.assignedTo) 
-                                          ? task.assignedTo.map(u => typeof u === 'object' ? u.name : users.find(user => (user._id || user.id) === u)?.name || u).join(', ')
-                                          : typeof task.assignedTo === "object" && task.assignedTo !== null
-                                          ? task.assignedTo.name
-                                          : users.find(u => (u._id || u.id) === task.assignedTo)?.name || "Unknown"}
-                                      </div>
-                                    )}
-                                    {task.dueDate && (
-                                      <div style={{ color: "#2563eb", fontSize: 11, marginBottom: 2 }}>
-                                        <FaCalendar style={{ marginRight: 4 }} />
-                                        Due: {new Date(task.dueDate).toLocaleDateString()}
-                                      </div>
-                                    )}
-                                    {isOverdue(task) && (
-                                      <div style={{ color: "#ef4444", fontWeight: 700, marginBottom: 2, fontSize: 11 }}>
-                                        Overdue!
-                                      </div>
-                                    )}
-                                    {task.createdAt && (
-                                      <div style={{ color: "#9ca3af", fontSize: 10, marginTop: 4 }}>
-                                        Created {formatTimestamp(task.createdAt)}
-                                      </div>
-                                    )}
-                                    <div style={{
-                                      fontWeight: 600,
-                                      background: statusColors[task.status] + "22",
-                                      color: statusColors[task.status],
-                                      borderRadius: 6,
-                                      padding: "2px 8px",
-                                      display: "inline-block",
-                                      marginBottom: 4,
-                                      fontSize: 11
-                                    }}>
-                                      {task.status}
-                                    </div>
-                                  </div>
-                                  
-                                  {/* Back Side */}
-                                  <div className="flip-card-back">
-                                    <div style={{
-                                      background: theme === 'dark' ? "#4b5563" : "#fff",
-                                      border: "1.5px solid #ef4444",
-                                      borderRadius: 8,
-                                      padding: 12,
-                                      minHeight: '200px'
-                                    }}>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleFlipCard(task._id);
-                                      }}
-                                      style={{
-                                        position: 'absolute',
-                                        top: 8,
-                                        right: 8,
-                                        background: '#8b5cf6',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: 4,
-                                        padding: '4px 8px',
-                                        cursor: 'pointer',
-                                        fontSize: 10,
-                                        zIndex: 10
-                                      }}
-                                    >
-                                      ← Back
-                                    </button>
-                                    <div style={{ fontWeight: 700, fontSize: 16, color: '#ef4444', marginBottom: 12, paddingRight: 50 }}>
-                                      ⚠️ Stuck Reason
-                                    </div>
-                                    <div style={{
-                                      color: theme === 'dark' ? '#e5e7eb' : '#374151',
-                                      fontSize: 14,
-                                      lineHeight: 1.6,
-                                      padding: '12px',
-                                      background: theme === 'dark' ? '#374151' : '#fef2f2',
-                                      borderRadius: 8,
-                                      border: '1px solid #fca5a5'
-                                    }}>
-                                      {task.stuckReason || 'No reason provided'}
-                                    </div>
-                                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${theme === 'dark' ? '#6b7280' : '#e5e7eb'}` }}>
-                                      <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>
-                                        <b>Task:</b> {task.title}
-                                      </div>
-                                      <div style={{ fontSize: 11, color: '#64748b' }}>
-                                        <b>Priority:</b> {renderStars(task.priority)}
-                                      </div>
-                                    </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              ) : (
-                                <>
-                                  {/* Task Action Buttons */}
-                                  <div style={{ 
-                                    position: 'absolute', 
-                                    top: 8, 
-                                    right: 8, 
-                                    display: 'flex', 
-                                    gap: 4, 
-                                    opacity: 0,
-                                    transition: 'opacity 0.2s'
-                                  }} className="task-actions">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    editTask(task);
-                                  }}
-                                  style={{
-                                    background: '#2563eb',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: 4,
-                                    padding: '4px 6px',
-                                    cursor: 'pointer',
-                                    fontSize: 10
-                                  }}
-                                  title="Edit Task"
-                                >
-                                  <FaEdit size={10} />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    duplicateTask(task);
-                                  }}
-                                  style={{
-                                    background: '#16a34a',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: 4,
-                                    padding: '4px 6px',
-                                    cursor: 'pointer',
-                                    fontSize: 10
-                                  }}
-                                  title="Duplicate Task"
-                                >
-                                  <FaCopy size={10} />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    deleteTask(task._id);
-                                  }}
-                                  style={{
-                                    background: '#ef4444',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: 4,
-                                    padding: '4px 6px',
-                                    cursor: 'pointer',
-                                    fontSize: 10
-                                  }}
-                                  title="Delete Task"
-                                >
-                                  <FaTrash size={10} />
-                                </button>
-                              </div>
+                              <>
+                              
+                              {/* Approved Green Tick - only show when creator explicitly approved */}
+                              {task.approvalStatus === 'approved' && (task as any).approved_at && (
+                                <div style={{ position: 'absolute', top: 8, right: 8, color: '#22c55e', fontSize: 18, fontWeight: 'bold' }}>✓</div>
+                              )}
                               
                               {/* Pending Badge */}
                               {(task as any).approvalStatus === 'pending' && (
@@ -1543,6 +1236,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                   <b>❌ Rejected:</b> {task.rejectionReason}
                                 </div>
                               )}
+                              {task.stuckReason && (
+                                <div style={{
+                                  fontSize: 12,
+                                  color: '#d97706',
+                                  background: '#fef3c7',
+                                  padding: '6px 8px',
+                                  borderRadius: 6,
+                                  marginBottom: 6,
+                                  border: '1px solid #f59e0b'
+                                }}>
+                                  <b>⚠️ Stuck:</b> {task.stuckReason}
+                                </div>
+                              )}
                               {task.assignedBy && (
                                 <div style={{ color: "#64748b", fontSize: 11, marginBottom: 2 }}>
                                   <b>Assigned By:</b>{" "}
@@ -1572,11 +1278,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                   Overdue!
                                 </div>
                               )}
-                              {task.rejectionReason && (
-                                <div style={{ color: "#dc2626", fontSize: 11, marginBottom: 4, fontStyle: 'italic' }}>
-                                  ❌ Rejected
-                                </div>
-                              )}
+
                               {task.createdAt && (
                                 <div style={{ color: "#9ca3af", fontSize: 10, marginTop: 4 }}>
                                   Created {formatTimestamp(task.createdAt)}
@@ -1594,12 +1296,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                               }}>
                                 {task.status}
                                   </div>
-                                </>
-                              )}
+                              </>
                             </div>
                           )}
                         </Draggable>
-                      );})}
+                      ))}
                       {provided.placeholder}
                     </div>
                   )}
@@ -1749,7 +1450,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     );
   } else if (nav === "completed") {
     // Completed Tasks View - only show tasks that are Done
-    const completedTasksList = user.role === 'admin' ? filteredTasks.filter(t => t.status === "Done") : tasksAssignedToMe.filter(t => t.status === "Done");
+    const completedTasksList = user.role === 'admin' ? filteredTasks.filter(t => t.status === "Done" || t.status === "Pending Approval") : tasksAssignedToMe.filter(t => t.status === "Done" || t.status === "Pending Approval");
     
     // Filter out approved tasks older than 24 hours
     const filteredCompletedTasks = completedTasksList.filter(task => {
@@ -2250,15 +1951,24 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       "Done": [],
     };
     assignedTasks.forEach(task => {
-      assignedKanbanTasks[task.status] = assignedKanbanTasks[task.status] || [];
-      assignedKanbanTasks[task.status].push(task);
+      const col = task.status === 'Pending Approval' ? 'Done' : task.status;
+      assignedKanbanTasks[col] = assignedKanbanTasks[col] || [];
+      assignedKanbanTasks[col].push({ ...task, status: col });
     });
 
     content = (
       <div style={{ background: theme === 'dark' ? "#374151" : "#fff", borderRadius: 12, padding: 24, boxShadow: "0 2px 12px #c7d2fe22" }}>
-        <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000' }}>
-          <FaUser style={{ marginRight: 8 }} /> Tasks You Assigned ({assignedTasks.length})
-        </div>
+      <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 18, color: theme === 'dark' ? '#ffffff' : '#000000', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span><FaUser style={{ marginRight: 8 }} /> Tasks You Assigned ({assignedTasks.length})</span>
+        <button
+          type="button"
+          onClick={refreshData}
+          disabled={isRefreshing}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: '#2563eb', color: 'white', border: 'none', borderRadius: 6, cursor: isRefreshing ? 'not-allowed' : 'pointer', opacity: isRefreshing ? 0.7 : 1, fontSize: 13 }}
+        >
+          <FaSync className={isRefreshing ? 'fa-spin' : ''} /> Refresh
+        </button>
+      </div>
         <div style={{ display: "flex", gap: 24, alignItems: "flex-start", overflowX: "auto" }}>
           {assignedKanbanColumns.map(col => (
             <div
@@ -2280,13 +1990,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 <div style={{ color: "#64748b", fontSize: 14 }}>No tasks</div>
               )}
               {assignedKanbanTasks[col].map(task => {
+                const taskKey = task._id || (task as any).id;
                 const approvalStatus = (task as any).approvalStatus || (task as any).approval_status;
                 const isDone = task.status === 'Done';
                 const needsApproval = isDone && (!approvalStatus || approvalStatus === 'pending');
                 const isApproved = isDone && approvalStatus === 'approved';
                 
                 return (
-                <div key={task._id} style={{
+                <div key={taskKey} style={{
                   background: theme === 'dark' ? "#6b7280" : "#fff",
                   border: "1.5px solid #dbeafe",
                   borderRadius: 10,
@@ -2344,26 +2055,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                         border: "none",
                         cursor: "pointer"
                       }}
-                      onClick={async (e) => {
+                      onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        if (window.confirm("Are you sure you want to delete this task?")) {
-                          try {
-                            const token = sessionStorage.getItem("jwt-token");
-                            await axios.delete(`/tasks/${task._id}`, {
-                              headers: { Authorization: `Bearer ${token}` }
-                            });
-                            // Refresh assigned tasks
-                            const res = await axios.get(`/tasks/assignedBy/${user._id}`, {
-                              headers: { Authorization: `Bearer ${token}` }
-                            });
-                            setAssignedTasks(res.data);
-                            showToast("Task deleted successfully!", "success");
-                          } catch (err: any) {
-                            console.error('Delete error:', err);
-                            showToast("Failed to delete task: " + (err.response?.data?.message || err.message), "error");
-                          }
-                        }
+                        deleteTask(task._id);
                       }}
                     >
                       Delete
@@ -2478,6 +2173,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     }}>
                       <b>❌ Rejection Reason:</b><br/>
                       {task.rejectionReason}
+                    </div>
+                  )}
+                  {task.stuckReason && (
+                    <div style={{
+                      fontSize: 12,
+                      color: '#d97706',
+                      background: '#fef3c7',
+                      padding: '8px',
+                      borderRadius: 6,
+                      marginTop: 8,
+                      border: '1px solid #f59e0b'
+                    }}>
+                      <b>⚠️ Stuck Reason:</b><br/>
+                      {task.stuckReason}
                     </div>
                   )}
                 </div>
@@ -2961,37 +2670,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           @keyframes fa-spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
-          }
-          .flip-card {
-            perspective: 1000px;
-            position: relative;
-          }
-          .flip-card-inner {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            transition: transform 0.6s;
-            transform-style: preserve-3d;
-            transform: rotateY(0deg);
-          }
-          .flip-card-inner.flipped {
-            transform: rotateY(180deg);
-          }
-          .flip-card-front, .flip-card-back {
-            width: 100%;
-            backface-visibility: hidden;
-            -webkit-backface-visibility: hidden;
-          }
-          .flip-card-front {
-            position: relative;
-          }
-          .flip-card-back {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            transform: rotateY(180deg);
           }
           @media (max-width: 768px) {
             .desktop-sidebar {
