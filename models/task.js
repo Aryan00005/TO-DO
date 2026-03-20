@@ -420,6 +420,13 @@ class Task {
       const isCreator = task.assigned_by === userIdInt;
       const isAssigned = task.task_assignments?.some(a => a.user_id === userIdInt);
       const isApproved = task.approval_status === 'approved';
+
+      // Hide approved tasks older than 24 hours (only if approved_at exists)
+      if (isApproved && task.approved_at) {
+        const approvedAt = new Date(task.approved_at);
+        const hoursSinceApproval = (Date.now() - approvedAt.getTime()) / (1000 * 60 * 60);
+        if (hoursSinceApproval >= 24) return false;
+      }
       
       // Show if user is creator (always) OR assigned AND (approved OR rejected)
       if (isCreator) return true;
