@@ -323,7 +323,6 @@ router.patch('/:taskId', auth, async (req, res) => {
       const updateData = {};
       if (approval_status === 'approved') {
         updateData.approval_status = 'approved';
-        updateData.approved_at = new Date().toISOString();
       } else if (approval_status) {
         updateData.approval_status = approval_status;
       }
@@ -606,8 +605,7 @@ router.post('/:taskId/approve', auth, async (req, res) => {
       .from('tasks')
       .update({ 
         approval_status: 'approved',
-        status: 'Not Started',
-        approved_at: new Date().toISOString()
+        status: 'Not Started'
       })
       .eq('id', req.params.taskId)
       .select()
@@ -683,7 +681,7 @@ router.post('/:taskId/reject', auth, async (req, res) => {
       await Notification.create(assigneeId, `Task "${task.title}" has been rejected by admin: ${reason.trim()}`);
     }
     
-    // Delete task completely
+    // Delete task  completely
     const { error: deleteError } = await supabase
       .from('tasks')
       .delete()
