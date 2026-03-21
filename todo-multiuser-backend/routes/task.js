@@ -164,6 +164,61 @@ router.get('/pending-approvals', auth, async (req, res) => {
   }
 });
 
+// Get tasks assigned to user
+router.get('/assignedTo/:userId', auth, async (req, res) => {
+  try {
+    const tasks = await Task.findAssignedToUser(req.params.userId);
+    res.json(tasks);
+  } catch (err) {
+    console.error('Error fetching assigned tasks:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
+// Get tasks assigned to user only (including self-assigned tasks)
+router.get('/assignedToOnly/:userId', auth, async (req, res) => {
+  try {
+    const tasks = await Task.findAssignedToUser(req.params.userId);
+    res.json(tasks);
+  } catch (err) {
+    console.error('Error fetching assigned tasks:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
+// Get tasks assigned by user (show tasks created by current user)
+router.get('/assignedBy/:userId', auth, async (req, res) => {
+  try {
+    const tasks = await Task.findAssignedByUser(req.params.userId);
+    res.json(tasks);
+  } catch (err) {
+    console.error('Error fetching tasks created by user:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
+// Get all tasks for a specific user (for admin user management)
+router.get('/user/:userId', auth, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    if (!currentUser || currentUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Only admins can view user tasks.' });
+    }
+
+    const assignedToTasks = await Task.findAssignedToUser(req.params.userId);
+    const assignedByTasks = await Task.findAssignedByUser(req.params.userId);
+    const allTasks = [...assignedToTasks, ...assignedByTasks];
+    const uniqueTasks = allTasks.filter((task, index, self) =>
+      index === self.findIndex(t => t._id === task._id)
+    );
+
+    res.json(uniqueTasks);
+  } catch (err) {
+    console.error('Error fetching user tasks:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
 // Get single task details (for editing)
 router.get('/:taskId', auth, async (req, res) => {
   try {
@@ -229,74 +284,7 @@ router.get('/:taskId', auth, async (req, res) => {
   }
 });
 
-// Get tasks assigned to user
-router.get('/assignedTo/:userId', auth, async (req, res) => {
-  try {
-    const tasks = await Task.findAssignedToUser(req.params.userId);
-    res.json(tasks);
-  } catch (err) {
-    console.error('Error fetching assigned tasks:', err);
-    res.status(500).json({ message: 'Server error: ' + err.message });
-  }
-});
-
-// Get tasks assigned to user only (including self-assigned tasks)
-router.get('/assignedToOnly/:userId', auth, async (req, res) => {
-  try {
-    // This endpoint should include ALL tasks where user is assigned, including self-assigned
-    const tasks = await Task.findAssignedToUser(req.params.userId);
-    res.json(tasks);
-  } catch (err) {
-    console.error('Error fetching assigned tasks:', err);
-    res.status(500).json({ message: 'Server error: ' + err.message });
-  }
-});
-
-// Get tasks assigned by user (show tasks created by current user)
-router.get('/assignedBy/:userId', auth, async (req, res) => {
-  try {
-    const tasks = await Task.findAssignedByUser(req.params.userId);
-    res.json(tasks);
-  } catch (err) {
-    console.error('Error fetching tasks created by user:', err);
-    res.status(500).json({ message: 'Server error: ' + err.message });
-  }
-});
-
-// Get all tasks for a specific user (for admin user management)
-router.get('/user/:userId', auth, async (req, res) => {
-  try {
-    const currentUser = await User.findById(req.user.id);
-    if (!currentUser || currentUser.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied. Only admins can view user tasks.' });
-    }
-
-    const { createClient } = require('@supabase/supabase-js');
-    const supabase = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_KEY
-    );
-
-    // Get tasks assigned TO the user
-    const assignedToTasks = await Task.findAssignedToUser(req.params.userId);
-    
-    // Get tasks assigned BY the user
-    const assignedByTasks = await Task.findAssignedByUser(req.params.userId);
-    
-    // Combine both arrays and remove duplicates
-    const allTasks = [...assignedToTasks, ...assignedByTasks];
-    const uniqueTasks = allTasks.filter((task, index, self) => 
-      index === self.findIndex(t => t._id === task._id)
-    );
-    
-    res.json(uniqueTasks);
-  } catch (err) {
-    console.error('Error fetching user tasks:', err);
-    res.status(500).json({ message: 'Server error: ' + err.message });
-  }
-});
-
-// Update task status
+// Update task (status, details, approval)
 router.patch('/:taskId', auth, async (req, res) => {
   try {
     const { status, remark, title, description, assignedTo, priority, dueDate, company, approval_status, rejection_reason, stuckReason } = req.body;
@@ -335,6 +323,7 @@ router.patch('/:taskId', auth, async (req, res) => {
       const updateData = {};
       if (approval_status === 'approved') {
         updateData.approval_status = 'approved';
+        updateData.approved_at = new Date().toISOString();
       } else if (approval_status) {
         updateData.approval_status = approval_status;
       }
@@ -617,7 +606,8 @@ router.post('/:taskId/approve', auth, async (req, res) => {
       .from('tasks')
       .update({ 
         approval_status: 'approved',
-        status: 'Not Started'
+        status: 'Not Started',
+        approved_at: new Date().toISOString()
       })
       .eq('id', req.params.taskId)
       .select()

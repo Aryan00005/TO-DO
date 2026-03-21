@@ -175,7 +175,7 @@ class Task {
         )
       `)
       .eq('task_assignments.user_id', userIdInt)
-      .eq('approval_status', 'approved')
+      .in('approval_status', ['approved', 'rejected'])
       .order('created_at', { ascending: false });
 
     // Also get self-assigned tasks (where user is creator AND assignee)
@@ -189,7 +189,7 @@ class Task {
       `)
       .eq('assigned_by', userIdInt)
       .eq('task_assignments.user_id', userIdInt)
-      .eq('approval_status', 'approved')
+      .in('approval_status', ['approved', 'rejected'])
       .order('created_at', { ascending: false });
 
     // Merge and deduplicate
@@ -420,10 +420,17 @@ class Task {
       const isCreator = task.assigned_by === userIdInt;
       const isAssigned = task.task_assignments?.some(a => a.user_id === userIdInt);
       const isApproved = task.approval_status === 'approved';
+
+      // Hide approved tasks older than 24 hours (only if approved_at exists)
+      if (isApproved && task.approved_at) {
+        const approvedAt = new Date(task.approved_at);
+        const hoursSinceApproval = (Date.now() - approvedAt.getTime()) / (1000 * 60 * 60);
+        if (hoursSinceApproval >= 24) return false;
+      }
       
-      // Show if user is creator (always) OR assigned AND approved
+      // Show if user is creator (always) OR assigned AND (approved OR rejected)
       if (isCreator) return true;
-      if (isAssigned && isApproved) return true;
+      if (isAssigned && (isApproved || task.approval_status === 'rejected')) return true;
       return false;
     });
     

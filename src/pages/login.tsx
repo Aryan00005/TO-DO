@@ -13,35 +13,32 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [slowConnection, setSlowConnection] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
     setLoading(true);
+    setSlowConnection(false);
+    const slowTimer = setTimeout(() => setSlowConnection(true), 4000);
     try {
       const res = await axios.post("/auth/login", { userId, password });
-      console.log('Login successful:', res.data);
       sessionStorage.setItem("jwt-token", res.data.token);
       sessionStorage.setItem("user", JSON.stringify(res.data.user));
       setUser(res.data.user);
-      
-      // Check if user is pending approval
+
       if (res.data.user.accountStatus === 'pending') {
         navigate("/pending-approval");
         return;
       }
-      
-      // Role-based redirection
+
       if (res.data.user.isSuperAdmin) {
         navigate("/superadmin/dashboard");
-      } else if (res.data.user.role === 'admin') {
-        navigate("/dashboard");
       } else {
         navigate("/dashboard");
       }
     } catch (err: unknown) {
-      console.error('Login error:', err);
       if (
         err &&
         typeof err === "object" &&
@@ -57,12 +54,13 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
         setError("Login failed. Please check your credentials and try again.");
       }
     } finally {
+      clearTimeout(slowTimer);
+      setSlowConnection(false);
       setLoading(false);
     }
   };
 
   const handleGoogleLogin = () => {
-    // Use the configured axios baseURL for Google OAuth
     const baseURL = axios.defaults.baseURL || 'https://to-do-1-26zv.onrender.com';
     window.location.href = `${baseURL}/auth/google`;
   };
@@ -103,7 +101,7 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
         }}>
           <FaUserCircle size={40} />
         </div>
-        
+
         <h1 style={{
           fontSize: '28px',
           fontWeight: '700',
@@ -111,7 +109,7 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
           marginBottom: '32px',
           marginTop: '16px'
         }}>Welcome Back</h1>
-        
+
         {/* Google Login Button */}
         <button
           onClick={handleGoogleLogin}
@@ -133,12 +131,12 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
             transition: 'all 0.2s'
           }}
           onMouseEnter={(e) => {
-            e.target.style.borderColor = '#3b82f6';
-            e.target.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
+            (e.target as HTMLButtonElement).style.borderColor = '#3b82f6';
+            (e.target as HTMLButtonElement).style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
           }}
           onMouseLeave={(e) => {
-            e.target.style.borderColor = '#e5e7eb';
-            e.target.style.boxShadow = 'none';
+            (e.target as HTMLButtonElement).style.borderColor = '#e5e7eb';
+            (e.target as HTMLButtonElement).style.boxShadow = 'none';
           }}
         >
           <FaGoogle style={{ color: '#ea4335' }} />
@@ -155,7 +153,7 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
           <span style={{ padding: '0 16px', fontSize: '14px' }}>or</span>
           <div style={{ flex: 1, height: '1px', background: '#e5e7eb' }}></div>
         </div>
-        
+
         <form onSubmit={handleSubmit} style={{
           display: 'flex',
           flexDirection: 'column',
@@ -248,6 +246,24 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
           </button>
         </form>
 
+        {/* Slow connection warning */}
+        {slowConnection && (
+          <div style={{
+            marginTop: '16px',
+            padding: '10px 14px',
+            background: '#fffbeb',
+            border: '1px solid #fcd34d',
+            borderRadius: '8px',
+            fontSize: '13px',
+            color: '#92400e',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            ⏳ Server is waking up, please wait a moment...
+          </div>
+        )}
+
         <style>{`
           @keyframes spin {
             from { transform: rotate(0deg); }
@@ -262,7 +278,7 @@ const Login: React.FC<LoginProps> = ({ setUser }) => {
             fontSize: '14px'
           }}>{error}</p>
         )}
-        
+
         <div style={{
           marginTop: '24px',
           fontSize: '14px',
