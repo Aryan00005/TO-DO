@@ -8,7 +8,7 @@ import {
 } from "@hello-pangea/dnd";
 import React, { useEffect, useState, useCallback } from "react";
 import AvatarEdit from "react-avatar-edit";
-import { FaBell, FaCalendar, FaCalendarAlt, FaChartBar, FaColumns, FaMoon, FaPlus, FaSignOutAlt, FaStar, FaSun, FaTasks, FaUser, FaCheckCircle, FaEdit, FaTrash, FaCopy, FaSync, FaFilter } from "react-icons/fa";
+import { FaBell, FaCalendar, FaCalendarAlt, FaChartBar, FaColumns, FaMoon, FaPlus, FaSignOutAlt, FaStar, FaSun, FaTasks, FaUser, FaCheckCircle, FaSync, FaFilter } from "react-icons/fa";
 import { useTheme } from "../hooks/useTheme";
 import { useToast } from "../components/Toast";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -100,11 +100,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [showAvatarEditor, setShowAvatarEditor] = useState(false);
   const [kanbanSort, setKanbanSort] = useState<"none" | "priority" | "date">("none");
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [, setLastUpdated] = useState(new Date());
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  useEffect(() => { /* autoRefresh placeholder */ }, []);
   const [pendingUsers, setPendingUsers] = useState<User[]>([]);
   const [pendingTaskApprovals, setPendingTaskApprovals] = useState<Task[]>([]);
   const [filterPriority, setFilterPriority] = useState<string>('all');
@@ -395,6 +395,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           axios.get(`/notifications/${user._id}`, { headers: { Authorization: `Bearer ${token}` } })
         ]);
         setTasks(tasksRes.data.map(normalizeTask));
+        console.log('🔍 API DEBUG - /tasks/visible raw response:', tasksRes.data.map((t: any) => ({
+          id: t.id || t._id, title: t.title, status: t.status,
+          approval_status: t.approval_status, approvalStatus: t.approvalStatus,
+          assigned_by: t.assigned_by, assignedBy: t.assignedBy,
+          assignedTo: t.assignedTo, assigned_to: t.assigned_to
+        })));
         setUsers(usersRes.data);
         setNotifications(notificationsRes.data);
       } catch (err) {
@@ -467,10 +473,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     // Build optimistic task for instant UI update
     const optimisticId = `optimistic-${Date.now()}`;
     // Resolve user objects from IDs so names display immediately
-    const resolvedAssignedTo = taskAssignedTo.map(id => {
+    const resolvedAssignedTo: Task['assignedTo'] = taskAssignedTo.map(id => {
       const found = users.find(u => (u._id || u.id) === id);
       return found ? found : id;
-    });
+    }) as User[];
     const optimisticTask: Task = {
       _id: optimisticId,
       title: taskTitle,
@@ -509,7 +515,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         ...taskEditing,
         title: taskTitle,
         description: taskDescription,
-        assignedTo: resolvedAssignedTo,
+        assignedTo: resolvedAssignedTo as Task['assignedTo'],
         priority: taskPriority,
         dueDate: taskDueDate,
         company: taskCompany,
@@ -521,19 +527,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     // API call in background using captured values
     try {
       if (taskEditing) {
-        const res = await axios.patch(`/tasks/${taskEditing._id}`, {
+        const patchRes = await axios.patch(`/tasks/${taskEditing._id}`, {
           title: taskTitle, description: taskDescription, assignedTo: taskAssignedTo, priority: taskPriority, dueDate: taskDueDate, company: taskCompany
         }, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        const updated = res.data.task || res.data;
+        const updated = normalizeTask(patchRes.data.task || patchRes.data);
         setTasks(prev => prev.map(t => t._id === taskEditing._id ? { ...t, ...updated, _id: taskEditing._id } : t));
         setAssignedTasks(prev => prev.map(t => t._id === taskEditing._id ? { ...t, ...updated, _id: taskEditing._id } : t));
+        setNav('assignedtasks');
       } else {
         const res = await axios.post("/tasks", { title: taskTitle, description: taskDescription, assignedTo: taskAssignedTo, priority: taskPriority, dueDate: taskDueDate, company: taskCompany }, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        const created = res.data.task || res.data;
+        const created = normalizeTask(res.data.task || res.data);
         // Replace optimistic task with real one from server
         setTasks(prev => prev.map(t => t._id === optimisticId ? created : t));
         setAssignedTasks(prev => prev.map(t => t._id === optimisticId ? created : t));
@@ -562,7 +569,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     showToast("Task rejected and moved to Working on it! ❌", "success");
     try {
       const token = sessionStorage.getItem("jwt-token");
-      const res = await axios.patch(`/tasks/${taskId}`, { 
+      await axios.patch(`/tasks/${taskId}`, { 
         status: 'Working on it',
         rejection_reason: reason,
         approval_status: 'rejected'
@@ -747,24 +754,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     return matchesSearch && matchesStatus && matchesPriority && matchesDateRange && matchesAssignedBy && matchesAssignedTo;
   });
 
-  // Tasks Board: only show tasks where logged-in user is assignee (not creator)
+  // Tasks Board: show tasks where user is an assignee (including self-assigned tasks)
   const tasksAssignedToMe = filteredTasks.filter(task => {
-    const assignedById = typeof task.assignedBy === 'object' ? task.assignedBy?._id : task.assignedBy;
-    return String(assignedById) !== String(user._id);
+    if (Array.isArray(task.assignedTo)) {
+      return task.assignedTo.some(u => {
+        const uId = typeof u === 'object' ? (u._id || u.id) : u;
+        return String(uId) === String(user._id);
+      });
+    }
+    const assignedToId = typeof task.assignedTo === 'object' ? (task.assignedTo._id || task.assignedTo.id) : task.assignedTo;
+    return String(assignedToId) === String(user._id);
   });
 
   // Task List: For regular users show only their tasks, for admin show all company tasks
   const taskListTasks = user.role === 'admin' ? filteredTasks : tasksAssignedToMe;
 
   // Get unique users who have tasks assigned
-  const usersWithTasks = Array.from(new Set(
+  Array.from(new Set(
     tasks.flatMap(task => {
       if (Array.isArray(task.assignedTo)) {
         return task.assignedTo.map(u => typeof u === 'object' ? u._id : u);
       }
       return typeof task.assignedTo === 'object' ? [task.assignedTo._id] : [task.assignedTo];
     })
-  )).map(userId => users.find(u => u._id === userId)).filter(Boolean) as User[];
+  )).map(userId => users.find(u => u._id === userId)).filter(Boolean) as User[]; // usersWithTasks (unused)
 
   // Format timestamp (relative for recent, absolute for old)
   const formatTimestamp = (date: string | undefined) => {
@@ -822,12 +835,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const getKanbanTasks = (): KanbanTasksType => {
     const columns: KanbanTasksType = {};
     kanbanColumns.forEach(col => columns[col] = []);
+    console.log('🔍 KANBAN DEBUG - tasksAssignedToMe:', tasksAssignedToMe.map(t => ({
+      id: t._id, title: t.title, status: t.status,
+      approvalStatus: t.approvalStatus, rejectionReason: t.rejectionReason,
+      assignedTo: t.assignedTo, assignedBy: t.assignedBy
+    })));
     tasksAssignedToMe.forEach(task => {
       let status = task.status;
-      // If rejected by owner, always show in Working on it
+      const originalStatus = task.status;
       if (task.rejectionReason) status = 'Working on it';
       else if (status === 'Pending Approval') status = 'Working on it';
-      if (!columns[status]) status = 'Working on it';
+      if (!(status in columns)) status = 'Working on it';
+      console.log(`🔍 KANBAN DEBUG - task "${task.title}" → column: "${status}" | originalStatus: "${originalStatus}" | rejectionReason: "${task.rejectionReason}" | approvalStatus: "${task.approvalStatus}"`);
       columns[status].push({ ...task, status });
     });
     return columns;
@@ -936,10 +955,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           
           {/* Profile Details */}
           <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 20 }}>
-            <div style={{ marginBottom: 12 }}>
-              <span style={{ fontWeight: 600, color: theme === 'dark' ? '#ffffff' : '#000000' }}>User ID:</span>
-              <span style={{ marginLeft: 8, color: "#64748b" }}>{user._id}</span>
-            </div>
             <div style={{ marginBottom: 12 }}>
               <span style={{ fontWeight: 600, color: theme === 'dark' ? '#ffffff' : '#000000' }}>Role:</span>
               <span style={{ marginLeft: 8, color: "#64748b" }}>{user.role || 'User'}</span>
@@ -2197,7 +2212,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         </div>
         
         {assignedTasks.length === 0 && (
-          <div style={{ textAlign: "center", color: "#64748b", fontSize: 16, marginTop: 40 }}>
+             <div style={{ textAlign: "center", color: "#64748b", fontSize: 16, marginTop: 40 }}>
             No tasks assigned yet. Create your first task!
           </div>
         )}
@@ -2528,7 +2543,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   </div>
                   
                   {(() => {
-                    const stats = getUserCompletionStats(pendingUser._id || pendingUser.id);
+                    const stats = getUserCompletionStats(String(pendingUser._id || pendingUser.id));
                     return (
                       <div style={{ marginTop: 12, padding: 12, background: theme === 'dark' ? '#1f2937' : '#f0f9ff', borderRadius: 8, fontSize: 13 }}>
                         <div style={{ marginBottom: 6, color: theme === 'dark' ? '#d1d5db' : '#374151' }}>
@@ -2566,7 +2581,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     {isPending && (
                       <>
                         <button
-                          onClick={() => handleUserApproval((pendingUser.id || pendingUser._id) as string, 'approve')}
+                          onClick={() => handleUserApproval(String(pendingUser.id || pendingUser._id), 'approve')}
                           style={{
                             background: "#22c55e",
                             color: "white",
@@ -2582,7 +2597,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                           ✅ Approve
                         </button>
                         <button
-                          onClick={() => handleUserApproval((pendingUser.id || pendingUser._id) as string, 'reject')}
+                          onClick={() => handleUserApproval(String(pendingUser.id || pendingUser._id), 'reject')}
                           style={{
                             background: "#ef4444",
                             color: "white",
@@ -2602,7 +2617,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     
                     {(isActive || isInactive) && (
                       <button
-                        onClick={() => handleUserToggle((pendingUser.id || pendingUser._id) as string, pendingUser.account_status || 'pending')}
+                        onClick={() => handleUserToggle(String(pendingUser.id || pendingUser._id), pendingUser.account_status || 'pending')}
                         style={{
                           background: isActive ? "#6b7280" : "#22c55e",
                           color: "white",
@@ -2621,7 +2636,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                     
                     {(isActive || isInactive || pendingUser.account_status === 'rejected') && (
                       <button
-                        onClick={() => handleUserRemoval((pendingUser.id || pendingUser._id) as string)}
+                        onClick={() => handleUserRemoval(String(pendingUser.id || pendingUser._id))}
                         style={{
                           background: "#dc2626",
                           color: "white",
