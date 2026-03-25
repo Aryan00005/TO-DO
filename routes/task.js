@@ -431,7 +431,9 @@ router.patch('/:taskId', auth, async (req, res) => {
           description,
           priority: priority || 3,
           due_date: dueDate,
-          company
+          company,
+          status: 'Not Started',
+          approval_status: 'approved'
         })
         .eq('id', req.params.taskId)
         .select()
@@ -508,7 +510,9 @@ router.put('/:taskId', auth, async (req, res) => {
         description,
         priority,
         due_date: dueDate,
-        company: company || currentUser.company
+        company: company || currentUser.company,
+        status: 'Not Started',
+        approval_status: 'approved'
       })
       .eq('id', req.params.taskId)
       .select()
@@ -521,8 +525,7 @@ router.put('/:taskId', auth, async (req, res) => {
     
     const assignments = assigneeArray.map(userId => ({
       task_id: parseInt(req.params.taskId),
-      user_id: parseInt(userId),
-      status: 'Not Started'
+      user_id: parseInt(userId)
     }));
     
     await supabase.from('task_assignments').insert(assignments);
