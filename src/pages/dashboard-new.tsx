@@ -300,21 +300,26 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     
     try {
       const token = sessionStorage.getItem("jwt-token");
-      await axios.patch(`/tasks/${stuckTaskId}`, { 
-        status: 'Stuck',
-        stuckReason: stuckReason.trim()
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      setTasks(prev => prev.map(task => 
-        task._id === stuckTaskId ? { ...task, status: 'Stuck', stuckReason: stuckReason.trim() } : task
+      const reason = stuckReason.trim();
+      const taskId = stuckTaskId;
+
+      setTasks(prev => prev.map(task =>
+        task._id === taskId ? { ...task, status: 'Stuck', stuckReason: reason } : task
       ));
-      
+      setAssignedTasks(prev => prev.map(task =>
+        task._id === taskId ? { ...task, status: 'Stuck', stuckReason: reason } : task
+      ));
       setShowStuckModal(false);
       setStuckReason('');
       setStuckTaskId('');
       showToast('Task marked as Stuck', 'success');
+
+      await axios.patch(`/tasks/${taskId}`, {
+        status: 'Stuck',
+        stuckReason: reason
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
     } catch (err: any) {
       showToast('Error: ' + (err.response?.data?.message || err.message), 'error');
     }
@@ -1251,7 +1256,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                                   <b>❌ Rejected:</b> {task.rejectionReason}
                                 </div>
                               )}
-                              {task.stuckReason && (
+                              {task.stuckReason && task.status === 'Stuck' && (
                                 <div style={{
                                   fontSize: 12,
                                   color: '#d97706',
