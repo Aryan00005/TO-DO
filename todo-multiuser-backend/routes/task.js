@@ -316,7 +316,7 @@ router.patch('/:taskId', auth, async (req, res) => {
     
     // Handle approval/rejection (creator only)
     if (approval_status || rejection_reason) {
-      if (!task || task.assigned_by !== currentUser.id) {
+      if (!task || String(task.assigned_by) !== String(currentUser.id)) {
         return res.status(403).json({ message: 'Only task creator can approve or reject tasks.' });
       }
       
