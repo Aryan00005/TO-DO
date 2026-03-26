@@ -2670,6 +2670,27 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   const unreadCount = notifications.filter(n => !n.isRead && !n.is_read).length;
 
+  // Poll notifications every 15s — refresh tasks if new unread notification arrives
+  const prevUnreadRef = React.useRef(unreadCount);
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const token = sessionStorage.getItem('jwt-token');
+        const res = await axios.get(`/notifications/${user._id}`, { headers: { Authorization: `Bearer ${token}` } });
+        const newNotifs: Notification[] = res.data;
+        const newUnread = newNotifs.filter((n: Notification) => !n.isRead && !n.is_read).length;
+        setNotifications(newNotifs);
+        if (newUnread > prevUnreadRef.current) {
+          // New notification arrived — refresh tasks so assignee sees updated status
+          const tasksRes = await axios.get('/tasks/visible', { headers: { Authorization: `Bearer ${token}` } });
+          setTasks(tasksRes.data.map(normalizeTask));
+        }
+        prevUnreadRef.current = newUnread;
+      } catch {}
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [user._id]);
+
   // Close mobile menu on navigation
   useEffect(() => {
     if (window.innerWidth < 768) {

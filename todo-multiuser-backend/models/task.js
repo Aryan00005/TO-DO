@@ -304,14 +304,16 @@ class Task {
       const isCreator = task.assigned_by === userIdInt;
       const isAssigned = task.task_assignments?.some(a => a.user_id === userIdInt);
       const isApproved = task.approval_status === 'approved';
+      const isRejected = task.approval_status === 'rejected';
 
-      if (isApproved && task.approved_at) {
+      // Hide approved tasks older than 24h (but never hide rejected tasks)
+      if (isApproved && !isRejected && task.approved_at) {
         const hoursSinceApproval = (Date.now() - new Date(task.approved_at).getTime()) / (1000 * 60 * 60);
         if (hoursSinceApproval >= 24) return false;
       }
 
       if (isCreator) return true;
-      if (isAssigned && (isApproved || task.approval_status === 'rejected')) return true;
+      if (isAssigned && (isApproved || isRejected)) return true;
       return false;
     });
 
