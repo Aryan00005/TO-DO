@@ -384,9 +384,11 @@ router.patch('/:taskId', auth, async (req, res) => {
         updateData.stuck_reason = stuckReason;
       }
       
-      // When moving to Done, set approval_status to pending and clear rejection
+      // When moving to Done: if previously rejected keep as rejected (creator re-approves), else set pending
       if (status === 'Done') {
-        updateData.approval_status = 'pending';
+        if (task.approval_status !== 'rejected') {
+          updateData.approval_status = 'pending';
+        }
         updateData.rejection_reason = null;
       }
       

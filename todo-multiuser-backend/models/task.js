@@ -126,7 +126,7 @@ class Task {
       .from('tasks')
       .select(`*, task_assignments!inner(user_id, users(id, name, email))`)
       .eq('task_assignments.user_id', userIdInt)
-      .in('approval_status', ['approved', 'rejected'])
+      .in('approval_status', ['approved', 'rejected', 'pending'])
       .order('created_at', { ascending: false });
 
     if (error) throw error;
