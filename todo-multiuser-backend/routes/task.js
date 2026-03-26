@@ -384,9 +384,10 @@ router.patch('/:taskId', auth, async (req, res) => {
         updateData.stuck_reason = stuckReason;
       }
       
-      // When moving to Done, set approval_status to pending
+      // When moving to Done, set approval_status to pending and clear rejection
       if (status === 'Done') {
         updateData.approval_status = 'pending';
+        updateData.rejection_reason = null;
       }
       
       const { data: updatedTask, error } = await supabase
