@@ -127,7 +127,8 @@ class Task {
       .select(`*, task_assignments!inner(user_id, users(id, name, email))`)
       .eq('task_assignments.user_id', userIdInt)
       .in('approval_status', ['approved', 'rejected', 'pending'])
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(50);
 
     if (error) throw error;
 
@@ -293,10 +294,14 @@ class Task {
   static async findVisibleToUser(userId, userRole, userCompany) {
     const userIdInt = parseInt(userId);
 
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data: allTasks, error } = await supabase
       .from('tasks')
       .select(`*, task_assignments(user_id, users(id, name, email))`)
-      .order('created_at', { ascending: false });
+      .eq('company', userCompany)
+      .gte('created_at', thirtyDaysAgo)
+      .order('created_at', { ascending: false })
+      .limit(100);
 
     if (error) throw error;
 
