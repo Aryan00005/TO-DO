@@ -2671,7 +2671,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const unreadCount = notifications.filter(n => !n.isRead && !n.is_read).length;
 
   // Poll notifications every 15s — refresh tasks if new unread notification arrives
-  const prevUnreadRef = React.useRef(unreadCount);
+  const prevUnreadRef = React.useRef(-1);
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
@@ -2680,10 +2680,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         const newNotifs: Notification[] = res.data;
         const newUnread = newNotifs.filter((n: Notification) => !n.isRead && !n.is_read).length;
         setNotifications(newNotifs);
-        if (newUnread > prevUnreadRef.current) {
+        if (prevUnreadRef.current !== -1 && newUnread > prevUnreadRef.current) {
           // New notification arrived — refresh tasks so assignee sees updated status
           const tasksRes = await axios.get('/tasks/visible', { headers: { Authorization: `Bearer ${token}` } });
-          setTasks(tasksRes.data.map(normalizeTask));
+          setTasks(prev => {
+            const incoming = tasksRes.data.map(normalizeTask);
+            const incomingIds = new Set(incoming.map((t: any) => t._id));
+            const kept = prev.filter(t => !incomingIds.has(t._id));
+            return [...incoming, ...kept];
+          });
         }
         prevUnreadRef.current = newUnread;
       } catch {}
