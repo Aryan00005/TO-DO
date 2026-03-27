@@ -74,7 +74,7 @@ const normalizeTask = (t: any): Task => ({
   dueDate: t.dueDate || t.due_date,
   completionRemark: t.completionRemark || t.completion_remark,
   stuckReason: t.stuckReason || t.stuck_reason,
-  rejectionReason: t.status === 'Done' ? undefined : (t.rejectionReason || t.rejection_reason),
+  rejectionReason: t.rejectionReason || t.rejection_reason || undefined,
   approvalStatus: t.approvalStatus || t.approval_status,
   approved_at: t.approved_at,
 });

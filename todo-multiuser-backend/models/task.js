@@ -344,13 +344,14 @@ class Task {
         _id: task.id.toString(),
         dueDate: task.due_date,
         stuckReason: task.stuck_reason,
+        rejectionReason: task.rejection_reason,
         approvalStatus: task.approval_status,
         approval_status: task.approval_status,
         approved_at: task.approved_at,
         assignedBy: creator ? { _id: creator.id.toString(), name: creator.name, email: creator.email } : null,
-        assignedTo: displayAssignees.length === 1
-          ? { _id: displayAssignees[0].id.toString(), name: displayAssignees[0].name, email: displayAssignees[0].email }
-          : displayAssignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
+        assignedTo: allAssignees.length === 1
+          ? { _id: allAssignees[0].id.toString(), name: allAssignees[0].name, email: allAssignees[0].email }
+          : allAssignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
       };
     });
   }
