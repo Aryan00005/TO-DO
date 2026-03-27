@@ -221,16 +221,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   // Organization validation and setup
   if (!user.organization || !user.organization.name) {
     user.organization = {
-      name: user._id === 'jayraj' ? 'RLA' : user._id === 'testadmin' ? 'TestCorp' : 'My Company', 
+      name: (user as any).company || 'My Company',
       type: 'company'
     };
-  } else {
-    // Override organization name based on user ID
-    if (user._id === 'jayraj') {
-      user.organization.name = 'RLA';
-    } else if (user._id === 'testadmin') {
-      user.organization.name = 'TestCorp';
-    }
   }
 
   // Auto-refresh data every 30 seconds - DISABLED for performance
