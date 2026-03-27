@@ -302,7 +302,6 @@ class Task {
     const { data: allTasks, error } = await supabase
       .from('tasks')
       .select(`*, task_assignments(user_id, users(id, name, email))`)
-      .eq('company', userCompany)
       .order('created_at', { ascending: false })
       .limit(200);
 
@@ -315,6 +314,9 @@ class Task {
       const isAssigned = task.task_assignments?.some(a => a.user_id === userIdInt);
       const isApproved = task.approval_status === 'approved';
       const isRejected = task.approval_status === 'rejected';
+
+      // Only show creator tasks from same company
+      if (isCreator && task.company !== userCompany) return false;
 
       // Only hide tasks that are Done + approved + older than 30 days
       if (isApproved && task.status === 'Done' && task.updated_at) {
