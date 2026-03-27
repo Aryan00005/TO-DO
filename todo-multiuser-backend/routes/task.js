@@ -317,7 +317,9 @@ router.patch('/:taskId', auth, async (req, res) => {
     
     // Handle approval/rejection (creator only)
     if (approval_status || rejection_reason) {
-      if (!task || String(task.assigned_by) !== String(currentUser.id)) {
+      const isCreatorOrAdmin = task && (String(task.assigned_by) === String(currentUser.id) || currentUser.role === 'admin');
+      console.log('Rejection check:', { task_assigned_by: task?.assigned_by, currentUser_id: currentUser.id, match: String(task?.assigned_by) === String(currentUser.id), role: currentUser.role, isCreatorOrAdmin });
+      if (!isCreatorOrAdmin) {
         return res.status(403).json({ message: 'Only task creator can approve or reject tasks.' });
       }
       
