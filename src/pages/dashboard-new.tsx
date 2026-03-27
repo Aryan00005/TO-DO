@@ -2679,17 +2679,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         const newNotifs: Notification[] = res.data;
         const newUnread = newNotifs.filter((n: Notification) => !n.isRead && !n.is_read).length;
         setNotifications(newNotifs);
-        if (prevUnreadRef.current !== -1 && newUnread > prevUnreadRef.current) {
-          // New notification arrived — refresh tasks so assignee sees updated status
-          const tasksRes = await axios.get('/tasks/visible', { headers: { Authorization: `Bearer ${token}` } });
-          setFilterStatus('all');
-          setTasks(prev => {
-            const incoming = tasksRes.data.map(normalizeTask);
-            const incomingIds = new Set(incoming.map((t: any) => t._id));
-            const kept = prev.filter(t => !incomingIds.has(t._id));
-            return [...incoming, ...kept];
-          });
-        }
+        // Always refresh tasks on every poll so status changes (rejection etc) are reflected immediately
+        const tasksRes = await axios.get('/tasks/visible', { headers: { Authorization: `Bearer ${token}` } });
+        setFilterStatus('all');
+        setTasks(prev => {
+          const incoming = tasksRes.data.map(normalizeTask);
+          const incomingIds = new Set(incoming.map((t: any) => t._id));
+          const kept = prev.filter(t => !incomingIds.has(t._id));
+          return [...incoming, ...kept];
+        });
         prevUnreadRef.current = newUnread;
       } catch {}
     }, 15000);
