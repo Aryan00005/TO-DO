@@ -698,7 +698,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   };
 
   // Filter tasks based on search, status, priority, date range, assigned by, assigned to
-  const filteredTasks = tasks.filter(task => {
+  const filteredTasks = React.useMemo(() => tasks.filter(task => {
     const matchesSearch = task.title.toLowerCase().includes(searchDebounce.toLowerCase()) ||
                          task.description.toLowerCase().includes(searchDebounce.toLowerCase());
     const effectiveStatus = task.rejectionReason ? 'Working on it' :
@@ -751,7 +751,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
     
     return matchesSearch && matchesStatus && matchesPriority && matchesDateRange && matchesAssignedBy && matchesAssignedTo;
-  });
+  }), [tasks, searchDebounce, filterStatus, filterPriority, filterDateRange, filterAssignedBy, filterAssignedTo]);
 
   // Tasks Board: show tasks where user is an assignee (including self-assigned tasks)
   const tasksAssignedToMe = React.useMemo(() => filteredTasks.filter(task => {
