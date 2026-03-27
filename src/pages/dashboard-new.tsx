@@ -588,10 +588,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   };
 
   const handleApproveTask = async (taskId: string) => {
-    const update = { approvalStatus: 'approved' as const };
-    setTasks(prev => prev.map(t => t._id === taskId ? { ...t, ...update } : t));
-    setAssignedTasks(prev => prev.map(t => t._id === taskId ? { ...t, ...update } : t));
-    showToast('Task approved! ✅', 'success');
+    setTasks(prev => prev.filter(t => t._id !== taskId));
+    setAssignedTasks(prev => prev.filter(t => t._id !== taskId));
+    setPendingTaskApprovals(prev => prev.filter(t => t._id !== taskId && String((t as any).id) !== taskId));
+    showToast('Task approved and completed! ✅', 'success');
 
     try {
       const token = sessionStorage.getItem('jwt-token');
@@ -601,6 +601,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     } catch (err: any) {
       refreshData();
       showToast('Failed to approve task', 'error');
+    }
+  };showToast('Failed to approve task', 'error');
     }
   };
 

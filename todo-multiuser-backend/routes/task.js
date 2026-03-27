@@ -325,7 +325,19 @@ router.patch('/:taskId', auth, async (req, res) => {
       
       const updateData = {};
       if (approval_status === 'approved') {
-        updateData.approval_status = 'approved';
+        // Delete task completely on approval
+        const { error: deleteError } = await supabase
+          .from('tasks')
+          .delete()
+          .eq('id', req.params.taskId);
+        if (deleteError) throw deleteError;
+
+        const Notification = require('../models/notification');
+        const assigneeIds = task.task_assignments?.map(a => a.user_id) || [];
+        for (const assigneeId of assigneeIds) {
+          await Notification.create(assigneeId, `Task "${task.title}" has been approved by creator`);
+        }
+        return res.json({ message: 'Task approved and deleted successfully' });
       } else if (approval_status) {
         updateData.approval_status = approval_status;
       }
