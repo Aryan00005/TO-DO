@@ -189,7 +189,8 @@ router.get('/assignedToOnly/:userId', auth, async (req, res) => {
 // Get tasks assigned by user (show tasks created by current user)
 router.get('/assignedBy/:userId', auth, async (req, res) => {
   try {
-    const tasks = await Task.findAssignedByUser(req.params.userId);
+    const currentUser = await User.findById(req.user.id);
+    const tasks = await Task.findAssignedByUser(req.params.userId, currentUser?.company);
     res.json(tasks);
   } catch (err) {
     console.error('Error fetching tasks created by user:', err);

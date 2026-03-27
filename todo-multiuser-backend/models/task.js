@@ -158,14 +158,19 @@ class Task {
     });
   }
 
-  static async findAssignedByUser(userId) {
+  static async findAssignedByUser(userId, company) {
     const userIdInt = parseInt(userId);
 
-    const { data: tasks, error } = await supabase
+    let query = supabase
       .from('tasks')
       .select(`*, task_assignments(user_id, users(id, name, email))`)
       .eq('assigned_by', userIdInt)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (company) query = query.eq('company', company);
+
+    const { data: tasks, error } = await query;
 
     if (error) throw error;
 
@@ -294,16 +299,16 @@ class Task {
   static async findVisibleToUser(userId, userRole, userCompany) {
     const userIdInt = parseInt(userId);
 
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const { data: allTasks, error } = await supabase
       .from('tasks')
       .select(`*, task_assignments(user_id, users(id, name, email))`)
       .eq('company', userCompany)
-      .gte('created_at', thirtyDaysAgo)
       .order('created_at', { ascending: false })
-      .limit(100);
+      .limit(200);
 
     if (error) throw error;
+
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
     const visibleTasks = (allTasks || []).filter(task => {
       const isCreator = task.assigned_by === userIdInt;
@@ -311,10 +316,9 @@ class Task {
       const isApproved = task.approval_status === 'approved';
       const isRejected = task.approval_status === 'rejected';
 
-      // Hide approved tasks older than 24h (but never hide rejected tasks)
-      if (isApproved && !isRejected && task.approved_at) {
-        const hoursSinceApproval = (Date.now() - new Date(task.approved_at).getTime()) / (1000 * 60 * 60);
-        if (hoursSinceApproval >= 24) return false;
+      // Only hide tasks that are Done + approved + older than 30 days
+      if (isApproved && task.status === 'Done' && task.updated_at) {
+        if (Date.now() - new Date(task.updated_at).getTime() > thirtyDaysAgo) return false;
       }
 
       if (isCreator) return true;
