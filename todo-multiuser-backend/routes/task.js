@@ -307,14 +307,11 @@ router.patch('/:taskId', auth, async (req, res) => {
       .eq('id', req.params.taskId)
       .single();
     
-    // Handle approval/rejection (creator only)
+    // Handle approval/rejection — canUserUpdateTask already verified access
     if (approval_status || rejection_reason) {
-      const isCreatorOrAdmin = task && (String(task.assigned_by) === String(currentUser.id) || currentUser.role === 'admin');
-      console.log('Rejection check:', { task_assigned_by: task?.assigned_by, currentUser_id: currentUser.id, match: String(task?.assigned_by) === String(currentUser.id), role: currentUser.role, isCreatorOrAdmin });
-      if (!isCreatorOrAdmin) {
-        return res.status(403).json({ message: 'Only task creator can approve or reject tasks.' });
+      if (!task) {
+        return res.status(404).json({ message: 'Task not found' });
       }
-      
       const updateData = {};
       if (approval_status === 'approved') {
         // Delete task completely on approval
