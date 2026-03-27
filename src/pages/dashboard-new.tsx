@@ -612,9 +612,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         setPendingTaskApprovals(prev => prev.filter(t => t._id !== taskId));
         showToast('Task approved! ✅', 'success');
       } else {
-        await axios.patch(`/tasks/${taskId}`, { approval_status: 'rejected' }, { headers: { Authorization: `Bearer ${token}` } });
-        setPendingTaskApprovals(prev => prev.filter(t => t._id !== taskId));
-        showToast('Task rejected ❌', 'success');
+        setRejectingTaskId(taskId);
+        setShowRejectModal(true);
+        return;
       }
     } catch (err: any) {
       showToast('Error: ' + (err.response?.data?.message || err.message), 'error');
@@ -624,6 +624,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const handleRejectSubmit = async () => {
     if (!rejectionReason.trim()) return;
     await handleRejectTask(rejectingTaskId, rejectionReason.trim());
+    setPendingTaskApprovals(prev => prev.filter(t => t._id !== rejectingTaskId && String((t as any).id) !== rejectingTaskId));
     setShowRejectModal(false);
     setRejectionReason('');
     setRejectingTaskId('');
