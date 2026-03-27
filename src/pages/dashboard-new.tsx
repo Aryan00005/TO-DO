@@ -602,8 +602,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       refreshData();
       showToast('Failed to approve task', 'error');
     }
-  };showToast('Failed to approve task', 'error');
-    }
   };
 
   const handleTaskApproval = async (taskId: string, action: 'approve' | 'reject') => {
