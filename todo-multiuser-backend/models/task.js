@@ -351,9 +351,12 @@ class Task {
         approval_status: task.approval_status,
         approved_at: task.approved_at,
         assignedBy: creator ? { _id: creator.id.toString(), name: creator.name, email: creator.email } : null,
-        assignedTo: allAssignees.length === 1
-          ? { _id: allAssignees[0].id.toString(), name: allAssignees[0].name, email: allAssignees[0].email }
-          : allAssignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
+        assignedTo: (() => {
+          const list = allAssignees.length > 0
+            ? allAssignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
+            : (task.task_assignments || []).map(a => ({ _id: String(a.user_id), name: '', email: '' }));
+          return list.length === 1 ? list[0] : list;
+        })()
       };
     });
   }
