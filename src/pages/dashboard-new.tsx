@@ -575,15 +575,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     try {
       const token = sessionStorage.getItem("jwt-token");
       await axios.patch(`/tasks/${taskId}`, { 
-        status: 'Working on it',
-        rejection_reason: reason,
-        approval_status: 'rejected'
+        rejection_reason: reason
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
     } catch (err: any) {
-      refreshData();
-      showToast("Error: " + (err.response?.data?.message || err.message), "error");
+      // Revert optimistic update on failure
+      setTasks(prev => prev.map(t => matchId(t, taskId) ? { ...t, rejectionReason: undefined, approvalStatus: 'approved' as const } : t));
+      setAssignedTasks(prev => prev.map(t => matchId(t, taskId) ? { ...t, rejectionReason: undefined, approvalStatus: 'approved' as const } : t));
+      showToast("Error rejecting task: " + (err.response?.data?.message || err.message), "error");
     }
   };
 
