@@ -2677,6 +2677,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         if (prevUnreadRef.current !== -1 && newUnread > prevUnreadRef.current) {
           // New notification arrived — refresh tasks so assignee sees updated status
           const tasksRes = await axios.get('/tasks/visible', { headers: { Authorization: `Bearer ${token}` } });
+          setFilterStatus('all');
           setTasks(prev => {
             const incoming = tasksRes.data.map(normalizeTask);
             const incomingIds = new Set(incoming.map((t: any) => t._id));
