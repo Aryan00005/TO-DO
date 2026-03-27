@@ -850,7 +850,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     });
     return columns;
   };
-  const kanbanTasks = getKanbanTasks();
+  const kanbanTasks = React.useMemo(() => getKanbanTasks(), [tasksAssignedToMe, kanbanSort]);
 
   const sortTasks = (tasks: Task[], sortBy: "none" | "priority" | "date") => {
     if (sortBy === "priority") {
