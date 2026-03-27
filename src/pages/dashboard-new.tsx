@@ -244,7 +244,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         axios.get(`/notifications/${user._id}`, { headers: { Authorization: `Bearer ${token}` } }),
         axios.get(`/tasks/assignedBy/${user._id}`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
-      setTasks(tasksRes.data.map(normalizeTask));
+      setTasks(prev => {
+        const incoming = tasksRes.data.map(normalizeTask);
+        const incomingIds = new Set(incoming.map((t: any) => t._id));
+        const kept = prev.filter(t => !incomingIds.has(t._id));
+        return [...incoming, ...kept];
+      });
       setNotifications(notificationsRes.data);
       setAssignedTasks(assignedRes.data.map(normalizeTask));
       setLastUpdated(new Date());
