@@ -322,7 +322,7 @@ class Task {
       }
 
       if (isCreator) return true;
-      if (isAssigned && (isApproved || isRejected)) return true;
+      if (isAssigned && (isApproved || isRejected || task.approval_status === 'pending')) return true;
       return false;
     });
 

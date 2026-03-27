@@ -754,7 +754,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   });
 
   // Tasks Board: show tasks where user is an assignee (including self-assigned tasks)
-  const tasksAssignedToMe = filteredTasks.filter(task => {
+  const tasksAssignedToMe = React.useMemo(() => filteredTasks.filter(task => {
     if (Array.isArray(task.assignedTo)) {
       return task.assignedTo.some(u => {
         const uId = typeof u === 'object' ? (u._id || u.id) : u;
@@ -763,7 +763,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
     const assignedToId = typeof task.assignedTo === 'object' ? (task.assignedTo._id || task.assignedTo.id) : task.assignedTo;
     return String(assignedToId) === String(user._id);
-  });
+  }), [filteredTasks, user._id]);
 
   // Task List: For regular users show only their tasks, for admin show all company tasks
   const taskListTasks = user.role === 'admin' ? filteredTasks : tasksAssignedToMe;
