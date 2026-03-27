@@ -79,20 +79,12 @@ router.get('/debug-all', auth, async (req, res) => {
 // Get all visible tasks for user
 router.get('/visible', auth, async (req, res) => {
   try {
-    console.log('🔍 /tasks/visible called for user:', req.user.id);
-    
     const currentUser = await User.findById(req.user.id);
     if (!currentUser) {
-      console.log('❌ User not found:', req.user.id);
       return res.status(404).json({ message: 'User not found' });
     }
-    
-    console.log('👤 Current user:', { id: currentUser.id, role: currentUser.role, company: currentUser.company });
 
     const tasks = await Task.findVisibleToUser(currentUser.id, currentUser.role, currentUser.company);
-    
-    console.log('📋 Tasks returned:', tasks.length);
-    console.log('📋 Task details:', tasks.map(t => ({ id: t._id, title: t.title, approval_status: t.approval_status, company: t.company })));
     
     res.json(tasks);
   } catch (err) {
