@@ -348,6 +348,7 @@ router.patch('/:taskId', auth, async (req, res) => {
         }
         return res.json({ message: 'Task rejected successfully', task: rejectedTask });
       }
+    }
     
     // If it's a status update, validate progression
     if (status && !title) {
