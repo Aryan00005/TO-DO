@@ -268,12 +268,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const oldTask = tasks.find(t => t._id === taskId);
     const oldStatus = oldTask?.status;
     
-    // Update UI immediately — update both tasks and assignedTasks
-    setTasks(prev => prev.map(task => 
-      task._id === taskId ? { ...task, status: newStatus, ...(newStatus === 'Done' ? { rejectionReason: undefined } : {}) } : task
+    // Update UI immediately
+    setTasks(prev => prev.map(task =>
+      task._id === taskId ? { ...task, status: newStatus } : task
     ));
     setAssignedTasks(prev => prev.map(task =>
-      task._id === taskId ? { ...task, status: newStatus, ...(newStatus === 'Done' ? { rejectionReason: undefined } : {}) } : task
+      task._id === taskId ? { ...task, status: newStatus } : task
     ));
     
     showToast(`Task moved to ${newStatus}!`, "success");
