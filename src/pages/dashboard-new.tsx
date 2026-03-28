@@ -709,7 +709,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const effectiveStatus = task.rejectionReason ? 'Working on it' :
       task.status === 'Pending Approval' ? 'Working on it' :
       !['Not Started', 'Working on it', 'Stuck', 'Done'].includes(task.status) ? 'Working on it' : task.status;
-    const matchesStatus = filterStatus === 'all' || effectiveStatus === filterStatus;
+    const matchesStatus = filterStatus === 'all' || effectiveStatus === filterStatus || task.approvalStatus === 'rejected';
     const matchesPriority = filterPriority === 'all' || task.priority.toString() === filterPriority;
     
     // Date range filter
@@ -2681,7 +2681,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         setNotifications(newNotifs);
         // Always refresh tasks on every poll so status changes (rejection etc) are reflected immediately
         const tasksRes = await axios.get('/tasks/visible', { headers: { Authorization: `Bearer ${token}` } });
-        setFilterStatus('all');
         setTasks(prev => {
           const incoming = tasksRes.data.map(normalizeTask);
           const incomingIds = new Set(incoming.map((t: any) => t._id));
