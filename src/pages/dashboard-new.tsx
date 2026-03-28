@@ -699,13 +699,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   // Filter tasks based on search, status, priority, date range, assigned by, assigned to
   const filteredTasks = React.useMemo(() => tasks.filter(task => {
-    const matchesSearch = task.title?.toLowerCase().includes(searchDebounce.toLowerCase()) ||
+    const matchesSearch = (task.title || '').toLowerCase().includes(searchDebounce.toLowerCase()) ||
                          (task.description || '').toLowerCase().includes(searchDebounce.toLowerCase());
     const effectiveStatus = task.rejectionReason ? 'Working on it' :
       task.status === 'Pending Approval' ? 'Working on it' :
       !['Not Started', 'Working on it', 'Stuck', 'Done'].includes(task.status) ? 'Working on it' : task.status;
     const matchesStatus = filterStatus === 'all' || effectiveStatus === filterStatus || task.approvalStatus === 'rejected';
-    const matchesPriority = filterPriority === 'all' || task.priority.toString() === filterPriority;
+    const matchesPriority = filterPriority === 'all' || (task.priority ?? '').toString() === filterPriority;
     
     // Date range filter
     let matchesDateRange = true;
