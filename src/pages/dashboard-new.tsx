@@ -2676,7 +2676,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         setNotifications(newNotifs);
         // Always refresh tasks on every poll so status changes (rejection etc) are reflected immediately
         const tasksRes = await axios.get('/tasks/visible', { headers: { Authorization: `Bearer ${token}` } });
-        setTasks(tasksRes.data.map(normalizeTask));
+        const newTasks = tasksRes.data.map(normalizeTask);
+        setTasks(prev => {
+          const prevJson = JSON.stringify(prev.map(t => ({ id: t._id, s: t.status, a: t.approvalStatus, r: t.rejectionReason })));
+          const newJson = JSON.stringify(newTasks.map((t: any) => ({ id: t._id, s: t.status, a: t.approvalStatus, r: t.rejectionReason })));
+          return prevJson === newJson ? prev : newTasks;
+        });
         prevUnreadRef.current = newUnread;
       } catch {}
     }, 15000);

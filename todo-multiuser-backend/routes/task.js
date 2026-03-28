@@ -369,12 +369,12 @@ router.patch('/:taskId', auth, async (req, res) => {
         updateData.stuck_reason = stuckReason;
       }
       
-      // When moving to Done: if previously rejected keep as rejected (creator re-approves), else set pending
+      // When moving to Done: preserve rejected status, otherwise set pending
       if (status === 'Done') {
         if (task.approval_status !== 'rejected') {
           updateData.approval_status = 'pending';
         }
-        updateData.rejection_reason = null;
+        // Only clear rejection_reason if not rejected (rejected tasks keep their reason)
       }
       
       const { data: updatedTask, error } = await supabase
