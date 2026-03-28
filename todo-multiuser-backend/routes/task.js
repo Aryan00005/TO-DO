@@ -332,37 +332,22 @@ router.patch('/:taskId', auth, async (req, res) => {
       }
       
       if (rejection_reason) {
-        updateData.status = 'Working on it';
-        updateData.approval_status = 'rejected';
-        updateData.rejection_reason = rejection_reason;
+        // Direct update — bypass updateData pattern to ensure all fields are written
+        const { data: rejectedTask, error: rejectError } = await supabase
+          .from('tasks')
+          .update({ status: 'Working on it', approval_status: 'rejected', rejection_reason: rejection_reason })
+          .eq('id', req.params.taskId)
+          .select()
+          .single();
+        if (rejectError) throw rejectError;
+        console.log('Rejection direct update result:', rejectedTask);
+        const Notification = require('../models/notification');
+        const assigneeIds = task.task_assignments?.map(a => a.user_id) || [];
+        for (const assigneeId of assigneeIds) {
+          await Notification.create(assigneeId, `Task "${task.title}" has been rejected: ${rejection_reason}`);
+        }
+        return res.json({ message: 'Task rejected successfully', task: rejectedTask });
       }
-
-      console.log('Rejection updateData:', updateData, 'taskId:', req.params.taskId);
-      
-      const { data: updatedTask, error } = await supabase
-        .from('tasks')
-        .update(updateData)
-        .eq('id', req.params.taskId)
-        .select()
-        .single();
-
-      console.log('Rejection update result:', { updatedTask, error });
-      
-      if (error) throw error;
-      
-      // Send notification to assignees
-      const Notification = require('../models/notification');
-      const assigneeIds = task.task_assignments?.map(a => a.user_id) || [];
-      const message = approval_status === 'approved' 
-        ? `Task "${task.title}" has been approved by creator`
-        : `Task "${task.title}" has been rejected: ${rejection_reason}`;
-      
-      for (const assigneeId of assigneeIds) {
-        await Notification.create(assigneeId, message);
-      }
-      
-      return res.json({ message: 'Task updated successfully', task: updatedTask });
-    }
     
     // If it's a status update, validate progression
     if (status && !title) {
