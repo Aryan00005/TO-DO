@@ -763,6 +763,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   // Tasks Board: show tasks where user is an assignee (including self-assigned tasks)
   const tasksAssignedToMe = React.useMemo(() => filteredTasks.filter(task => {
+    if (!task.assignedTo) return false;
     if (Array.isArray(task.assignedTo)) {
       return task.assignedTo.some(u => {
         const uId = typeof u === 'object' ? (u._id || u.id) : u;
