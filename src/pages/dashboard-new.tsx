@@ -263,6 +263,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       setShowStuckModal(true);
       return;
     }
+
+    // Capture old status for revert
+    const oldTask = tasks.find(t => t._id === taskId);
+    const oldStatus = oldTask?.status;
     
     // Update UI immediately — update both tasks and assignedTasks
     setTasks(prev => prev.map(task => 
@@ -280,7 +284,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
     } catch (err: any) {
-      refreshData();
+      // Revert optimistic update to old status
+      if (oldStatus) {
+        setTasks(prev => prev.map(task => task._id === taskId ? { ...task, status: oldStatus } : task));
+        setAssignedTasks(prev => prev.map(task => task._id === taskId ? { ...task, status: oldStatus } : task));
+      }
       showToast("Failed to update task", "error");
     }
   };
