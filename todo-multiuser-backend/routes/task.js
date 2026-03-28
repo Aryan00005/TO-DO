@@ -336,6 +336,8 @@ router.patch('/:taskId', auth, async (req, res) => {
         updateData.approval_status = 'rejected';
         updateData.rejection_reason = rejection_reason;
       }
+
+      console.log('Rejection updateData:', updateData, 'taskId:', req.params.taskId);
       
       const { data: updatedTask, error } = await supabase
         .from('tasks')
@@ -343,6 +345,8 @@ router.patch('/:taskId', auth, async (req, res) => {
         .eq('id', req.params.taskId)
         .select()
         .single();
+
+      console.log('Rejection update result:', { updatedTask, error });
       
       if (error) throw error;
       
