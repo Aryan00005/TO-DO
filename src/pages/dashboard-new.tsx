@@ -834,18 +834,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const getKanbanTasks = (): KanbanTasksType => {
     const columns: KanbanTasksType = {};
     kanbanColumns.forEach(col => columns[col] = []);
-    console.log('🔍 KANBAN DEBUG - tasksAssignedToMe:', tasksAssignedToMe.map(t => ({
+    if (isRefreshing) {
+      console.log('🔍 KANBAN DEBUG - tasksAssignedToMe:', tasksAssignedToMe.map(t => ({
       id: t._id, title: t.title, status: t.status,
       approvalStatus: t.approvalStatus, rejectionReason: t.rejectionReason,
       assignedTo: t.assignedTo, assignedBy: t.assignedBy
     })));
+    }
     tasksAssignedToMe.forEach(task => {
       let status = task.status;
       const originalStatus = task.status;
       if (task.rejectionReason) status = 'Working on it';
       else if (status === 'Pending Approval') status = 'Working on it';
       if (!(status in columns)) status = 'Working on it';
-      console.log(`🔍 KANBAN DEBUG - task "${task.title}" → column: "${status}" | originalStatus: "${originalStatus}" | rejectionReason: "${task.rejectionReason}" | approvalStatus: "${task.approvalStatus}"`);
+      if (isRefreshing) console.log(`🔍 KANBAN DEBUG - task "${task.title}" → column: "${status}" | originalStatus: "${originalStatus}" | rejectionReason: "${task.rejectionReason}" | approvalStatus: "${task.approvalStatus}"`);
       columns[status].push({ ...task, status });
     });
     return columns;
