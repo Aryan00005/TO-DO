@@ -363,15 +363,6 @@ router.patch('/:taskId', auth, async (req, res) => {
         'Pending Approval': ['Not Started', 'Working on it', 'Stuck', 'Done'] // Allow any transition from Pending
       };
       
-      // Validate status progression
-      if (!statusProgression[currentStatus] || !statusProgression[currentStatus].includes(status)) {
-        return res.status(400).json({ 
-          message: `Invalid status transition. Cannot move from '${currentStatus}' to '${status}'.`,
-          currentStatus,
-          allowedStatuses: statusProgression[currentStatus] || []
-        });
-      }
-      
       // Update with stuck reason if provided
       const updateData = { status };
       if (stuckReason) {

@@ -324,7 +324,7 @@ class Task {
       }
 
       if (isCreator) return true;
-      if (isAssigned && (isApproved || isRejected || task.approval_status === 'pending')) return true;
+      if (isAssigned) return true; // always show assigned tasks regardless of approval status
       return false;
     });
 
