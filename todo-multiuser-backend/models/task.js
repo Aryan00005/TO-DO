@@ -307,6 +307,9 @@ class Task {
 
     if (error) throw error;
 
+    console.log('findVisibleToUser - total tasks from DB:', allTasks?.length);
+    console.log('findVisibleToUser - task_assignments sample:', allTasks?.slice(0,3).map(t => ({ id: t.id, title: t.title, approval_status: t.approval_status, task_assignments: t.task_assignments })));
+
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
     const visibleTasks = (allTasks || []).filter(task => {
