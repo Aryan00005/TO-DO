@@ -66,18 +66,34 @@ const getInitials = (name: string) => {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 };
 
-const normalizeTask = (t: any): Task => ({
-  ...t,
-  _id: String(t._id || t.id),
-  assignedTo: t.assignedTo || t.assigned_to,
-  assignedBy: t.assignedBy || t.assigned_by,
-  dueDate: t.dueDate || t.due_date,
-  completionRemark: t.completionRemark || t.completion_remark,
-  stuckReason: t.stuckReason || t.stuck_reason,
-  rejectionReason: t.rejectionReason || t.rejection_reason || undefined,
-  approvalStatus: t.approvalStatus || t.approval_status,
-  approved_at: t.approved_at,
-});
+const normalizeTask = (t: any): Task => {
+  // Resolve assignedTo — handle object, array, null, or raw task_assignments
+  let assignedTo = t.assignedTo || t.assigned_to;
+  if (!assignedTo && t.task_assignments?.length > 0) {
+    const ids = t.task_assignments.map((a: any) => ({
+      _id: String(a.user_id || a._id || a.id),
+      name: a.users?.name || '',
+      email: a.users?.email || ''
+    }));
+    assignedTo = ids.length === 1 ? ids[0] : ids;
+  }
+  // Ensure assignedTo always has _id if it's an object
+  if (assignedTo && !Array.isArray(assignedTo) && typeof assignedTo === 'object' && !assignedTo._id && !assignedTo.id) {
+    assignedTo = null;
+  }
+  return {
+    ...t,
+    _id: String(t._id || t.id),
+    assignedTo,
+    assignedBy: t.assignedBy || t.assigned_by,
+    dueDate: t.dueDate || t.due_date,
+    completionRemark: t.completionRemark || t.completion_remark,
+    stuckReason: t.stuckReason || t.stuck_reason,
+    rejectionReason: t.rejectionReason || t.rejection_reason || undefined,
+    approvalStatus: t.approvalStatus || t.approval_status,
+    approved_at: t.approved_at,
+  };
+};
 
 const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const { theme, toggleTheme } = useTheme();
@@ -766,15 +782,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   // Tasks Board: show tasks where user is an assignee (including self-assigned tasks)
   const tasksAssignedToMe = React.useMemo(() => filteredTasks.filter(task => {
-    if (!task.assignedTo) return false;
-    if (Array.isArray(task.assignedTo)) {
-      return task.assignedTo.some(u => {
-        const uId = typeof u === 'object' ? (u._id || u.id) : u;
-        return String(uId) === String(user._id);
-      });
+    // Check assignedTo field
+    if (task.assignedTo) {
+      if (Array.isArray(task.assignedTo)) {
+        if (task.assignedTo.some((u: any) => {
+          const uId = typeof u === 'object' ? (u._id || u.id) : u;
+          return String(uId) === String(user._id);
+        })) return true;
+      } else {
+        const assignedToId = typeof task.assignedTo === 'object' ? (task.assignedTo._id || task.assignedTo.id) : task.assignedTo;
+        if (String(assignedToId) === String(user._id)) return true;
+      }
     }
-    const assignedToId = typeof task.assignedTo === 'object' ? (task.assignedTo._id || task.assignedTo.id) : task.assignedTo;
-    return String(assignedToId) === String(user._id);
+    // Fallback: check raw task_assignments
+    if ((task as any).task_assignments?.some((a: any) => String(a.user_id) === String(user._id))) return true;
+    return false;
   }), [filteredTasks, user._id]);
 
   // Task List: For regular users show only their tasks, for admin show all company tasks
