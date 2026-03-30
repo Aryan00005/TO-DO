@@ -76,6 +76,36 @@ router.get('/debug-all', auth, async (req, res) => {
   }
 });
 
+// Temporary debug route — shows raw visibility data
+router.get('/debug-visible', auth, async (req, res) => {
+  try {
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const currentUser = await User.findById(req.user.id);
+    const userIdInt = parseInt(currentUser.id);
+
+    const { data: userAssignments, error: ae } = await supabase
+      .from('task_assignments').select('task_id').eq('user_id', userIdInt);
+
+    const { data: allTasks, error: te } = await supabase
+      .from('tasks').select('id, title, status, approval_status').order('created_at', { ascending: false }).limit(200);
+
+    const assignedTaskIds = new Set((userAssignments || []).map(a => a.task_id));
+    const assignedTasks = (allTasks || []).filter(t => assignedTaskIds.has(t.id));
+
+    res.json({
+      userId: userIdInt,
+      userCompany: currentUser.company,
+      assignedTaskIds: [...assignedTaskIds],
+      assignedTasksFromDB: assignedTasks,
+      assignmentError: ae?.message,
+      taskError: te?.message
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Get all visible tasks for user
 router.get('/visible', auth, async (req, res) => {
   try {
