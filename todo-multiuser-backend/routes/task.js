@@ -83,7 +83,7 @@ router.get('/debug-assignments', async (req, res) => {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
     const { data, error } = await supabase.from('task_assignments').select('task_id, user_id').limit(20);
     const { data: tasks, error: te } = await supabase.from('tasks').select('id, title, approval_status').limit(20);
-    res.json({ assignments: data, assignmentError: error?.message, tasks: tasks, taskError: te?.message });
+    res.json({ assignmentCount: data?.length, assignments: data, assignmentError: error?.message, taskCount: tasks?.length, taskError: te?.message });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

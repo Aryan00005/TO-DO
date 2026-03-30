@@ -313,7 +313,8 @@ class Task {
     // Fetch task_assignments separately to avoid join issues
     const { data: allAssignments } = await supabase
       .from('task_assignments')
-      .select('task_id, user_id');
+      .select('task_id, user_id')
+      .limit(10000);
     const assignmentMap = {};
     (allAssignments || []).forEach((a) => {
       if (!assignmentMap[a.task_id]) assignmentMap[a.task_id] = [];
