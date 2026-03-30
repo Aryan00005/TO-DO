@@ -268,7 +268,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const oldTask = tasks.find(t => t._id === taskId);
     const oldStatus = oldTask?.status;
     
-    // Update UI immediately
+    // Update UI immediately — batch filterStatus reset with task update
+    setFilterStatus('all');
     setTasks(prev => prev.map(task =>
       task._id === taskId ? { ...task, status: newStatus } : task
     ));
@@ -885,7 +886,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     if (sourceCol !== destCol) {
       const sourceTasksSorted = sortTasks(kanbanTasks[sourceCol], kanbanSort);
       const draggedTask = sourceTasksSorted[result.source.index];
-      setFilterStatus('all'); // reset filter so moved task stays visible
       await updateTaskStatus(draggedTask._id, destCol);
     }
   };
