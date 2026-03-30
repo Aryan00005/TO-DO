@@ -314,6 +314,10 @@ class Task {
       .eq('user_id', userIdInt);
     const assignedTaskIds = new Set((userAssignments || []).map(a => a.task_id));
 
+    // Temporary debug — remove after fix confirmed
+    console.log('USER', userIdInt, 'assignedTaskIds:', [...assignedTaskIds]);
+    console.log('allTasks count:', allTasks?.length, 'ids:', allTasks?.map(t => t.id));
+
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
     const visibleTasks = (allTasks || []).filter(task => {
