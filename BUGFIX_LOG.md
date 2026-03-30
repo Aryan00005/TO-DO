@@ -316,6 +316,59 @@ If Supabase foreign key join fails, `a.users` is `null` for all rows → `filter
 
 ---
 
+### Bug 21 — Supabase RLS blocking `task_assignments` nested join
+
+**Symptom:** After page refresh, ALL rejected/pending tasks invisible to assignee. Only approved tasks showed. DB confirmed rejected tasks existed with correct `task_assignments` rows.
+
+**Root Cause:** Supabase Row Level Security (RLS) was enabled on `task_assignments`, `tasks`, `users`, and `notifications` tables with **no policies set**. When RLS is enabled with no policies, Supabase returns 0 rows for all queries from that table — including nested joins. The nested join `task_assignments(user_id, users(...))` inside the main tasks query returned `[]` for every task. `isAssigned` check used this join result → always `false` → all assigned tasks excluded.
+
+The approved tasks appeared to work only because they were being returned via `isCreator = true` (the creator was viewing their own tasks), not via `isAssigned`.
+
+**Fix (DB):** Disabled RLS on all affected tables:
+```sql
+ALTER TABLE task_assignments DISABLE ROW LEVEL SECURITY;
+ALTER TABLE tasks DISABLE ROW LEVEL SECURITY;
+ALTER TABLE users DISABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications DISABLE ROW LEVEL SECURITY;
+```
+
+**Fix (Backend):** Even after disabling RLS, the nested join was unreliable. Replaced the join-based `isAssigned` check with a **separate direct query** on `task_assignments`:
+```js
+// Fetch task_assignments separately — bypasses join issues completely
+const { data: allAssignments } = await supabase
+  .from('task_assignments')
+  .select('task_id, user_id');
+const assignmentMap = {};
+(allAssignments || []).forEach(a => {
+  if (!assignmentMap[a.task_id]) assignmentMap[a.task_id] = [];
+  assignmentMap[a.task_id].push(a.user_id);
+});
+
+// Use map instead of join result
+const isAssigned = (assignmentMap[task.id] || []).includes(userIdInt);
+```
+
+**Status:** Under investigation — debug endpoint added to verify `task_assignments` query returns data correctly.
+
+**Commits:** `ffee604`, `ed2d0d0`, `3fe4e35`, `e5f25fc`
+
+---
+
+## Current Open Issue
+
+### Rejected tasks still not visible after refresh (ACTIVE)
+
+**What we know:**
+- DB has correct data: 5 rejected tasks with `task_assignments` rows for user 71
+- RLS disabled on all tables
+- Backend code uses separate `task_assignments` query (not join)
+- `/tasks/visible` still returns only 3 approved tasks
+- Debug endpoint `GET /api/tasks/debug-assignments` added to verify what Supabase actually returns
+
+**Next step:** Check response from `https://to-do-m0we.onrender.com/api/tasks/debug-assignments` to see if the separate `task_assignments` query returns data.
+
+---
+
 ## Architecture Decisions Made
 
 | Decision | Reason |
@@ -345,11 +398,11 @@ If Supabase foreign key join fails, `a.users` is `null` for all rows → `filter
 
 | Feature | Status |
 |---------|--------|
-| Move task to Done | ✅ Stable |
+| Move task to Done | ⚠️ Unstable (Render cold start causes first attempt to fail) |
 | Creator sees Done tasks | ✅ Working |
 | Creator Approve | ✅ Task deleted from both panels |
-| Creator Reject | ✅ Task moves to Working on it on assignee kanban |
-| Assignee sees rejected task after refresh | ✅ Fixed |
+| Creator Reject | ✅ Works in creator panel |
+| Assignee sees rejected task after refresh | ❌ BROKEN — under active investigation |
 | Notifications limited to 20 | ✅ Working |
 | No log spam | ✅ Logs only on manual refresh |
 | Performance (memoization) | ✅ All key computations memoized |
