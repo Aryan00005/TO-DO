@@ -2688,6 +2688,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         // Always refresh tasks on every poll so status changes (rejection etc) are reflected immediately
         const tasksRes = await axios.get('/tasks/visible', { headers: { Authorization: `Bearer ${token}` } });
         const newTasks = tasksRes.data.map(normalizeTask);
+        const rejectedInNew = newTasks.filter((t:any) => t.approvalStatus === 'rejected' || t.rejectionReason);
+        if (rejectedInNew.length > 0) console.log('POLL rejected tasks:', JSON.stringify(rejectedInNew.map((t:any) => ({ _id: t._id, status: t.status, approvalStatus: t.approvalStatus, rejectionReason: t.rejectionReason, assignedTo: t.assignedTo }))));
         setTasks(prev => {
           const prevJson = JSON.stringify(prev.map(t => ({ id: t._id, s: t.status, a: t.approvalStatus, r: t.rejectionReason })));
           const newJson = JSON.stringify(newTasks.map((t: any) => ({ id: t._id, s: t.status, a: t.approvalStatus, r: t.rejectionReason })));
