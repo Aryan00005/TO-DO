@@ -76,19 +76,6 @@ router.get('/debug-all', auth, async (req, res) => {
   }
 });
 
-// Debug: test task_assignments query directly (temporary - no auth)
-router.get('/debug-assignments', async (req, res) => {
-  try {
-    const { createClient } = require('@supabase/supabase-js');
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-    const { data, error } = await supabase.from('task_assignments').select('task_id, user_id').limit(20);
-    const { data: tasks, error: te } = await supabase.from('tasks').select('id, title, approval_status').limit(20);
-    res.json({ assignmentCount: data?.length, assignments: data, assignmentError: error?.message, taskCount: tasks?.length, taskError: te?.message });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
 // Get all visible tasks for user
 router.get('/visible', auth, async (req, res) => {
   try {
@@ -98,10 +85,6 @@ router.get('/visible', auth, async (req, res) => {
     }
 
     const tasks = await Task.findVisibleToUser(currentUser.id, currentUser.role, currentUser.company);
-    
-    // Debug: include raw counts in response header
-    res.setHeader('X-Debug-Task-Count', tasks.length);
-    res.setHeader('X-Debug-User-Id', currentUser.id);
     res.json(tasks);
   } catch (err) {
     console.error('❌ Error fetching visible tasks:', err);

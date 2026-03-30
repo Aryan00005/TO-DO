@@ -307,25 +307,18 @@ class Task {
 
     if (error) throw error;
 
-    console.log('findVisibleToUser - total tasks from DB:', allTasks?.length);
-    console.log('findVisibleToUser - task_assignments sample:', allTasks?.slice(0,3).map(t => ({ id: t.id, title: t.title, approval_status: t.approval_status, task_assignments: t.task_assignments })));
-
-    // Fetch task_assignments separately to avoid join issues
-    const { data: allAssignments } = await supabase
+    // Fetch only current user's task assignments — avoids row limit issues
+    const { data: userAssignments } = await supabase
       .from('task_assignments')
-      .select('task_id, user_id')
-      .limit(10000);
-    const assignmentMap = {};
-    (allAssignments || []).forEach((a) => {
-      if (!assignmentMap[a.task_id]) assignmentMap[a.task_id] = [];
-      assignmentMap[a.task_id].push(a.user_id);
-    });
+      .select('task_id')
+      .eq('user_id', userIdInt);
+    const assignedTaskIds = new Set((userAssignments || []).map(a => a.task_id));
 
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
     const visibleTasks = (allTasks || []).filter(task => {
       const isCreator = task.assigned_by === userIdInt;
-      const isAssigned = (assignmentMap[task.id] || []).includes(userIdInt);
+      const isAssigned = assignedTaskIds.has(task.id);
       const isApproved = task.approval_status === 'approved';
       const isRejected = task.approval_status === 'rejected';
 
@@ -368,7 +361,7 @@ class Task {
         assignedTo: (() => {
           const list = allAssignees.length > 0
             ? allAssignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
-            : (assignmentMap[task.id] || []).map(uid => ({ _id: String(uid), name: '', email: '' }));
+            : (assignedTaskIds.has(task.id) ? [{ _id: String(userIdInt), name: '', email: '' }] : []);
           if (list.length === 0) return { _id: String(userIdInt), name: '', email: '' };
           return list.length === 1 ? list[0] : list;
         })()
