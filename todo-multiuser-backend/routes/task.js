@@ -86,6 +86,9 @@ router.get('/visible', auth, async (req, res) => {
 
     const tasks = await Task.findVisibleToUser(currentUser.id, currentUser.role, currentUser.company);
     
+    // Debug: include raw counts in response header
+    res.setHeader('X-Debug-Task-Count', tasks.length);
+    res.setHeader('X-Debug-User-Id', currentUser.id);
     res.json(tasks);
   } catch (err) {
     console.error('❌ Error fetching visible tasks:', err);
