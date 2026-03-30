@@ -286,11 +286,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     
     // Update UI immediately — batch filterStatus reset with task update
     setFilterStatus('all');
+    const statusUpdate = newStatus === 'Done'
+      ? { status: newStatus, rejectionReason: undefined, approvalStatus: 'pending' as const }
+      : { status: newStatus };
     setTasks(prev => prev.map(task =>
-      task._id === taskId ? { ...task, status: newStatus } : task
+      task._id === taskId ? { ...task, ...statusUpdate } : task
     ));
     setAssignedTasks(prev => prev.map(task =>
-      task._id === taskId ? { ...task, status: newStatus } : task
+      task._id === taskId ? { ...task, ...statusUpdate } : task
     ));
     
     showToast(`Task moved to ${newStatus}!`, "success");
