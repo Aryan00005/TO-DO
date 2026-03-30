@@ -355,6 +355,8 @@ class Task {
           const list = allAssignees.length > 0
             ? allAssignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
             : (task.task_assignments || []).map(a => ({ _id: String(a.user_id), name: '', email: '' }));
+          // If list is still empty but task is assigned to current user, return current user id
+          if (list.length === 0) return { _id: String(userIdInt), name: '', email: '' };
           return list.length === 1 ? list[0] : list;
         })()
       };

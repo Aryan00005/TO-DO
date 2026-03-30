@@ -3,6 +3,7 @@ import axios from "axios";
 // Force cache refresh
 const instance = axios.create({
   baseURL: (import.meta.env.VITE_API_URL || "https://to-do-m0we.onrender.com") + "/api",
+  timeout: 30000,
 });
 
 instance.interceptors.request.use((config) => {

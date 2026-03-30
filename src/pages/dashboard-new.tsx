@@ -590,6 +590,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   };
 
   const handleApproveTask = async (taskId: string) => {
+    recentlyApprovedRef.current.add(taskId);
+    setTimeout(() => recentlyApprovedRef.current.delete(taskId), 30000);
     setTasks(prev => prev.filter(t => t._id !== taskId));
     setAssignedTasks(prev => prev.filter(t => t._id !== taskId));
     setPendingTaskApprovals(prev => prev.filter(t => t._id !== taskId && String((t as any).id) !== taskId));
@@ -2677,6 +2679,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   // Poll notifications every 15s — refresh tasks if new unread notification arrives
   const prevUnreadRef = React.useRef(-1);
+  const recentlyApprovedRef = React.useRef<Set<string>>(new Set());
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
@@ -2687,7 +2690,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         setNotifications(newNotifs);
         // Always refresh tasks on every poll so status changes (rejection etc) are reflected immediately
         const tasksRes = await axios.get('/tasks/visible', { headers: { Authorization: `Bearer ${token}` } });
-        const newTasks = tasksRes.data.map(normalizeTask);
+        const newTasks = tasksRes.data.map(normalizeTask).filter((t: any) => !recentlyApprovedRef.current.has(t._id));
         const rejectedInNew = newTasks.filter((t:any) => t.approvalStatus === 'rejected' || t.rejectionReason);
         if (rejectedInNew.length > 0) console.log('POLL rejected tasks:', JSON.stringify(rejectedInNew.map((t:any) => ({ _id: t._id, status: t.status, approvalStatus: t.approvalStatus, rejectionReason: t.rejectionReason, assignedTo: t.assignedTo }))));
         setTasks(prev => {
