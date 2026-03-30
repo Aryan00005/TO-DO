@@ -166,9 +166,10 @@ class Task {
       .select(`*, task_assignments(user_id, users(id, name, email))`)
       .eq('assigned_by', userIdInt)
       .order('created_at', { ascending: false })
-      .limit(100);
+      .limit(1000);
 
-    if (company) query = query.eq('company', company);
+    // Only filter by company if tasks have correct company field
+    // Removed company filter — tasks may have stale company values
 
     const { data: tasks, error } = await query;
 
@@ -313,10 +314,6 @@ class Task {
       .select('task_id')
       .eq('user_id', userIdInt);
     const assignedTaskIds = new Set((userAssignments || []).map(a => a.task_id));
-
-    // Temporary debug — remove after fix confirmed
-    console.log('USER', userIdInt, 'assignedTaskIds:', [...assignedTaskIds]);
-    console.log('allTasks count:', allTasks?.length, 'ids:', allTasks?.map(t => t.id));
 
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
