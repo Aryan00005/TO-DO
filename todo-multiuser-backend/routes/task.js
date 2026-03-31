@@ -334,7 +334,7 @@ router.patch('/:taskId', auth, async (req, res) => {
         // Direct update — bypass updateData pattern to ensure all fields are written
         const { data: rejectedTask, error: rejectError } = await supabase
           .from('tasks')
-          .update({ status: 'Working on it', approval_status: 'rejected', rejection_reason: rejection_reason })
+          .update({ status: 'Not Started', approval_status: 'rejected', rejection_reason: rejection_reason })
           .eq('id', req.params.taskId)
           .select()
           .single();

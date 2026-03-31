@@ -66,25 +66,10 @@ const getInitials = (name: string) => {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 };
 
-const normalizeTask = (t: any): Task => {
-  // Resolve assignedTo — handle object, array, null, or raw task_assignments
-  let assignedTo = t.assignedTo || t.assigned_to;
-  if (!assignedTo && t.task_assignments?.length > 0) {
-    const ids = t.task_assignments.map((a: any) => ({
-      _id: String(a.user_id || a._id || a.id),
-      name: a.users?.name || '',
-      email: a.users?.email || ''
-    }));
-    assignedTo = ids.length === 1 ? ids[0] : ids;
-  }
-  // Ensure assignedTo always has _id if it's an object
-  if (assignedTo && !Array.isArray(assignedTo) && typeof assignedTo === 'object' && !assignedTo._id && !assignedTo.id) {
-    assignedTo = null;
-  }
-  return {
+  const normalizeTask = (t: any): Task => ({
     ...t,
     _id: String(t._id || t.id),
-    assignedTo,
+    assignedTo: t.assignedTo || t.assigned_to,
     assignedBy: t.assignedBy || t.assigned_by,
     dueDate: t.dueDate || t.due_date,
     completionRemark: t.completionRemark || t.completion_remark,
@@ -92,8 +77,7 @@ const normalizeTask = (t: any): Task => {
     rejectionReason: t.rejectionReason || t.rejection_reason || undefined,
     approvalStatus: t.approvalStatus || t.approval_status,
     approved_at: t.approved_at,
-  };
-};
+  });
 
 const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const { theme, toggleTheme } = useTheme();
@@ -286,14 +270,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     
     // Update UI immediately — batch filterStatus reset with task update
     setFilterStatus('all');
-    const statusUpdate = newStatus === 'Done'
-      ? { status: newStatus, rejectionReason: undefined, approvalStatus: 'pending' as const }
-      : { status: newStatus };
     setTasks(prev => prev.map(task =>
-      task._id === taskId ? { ...task, ...statusUpdate } : task
+      task._id === taskId ? { ...task, status: newStatus } : task
     ));
     setAssignedTasks(prev => prev.map(task =>
-      task._id === taskId ? { ...task, ...statusUpdate } : task
+      task._id === taskId ? { ...task, status: newStatus } : task
     ));
     
     showToast(`Task moved to ${newStatus}!`, "success");
@@ -588,7 +569,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     String(t._id) === String(taskId) || String((t as any).id) === String(taskId);
 
   const handleRejectTask = async (taskId: string, reason: string) => {
-    const update = { status: 'Working on it', rejectionReason: reason, approvalStatus: 'rejected' as const };
+    const update = { status: 'Not Started', rejectionReason: reason, approvalStatus: 'rejected' as const };
     setFilterStatus('all');
     setTasks(prev => prev.map(t => matchId(t, taskId) ? { ...t, ...update } : t));
     setAssignedTasks(prev => prev.map(t => matchId(t, taskId) ? { ...t, ...update } : t));
@@ -609,8 +590,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   };
 
   const handleApproveTask = async (taskId: string) => {
-    recentlyApprovedRef.current.add(taskId);
-    setTimeout(() => recentlyApprovedRef.current.delete(taskId), 30000);
+    if (!window.confirm('Are you sure you want to approve this task?')) return;
     setTasks(prev => prev.filter(t => t._id !== taskId));
     setAssignedTasks(prev => prev.filter(t => t._id !== taskId));
     setPendingTaskApprovals(prev => prev.filter(t => t._id !== taskId && String((t as any).id) !== taskId));
@@ -785,21 +765,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
   // Tasks Board: show tasks where user is an assignee (including self-assigned tasks)
   const tasksAssignedToMe = React.useMemo(() => filteredTasks.filter(task => {
-    // Check assignedTo field
-    if (task.assignedTo) {
-      if (Array.isArray(task.assignedTo)) {
-        if (task.assignedTo.some((u: any) => {
-          const uId = typeof u === 'object' ? (u._id || u.id) : u;
-          return String(uId) === String(user._id);
-        })) return true;
-      } else {
-        const assignedToId = typeof task.assignedTo === 'object' ? (task.assignedTo._id || task.assignedTo.id) : task.assignedTo;
-        if (String(assignedToId) === String(user._id)) return true;
-      }
+    if (!task.assignedTo) return false;
+    if (Array.isArray(task.assignedTo)) {
+      return task.assignedTo.some(u => {
+        const uId = typeof u === 'object' ? (u._id || u.id) : u;
+        return String(uId) === String(user._id);
+      });
     }
-    // Fallback: check raw task_assignments
-    if ((task as any).task_assignments?.some((a: any) => String(a.user_id) === String(user._id))) return true;
-    return false;
+    const assignedToId = typeof task.assignedTo === 'object' ? (task.assignedTo._id || task.assignedTo.id) : task.assignedTo;
+    return String(assignedToId) === String(user._id);
   }), [filteredTasks, user._id]);
 
   // Task List: For regular users show only their tasks, for admin show all company tasks
@@ -881,7 +855,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     tasksAssignedToMe.forEach(task => {
       let status = task.status;
       const originalStatus = task.status;
-      if (task.rejectionReason) status = 'Working on it';
+      if (task.rejectionReason) status = 'Not Started';
       else if (status === 'Pending Approval') status = 'Working on it';
       if (!(status in columns)) status = 'Working on it';
       if (isRefreshing) console.log(`🔍 KANBAN DEBUG - task "${task.title}" → column: "${status}" | originalStatus: "${originalStatus}" | rejectionReason: "${task.rejectionReason}" | approvalStatus: "${task.approvalStatus}"`);
@@ -2703,21 +2677,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const unreadCount = notifications.filter(n => !n.isRead && !n.is_read).length;
 
   // Poll notifications every 15s — refresh tasks if new unread notification arrives
-  // Keep-alive ping during business hours (8 AM - 8 PM) to prevent Render cold start
-  useEffect(() => {
-    const ping = () => {
-      const hour = new Date().getHours();
-      if (hour >= 8 && hour < 20) {
-        fetch('https://to-do-m0we.onrender.com/health').catch(() => {});
-      }
-    };
-    ping();
-    const interval = setInterval(ping, 10 * 60 * 1000); // every 10 minutes
-    return () => clearInterval(interval);
-  }, []);
-
   const prevUnreadRef = React.useRef(-1);
-  const recentlyApprovedRef = React.useRef<Set<string>>(new Set());
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
@@ -2728,23 +2688,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         setNotifications(newNotifs);
         // Always refresh tasks on every poll so status changes (rejection etc) are reflected immediately
         const tasksRes = await axios.get('/tasks/visible', { headers: { Authorization: `Bearer ${token}` } });
-        const newTasks = tasksRes.data.map(normalizeTask).filter((t: any) => !recentlyApprovedRef.current.has(t._id));
-        const rejectedInNew = newTasks.filter((t:any) => t.approvalStatus === 'rejected' || t.rejectionReason);
-        if (rejectedInNew.length > 0) console.log('POLL rejected tasks:', JSON.stringify(rejectedInNew.map((t:any) => ({ _id: t._id, status: t.status, approvalStatus: t.approvalStatus, rejectionReason: t.rejectionReason, assignedTo: t.assignedTo }))));
+        const newTasks = tasksRes.data.map(normalizeTask);
         setTasks(prev => {
           const prevJson = JSON.stringify(prev.map(t => ({ id: t._id, s: t.status, a: t.approvalStatus, r: t.rejectionReason })));
           const newJson = JSON.stringify(newTasks.map((t: any) => ({ id: t._id, s: t.status, a: t.approvalStatus, r: t.rejectionReason })));
-          if (prevJson === newJson) return prev;
-          // Merge: keep optimistic status/rejectionReason if task was just moved to Done
-          const merged = newTasks.map((incoming: any) => {
-            const existing = prev.find(p => p._id === incoming._id);
-            if (existing && existing.status === 'Done' && incoming.status !== 'Done') {
-              // Keep optimistic Done status, don't revert
-              return existing;
-            }
-            return incoming;
-          });
-          return merged;
+          return prevJson === newJson ? prev : newTasks;
         });
         prevUnreadRef.current = newUnread;
       } catch {}
@@ -3750,7 +3698,5 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     </div>
   );
 };
-
-export const _buildVersion = '3';
 
 export default Dashboard;
