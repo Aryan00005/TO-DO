@@ -2721,7 +2721,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         setTasks(prev => {
           const prevJson = JSON.stringify(prev.map(t => ({ id: t._id, s: t.status, a: t.approvalStatus, r: t.rejectionReason })));
           const newJson = JSON.stringify(newTasks.map((t: any) => ({ id: t._id, s: t.status, a: t.approvalStatus, r: t.rejectionReason })));
-          return prevJson === newJson ? prev : newTasks;
+          if (prevJson === newJson) return prev;
+          // Merge: keep optimistic status/rejectionReason if task was just moved to Done
+          const merged = newTasks.map((incoming: any) => {
+            const existing = prev.find(p => p._id === incoming._id);
+            if (existing && existing.status === 'Done' && incoming.status !== 'Done') {
+              // Keep optimistic Done status, don't revert
+              return existing;
+            }
+            return incoming;
+          });
+          return merged;
         });
         prevUnreadRef.current = newUnread;
       } catch {}
