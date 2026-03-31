@@ -13,7 +13,7 @@ import SelectRole from "./pages/SelectRole";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 // User type (optional, for TypeScript)
-interface User {\
+interface User {
     _id: string;  
   name: string;
   email: string;
