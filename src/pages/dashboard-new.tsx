@@ -2703,6 +2703,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const unreadCount = notifications.filter(n => !n.isRead && !n.is_read).length;
 
   // Poll notifications every 15s — refresh tasks if new unread notification arrives
+  const // Keep-alive ping during business hours (8 AM - 8 PM) to prevent Render cold start
+  useEffect(() => {
+    const ping = () => {
+      const hour = new Date().getHours();
+      if (hour >= 8 && hour < 20) {
+        fetch('https://to-do-m0we.onrender.com/health').catch(() => {});
+      }
+    };
+    ping();
+    const interval = setInterval(ping, 10 * 60 * 1000); // every 10 minutes
+    return () => clearInterval(interval);
+  }, []);
+
   const prevUnreadRef = React.useRef(-1);
   const recentlyApprovedRef = React.useRef<Set<string>>(new Set());
   useEffect(() => {
