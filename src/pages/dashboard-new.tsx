@@ -3728,4 +3728,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   );
 };
 
+export const _buildVersion = '3';
+
 export default Dashboard;
