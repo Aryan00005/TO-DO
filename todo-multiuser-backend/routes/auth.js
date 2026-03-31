@@ -1359,4 +1359,48 @@ router.delete('/superadmin/delete-company/:companyCode', authenticateToken, asyn
   }
 });
 
+// Admin: create a new user directly
+router.post('/admin/create-user', authenticateToken, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    if (!currentUser || currentUser.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Only admins can create users.' });
+    }
+
+    const { name, email, userId, password } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'Name, email, and password are required.' });
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+    // Check if email already exists
+    const { data: existing } = await supabase.from('users').select('id').eq('email', email).single();
+    if (existing) {
+      return res.status(400).json({ message: 'A user with this email already exists.' });
+    }
+
+    const bcrypt = require('bcryptjs');
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const { data: newUser, error } = await supabase.from('users').insert({
+      name,
+      email,
+      user_id: userId || email.split('@')[0],
+      password: hashedPassword,
+      role: 'user',
+      company: currentUser.company,
+      account_status: 'active'
+    }).select().single();
+
+    if (error) throw error;
+
+    res.status(201).json({ message: 'User created successfully!', user: { id: newUser.id, name: newUser.name, email: newUser.email } });
+  } catch (err) {
+    console.error('Create user error:', err);
+    res.status(500).json({ message: 'Server error: ' + err.message });
+  }
+});
+
 module.exports = router;
