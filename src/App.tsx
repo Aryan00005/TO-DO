@@ -56,7 +56,7 @@ function App() {
     
     if (token && !user && !userStr) {
       // If we have a token but no user data, redirect to login
-      console.log('Token exists but no user data, clearing session');
+           console.log('Token exists but no user data, clearing session');
       sessionStorage.removeItem('jwt-token');
       window.location.href = '/login';
     }
