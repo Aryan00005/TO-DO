@@ -109,7 +109,10 @@ class Task {
       const assigneeRoleMap = Object.fromEntries((assigneeUsers || []).map(u => [u.id, u.role]));
 
       await Promise.all(resolvedIds.map(userId => {
-        const msg = assigneeRoleMap[userId] === 'admin' && hasAdminAssignee
+        // Only send approval notification if task is actually pending (user assigned to admin, not self-assigned)
+        const isAdminAssignee = assigneeRoleMap[userId] === 'admin';
+        const isSelfAssign = parseInt(userId) === parseInt(assignedBy);
+        const msg = isAdminAssignee && hasAdminAssignee && !isSelfAssign
           ? `Task approval required: "${title}" assigned by ${creatorName}`
           : `New task assigned: "${title}" by ${creatorName}`;
         return Notification.create(userId, msg).catch(e => console.error('Notification failed:', e));
