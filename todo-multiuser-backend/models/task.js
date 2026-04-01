@@ -149,13 +149,27 @@ class Task {
       assignmentMap = Object.fromEntries(assignments.map(a => [a.task_id, a]));
     }
 
-    const { data: tasks, error } = await supabase
+    // Try with per-user status columns; fall back if migration not yet run
+    let tasks;
+    const { data: tasksWithStatus, error: e1 } = await supabase
       .from('tasks')
       .select(`*, task_assignments(user_id, status, users(id, name, email))`)
       .in('id', taskIds)
       .in('approval_status', ['approved', 'rejected', 'pending'])
       .order('created_at', { ascending: false });
-    if (error) throw error;
+
+    if (e1) {
+      const { data: tasksFallback, error: e2 } = await supabase
+        .from('tasks')
+        .select(`*, task_assignments(user_id, users(id, name, email))`)
+        .in('id', taskIds)
+        .in('approval_status', ['approved', 'rejected', 'pending'])
+        .order('created_at', { ascending: false });
+      if (e2) throw e2;
+      tasks = tasksFallback;
+    } else {
+      tasks = tasksWithStatus;
+    }
 
     const creatorIds = [...new Set((tasks || []).map(t => t.assigned_by))];
     const { data: creators } = await supabase.from('users').select('id, name, email').in('id', creatorIds);
@@ -187,14 +201,27 @@ class Task {
   static async findAssignedByUser(userId, company) {
     const userIdInt = parseInt(userId);
 
-    const { data: tasks, error } = await supabase
+    // Try with per-user status columns; fall back if migration not yet run
+    let tasks;
+    const { data: tasksWithStatus, error: e1 } = await supabase
       .from('tasks')
       .select(`*, task_assignments(user_id, status, stuck_reason, rejection_reason, users(id, name, email))`)
       .eq('assigned_by', userIdInt)
       .order('created_at', { ascending: false })
       .limit(1000);
 
-    if (error) throw error;
+    if (e1) {
+      const { data: tasksFallback, error: e2 } = await supabase
+        .from('tasks')
+        .select(`*, task_assignments(user_id, users(id, name, email))`)
+        .eq('assigned_by', userIdInt)
+        .order('created_at', { ascending: false })
+        .limit(1000);
+      if (e2) throw e2;
+      tasks = tasksFallback;
+    } else {
+      tasks = tasksWithStatus;
+    }
 
     // Expand into one entry per assignee, each with their own per-user status
     const expanded = [];
@@ -351,12 +378,26 @@ class Task {
       assignmentMap = Object.fromEntries((userAssignments || []).map(a => [a.task_id, a]));
     }
 
-    const { data: allTasks, error } = await supabase
+    // Try to fetch with per-user status columns; fall back if migration not yet run
+    let allTasks;
+    const { data: tasksWithStatus, error: e1 } = await supabase
       .from('tasks')
       .select(`*, task_assignments(user_id, status, stuck_reason, rejection_reason, users(id, name, email))`)
       .order('created_at', { ascending: false })
       .limit(200);
-    if (error) throw error;
+
+    if (e1) {
+      // status column not yet in task_assignments — fall back to basic select
+      const { data: tasksFallback, error: e2 } = await supabase
+        .from('tasks')
+        .select(`*, task_assignments(user_id, users(id, name, email))`)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (e2) throw e2;
+      allTasks = tasksFallback;
+    } else {
+      allTasks = tasksWithStatus;
+    }
 
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
