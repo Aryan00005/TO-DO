@@ -95,6 +95,7 @@ class Task {
       }
 
       // Insert assignments — try with status column, fall back without it if not yet migrated
+      const initialStatus = approvalStatus === 'pending' ? 'Pending Approval' : 'Not Started';
       const assignmentsWithStatus = resolvedIds.map(userId => ({ task_id: task.id, user_id: userId, status: initialStatus }));
       const { error: assignError } = await supabase.from('task_assignments').insert(assignmentsWithStatus);
       if (assignError) {
