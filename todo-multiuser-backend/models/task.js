@@ -94,16 +94,11 @@ class Task {
         resolvedIds = [...resolvedIds, ...(namedUsers?.map(u => u.id) || [])];
       }
 
-      // Insert assignments — try with status column, fall back without it if not yet migrated
+      // Insert assignments with per-user status
       const initialStatus = approvalStatus === 'pending' ? 'Pending Approval' : 'Not Started';
-      const assignmentsWithStatus = resolvedIds.map(userId => ({ task_id: task.id, user_id: userId, status: initialStatus }));
-      const { error: assignError } = await supabase.from('task_assignments').insert(assignmentsWithStatus);
-      if (assignError) {
-        // status column may not exist yet — retry without it
-        const assignmentsBasic = resolvedIds.map(userId => ({ task_id: task.id, user_id: userId }));
-        const { error: assignError2 } = await supabase.from('task_assignments').insert(assignmentsBasic);
-        if (assignError2) throw assignError2;
-      }
+      const assignments = resolvedIds.map(userId => ({ task_id: task.id, user_id: userId, status: initialStatus }));
+      const { error: assignError } = await supabase.from('task_assignments').insert(assignments);
+      if (assignError) throw assignError;
 
       // Batch fetch assignee roles + creator name in parallel
       const Notification = require('./notification');
@@ -132,50 +127,23 @@ class Task {
   static async findAssignedToUser(userId) {
     const userIdInt = parseInt(userId);
 
-    // Fetch this user's assignment rows with per-user status
     const { data: assignments, error: aErr } = await supabase
       .from('task_assignments')
       .select('task_id, status, stuck_reason, rejection_reason')
       .eq('user_id', userIdInt);
+    if (aErr) throw aErr;
+    if (!assignments || assignments.length === 0) return [];
 
-    let taskIds, assignmentMap;
-    if (aErr) {
-      // status column not yet migrated — fall back to task_id only
-      const { data: fallback, error: fbErr } = await supabase
-        .from('task_assignments')
-        .select('task_id')
-        .eq('user_id', userIdInt);
-      if (fbErr) throw fbErr;
-      if (!fallback || fallback.length === 0) return [];
-      taskIds = fallback.map(a => a.task_id);
-      assignmentMap = {};
-    } else {
-      if (!assignments || assignments.length === 0) return [];
-      taskIds = assignments.map(a => a.task_id);
-      assignmentMap = Object.fromEntries(assignments.map(a => [a.task_id, a]));
-    }
+    const taskIds = assignments.map(a => a.task_id);
+    const assignmentMap = Object.fromEntries(assignments.map(a => [a.task_id, a]));
 
-    // Try with per-user status columns; fall back if migration not yet run
-    let tasks;
-    const { data: tasksWithStatus, error: e1 } = await supabase
+    const { data: tasks, error } = await supabase
       .from('tasks')
-      .select(`*, task_assignments(user_id, status, users(id, name, email))`)
+      .select('*, task_assignments(user_id, status, users(id, name, email))')
       .in('id', taskIds)
       .in('approval_status', ['approved', 'rejected', 'pending'])
       .order('created_at', { ascending: false });
-
-    if (e1) {
-      const { data: tasksFallback, error: e2 } = await supabase
-        .from('tasks')
-        .select(`*, task_assignments(user_id, users(id, name, email))`)
-        .in('id', taskIds)
-        .in('approval_status', ['approved', 'rejected', 'pending'])
-        .order('created_at', { ascending: false });
-      if (e2) throw e2;
-      tasks = tasksFallback;
-    } else {
-      tasks = tasksWithStatus;
-    }
+    if (error) throw error;
 
     const creatorIds = [...new Set((tasks || []).map(t => t.assigned_by))];
     const { data: creators } = await supabase.from('users').select('id, name, email').in('id', creatorIds);
@@ -188,7 +156,6 @@ class Task {
       return {
         ...task,
         _id: task.id.toString(),
-        // Use per-user status from task_assignments
         status: myAssignment?.status || task.status,
         dueDate: task.due_date,
         stuckReason: myAssignment?.stuck_reason || task.stuck_reason,
@@ -207,43 +174,19 @@ class Task {
   static async findAssignedByUser(userId, company) {
     const userIdInt = parseInt(userId);
 
-    // Try with per-user status columns; fall back if migration not yet run
-    let tasks;
-    const { data: tasksWithStatus, error: e1 } = await supabase
+    const { data: tasks, error } = await supabase
       .from('tasks')
-      .select(`*, task_assignments(user_id, status, stuck_reason, rejection_reason, users(id, name, email))`)
+      .select('*, task_assignments(user_id, status, stuck_reason, rejection_reason, users(id, name, email))')
       .eq('assigned_by', userIdInt)
       .order('created_at', { ascending: false })
       .limit(1000);
+    if (error) throw error;
 
-    if (e1) {
-      const { data: tasksFallback, error: e2 } = await supabase
-        .from('tasks')
-        .select(`*, task_assignments(user_id, users(id, name, email))`)
-        .eq('assigned_by', userIdInt)
-        .order('created_at', { ascending: false })
-        .limit(1000);
-      if (e2) throw e2;
-      tasks = tasksFallback;
-    } else {
-      tasks = tasksWithStatus;
-    }
-
-    // Expand into one entry per assignee, each with their own per-user status
     const expanded = [];
     for (const task of (tasks || [])) {
       const assignments = task.task_assignments || [];
       if (assignments.length === 0) {
-        expanded.push({
-          ...task,
-          _id: task.id.toString(),
-          dueDate: task.due_date,
-          stuckReason: task.stuck_reason,
-          approvalStatus: task.approval_status,
-          approval_status: task.approval_status,
-          approved_at: task.approved_at,
-          assignedTo: null
-        });
+        expanded.push({ ...task, _id: task.id.toString(), dueDate: task.due_date, stuckReason: task.stuck_reason, approvalStatus: task.approval_status, approval_status: task.approval_status, approved_at: task.approved_at, assignedTo: null });
       } else {
         for (const assignment of assignments) {
           const assignee = assignment.users;
@@ -251,7 +194,6 @@ class Task {
           expanded.push({
             ...task,
             _id: task.id.toString(),
-            // Per-user status from task_assignments row
             status: assignment.status || task.status,
             dueDate: task.due_date,
             stuckReason: assignment.stuck_reason || task.stuck_reason,
@@ -364,49 +306,24 @@ class Task {
   static async findVisibleToUser(userId, userRole, userCompany) {
     const userIdInt = parseInt(userId);
 
-    // Step 1: get this user's assigned task IDs — try with extra columns, fall back to task_id only
-    let assignedTaskIds = new Set();
-    let assignmentMap = {};
-
+    // Fetch this user's assignment rows with per-user status
     const { data: ua, error: uaErr } = await supabase
       .from('task_assignments')
       .select('task_id, status, stuck_reason, rejection_reason')
       .eq('user_id', userIdInt);
+    if (uaErr) throw uaErr;
 
-    if (uaErr) {
-      console.warn('[findVisibleToUser] status columns missing, falling back:', uaErr.message);
-      const { data: uaFallback } = await supabase
-        .from('task_assignments')
-        .select('task_id')
-        .eq('user_id', userIdInt);
-      assignedTaskIds = new Set((uaFallback || []).map(a => a.task_id));
-    } else {
-      assignedTaskIds = new Set((ua || []).map(a => a.task_id));
-      assignmentMap = Object.fromEntries((ua || []).map(a => [a.task_id, a]));
-    }
+    const assignedTaskIds = new Set((ua || []).map(a => a.task_id));
+    const assignmentMap = Object.fromEntries((ua || []).map(a => [a.task_id, a]));
 
     console.log('[findVisibleToUser] userId:', userIdInt, '| assignedTaskIds:', [...assignedTaskIds]);
 
-    // Step 2: fetch all tasks — try with status join, fall back without
-    let allTasks = [];
-    const { data: t1, error: e1 } = await supabase
+    const { data: allTasks, error } = await supabase
       .from('tasks')
       .select('*, task_assignments(user_id, status, stuck_reason, rejection_reason, users(id, name, email))')
       .order('created_at', { ascending: false })
       .limit(200);
-
-    if (e1) {
-      console.warn('[findVisibleToUser] task_assignments status join failed, falling back:', e1.message);
-      const { data: t2, error: e2 } = await supabase
-        .from('tasks')
-        .select('*, task_assignments(user_id, users(id, name, email))')
-        .order('created_at', { ascending: false })
-        .limit(200);
-      if (e2) throw e2;
-      allTasks = t2 || [];
-    } else {
-      allTasks = t1 || [];
-    }
+    if (error) throw error;
 
     console.log('[findVisibleToUser] allTasks count:', allTasks.length);
 
@@ -415,15 +332,11 @@ class Task {
     const visibleTasks = allTasks.filter(task => {
       const isCreator = task.assigned_by === userIdInt;
       const isAssigned = assignedTaskIds.has(task.id);
-
       if (isCreator && task.company !== userCompany) return false;
-
       const myStatus = assignmentMap[task.id]?.status || task.status;
       if (task.approval_status === 'approved' && myStatus === 'Done' && task.updated_at) {
         if (Date.now() - new Date(task.updated_at).getTime() > thirtyDaysAgo) return false;
       }
-
-      // Self-assigned: isCreator AND isAssigned both true — always show
       if (isCreator) return true;
       if (isAssigned) return true;
       return false;
@@ -437,11 +350,9 @@ class Task {
 
     return visibleTasks.map(task => {
       const creator = creatorMap[task.assigned_by];
-      const isCreator = task.assigned_by === userIdInt;
       const myAssignment = assignmentMap[task.id];
       const allAssignees = task.task_assignments?.map(a => a.users).filter(Boolean) || [];
 
-      // Build assignedTo list — always include current user if they are assigned
       const list = allAssignees.length > 0
         ? allAssignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
         : [];
