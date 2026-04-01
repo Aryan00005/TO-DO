@@ -349,54 +349,58 @@ router.patch('/:taskId', auth, async (req, res) => {
       }
     }
     
-    // If it's a status update, validate progression
+    // If it's a status update, write to task_assignments (per-user), not tasks table
     if (status && !title) {
-      const currentStatus = task.status;
-      
-      // Define status progression rules
-      const statusProgression = {
-        'Not Started': ['Working on it', 'Stuck', 'Done'],
-        'Working on it': ['Stuck', 'Done', 'Not Started'],
-        'Stuck': ['Working on it', 'Done', 'Not Started'],
-        'Done': ['Working on it', 'Stuck', 'Not Started'],
-        'Pending Approval': ['Not Started', 'Working on it', 'Stuck', 'Done'] // Allow any transition from Pending
-      };
-      
-      // Update with stuck reason if provided
       const updateData = { status };
-      if (stuckReason) {
-        updateData.stuck_reason = stuckReason;
-      }
+      if (stuckReason) updateData.stuck_reason = stuckReason;
+
       // Clear rejection_reason if explicitly passed as null
       if (req.body.hasOwnProperty('rejection_reason') && req.body.rejection_reason === null) {
         updateData.rejection_reason = null;
-        updateData.approval_status = 'approved';
       }
-      
-      // When moving to Done: set pending ONLY if task was assigned by someone else (not self-assigned by admin)
+
+      // When moving to Done: set task-level approval_status to pending
+      // UNLESS it's a self-assigned admin task
       if (status === 'Done') {
-        // Fetch creator to check if this is a self-assigned admin task
         const isCreator = task.assigned_by === currentUser.id;
         const isAdmin = currentUser.role === 'admin';
-        if (isCreator && isAdmin) {
-          // Admin self-assigned — auto approve, no pending needed
-          updateData.approval_status = 'approved';
-        } else {
-          updateData.approval_status = 'pending';
+        if (!(isCreator && isAdmin)) {
+          // Update task-level approval_status to pending for creator to review
+          await supabase
+            .from('tasks')
+            .update({ approval_status: 'pending', rejection_reason: null })
+            .eq('id', req.params.taskId);
         }
-        updateData.rejection_reason = null;
       }
-      
-      const { data: updatedTask, error } = await supabase
-        .from('tasks')
+
+      // Write per-user status to task_assignments row
+      const { data: updatedAssignment, error: assignErr } = await supabase
+        .from('task_assignments')
         .update(updateData)
-        .eq('id', req.params.taskId)
+        .eq('task_id', req.params.taskId)
+        .eq('user_id', currentUser.id)
         .select()
         .single();
-      
-      if (error) throw error;
-      
-      return res.json({ message: 'Task status updated', task: updatedTask });
+
+      if (assignErr) throw assignErr;
+
+      // Return task with per-user status merged in
+      const { data: updatedTask } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('id', req.params.taskId)
+        .single();
+
+      return res.json({
+        message: 'Task status updated',
+        task: {
+          ...updatedTask,
+          _id: updatedTask.id.toString(),
+          status: updatedAssignment.status,
+          stuckReason: updatedAssignment.stuck_reason,
+          rejectionReason: updatedAssignment.rejection_reason
+        }
+      });
     }
     
     // If it's a full task update (creator or admin can edit)
@@ -446,10 +450,11 @@ router.patch('/:taskId', auth, async (req, res) => {
         // Delete existing assignments
         await supabase.from('task_assignments').delete().eq('task_id', req.params.taskId);
         
-        // Create new assignments
+        // Create new assignments with reset status
         const assignments = assigneeArray.map(userId => ({
           task_id: parseInt(req.params.taskId),
-          user_id: parseInt(userId)
+          user_id: parseInt(userId),
+          status: 'Not Started'
         }));
         
         await supabase.from('task_assignments').insert(assignments);
@@ -523,7 +528,8 @@ router.put('/:taskId', auth, async (req, res) => {
     
     const assignments = assigneeArray.map(userId => ({
       task_id: parseInt(req.params.taskId),
-      user_id: parseInt(userId)
+      user_id: parseInt(userId),
+      status: 'Not Started'
     }));
     
     await supabase.from('task_assignments').insert(assignments);
