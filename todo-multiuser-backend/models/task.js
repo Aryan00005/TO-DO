@@ -332,7 +332,8 @@ class Task {
     const visibleTasks = allTasks.filter(task => {
       const isCreator = task.assigned_by === userIdInt;
       const isAssigned = assignedTaskIds.has(task.id);
-      if (isCreator && task.company !== userCompany) return false;
+      // Only filter by company for creator tasks — but never hide self-assigned tasks
+      if (isCreator && !isAssigned && task.company !== userCompany) return false;
       const myStatus = assignmentMap[task.id]?.status || task.status;
       if (task.approval_status === 'approved' && myStatus === 'Done' && task.updated_at) {
         if (Date.now() - new Date(task.updated_at).getTime() > thirtyDaysAgo) return false;
