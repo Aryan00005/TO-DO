@@ -131,11 +131,23 @@ class Task {
       .from('task_assignments')
       .select('task_id, status, stuck_reason, rejection_reason')
       .eq('user_id', userIdInt);
-    if (aErr) throw aErr;
-    if (!assignments || assignments.length === 0) return [];
 
-    const taskIds = assignments.map(a => a.task_id);
-    const assignmentMap = Object.fromEntries(assignments.map(a => [a.task_id, a]));
+    let taskIds, assignmentMap;
+    if (aErr) {
+      // status column not yet migrated — fall back to task_id only
+      const { data: fallback, error: fbErr } = await supabase
+        .from('task_assignments')
+        .select('task_id')
+        .eq('user_id', userIdInt);
+      if (fbErr) throw fbErr;
+      if (!fallback || fallback.length === 0) return [];
+      taskIds = fallback.map(a => a.task_id);
+      assignmentMap = {};
+    } else {
+      if (!assignments || assignments.length === 0) return [];
+      taskIds = assignments.map(a => a.task_id);
+      assignmentMap = Object.fromEntries(assignments.map(a => [a.task_id, a]));
+    }
 
     const { data: tasks, error } = await supabase
       .from('tasks')
@@ -319,13 +331,25 @@ class Task {
   static async findVisibleToUser(userId, userRole, userCompany) {
     const userIdInt = parseInt(userId);
 
-    // Fetch this user's assignment rows with per-user status
-    const { data: userAssignments } = await supabase
+    // Fetch this user's assignment rows — select status only if column exists (graceful fallback)
+    const { data: userAssignments, error: uaErr } = await supabase
       .from('task_assignments')
       .select('task_id, status, stuck_reason, rejection_reason')
       .eq('user_id', userIdInt);
-    const assignedTaskIds = new Set((userAssignments || []).map(a => a.task_id));
-    const assignmentMap = Object.fromEntries((userAssignments || []).map(a => [a.task_id, a]));
+
+    // If query failed (e.g. status column not yet migrated), fall back to task_id only
+    let assignedTaskIds, assignmentMap;
+    if (uaErr) {
+      const { data: fallbackAssignments } = await supabase
+        .from('task_assignments')
+        .select('task_id')
+        .eq('user_id', userIdInt);
+      assignedTaskIds = new Set((fallbackAssignments || []).map(a => a.task_id));
+      assignmentMap = {};
+    } else {
+      assignedTaskIds = new Set((userAssignments || []).map(a => a.task_id));
+      assignmentMap = Object.fromEntries((userAssignments || []).map(a => [a.task_id, a]));
+    }
 
     const { data: allTasks, error } = await supabase
       .from('tasks')
