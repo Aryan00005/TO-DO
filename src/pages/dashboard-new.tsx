@@ -135,6 +135,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   const [showNewUserPassword, setShowNewUserPassword] = useState(false);
   const [addUserLoading, setAddUserLoading] = useState(false);
   const adminDataFetchedAt = React.useRef<number>(0);
+  const [userStats, setUserStats] = React.useState<Record<string, { toCount: number; toCompleted: number; toPercentage: number; byCount: number; byCompleted: number; byPercentage: number }>>({});
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -427,27 +428,55 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       .catch(() => {});
   }, [user._id]);
 
-  // Fetch pending users and task approvals for admin — cached for 60s
+  // Fetch pending users, task approvals, and per-user stats for admin
   useEffect(() => {
-    if (nav === "userapprovals" && user.role === 'admin') {
-      const now = Date.now();
-      if (now - adminDataFetchedAt.current < 60_000) return;
-      adminDataFetchedAt.current = now;
+    if (nav !== "userapprovals" || user.role !== 'admin') return;
+    const now = Date.now();
+    if (now - adminDataFetchedAt.current < 60_000) return;
+    adminDataFetchedAt.current = now;
 
-      const token = sessionStorage.getItem("jwt-token");
-      Promise.all([
-        axios.get("/auth/admin/all-users", { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get("/tasks/pending-approvals", { headers: { Authorization: `Bearer ${token}` } })
-      ])
-        .then(([usersRes, approvalsRes]) => {
-          setPendingUsers(usersRes.data);
-          setPendingTaskApprovals(approvalsRes.data);
-        })
-        .catch(err => {
-          adminDataFetchedAt.current = 0;
-          showToast("Error loading admin data: " + (err.response?.data?.message || err.message), "error");
-        });
-    }
+    const token = sessionStorage.getItem("jwt-token");
+    const headers = { Authorization: `Bearer ${token}` };
+
+    Promise.all([
+      axios.get("/auth/admin/all-users", { headers }),
+      axios.get("/tasks/pending-approvals", { headers })
+    ])
+      .then(async ([usersRes, approvalsRes]) => {
+        const allUsers: User[] = usersRes.data;
+        setPendingUsers(allUsers);
+        setPendingTaskApprovals(approvalsRes.data);
+
+        // Fetch real task stats per user from backend
+        const statsMap: typeof userStats = {};
+        await Promise.all(allUsers.map(async (u: User) => {
+          const uid = String(u._id || u.id);
+          try {
+            const res = await axios.get(`/tasks/user/${uid}`, { headers });
+            const userTasks: Task[] = (res.data || []).map(normalizeTask);
+            const toTasks = userTasks.filter(t => {
+              if (Array.isArray(t.assignedTo)) return t.assignedTo.some(a => String(typeof a === 'object' ? (a._id || (a as any).id) : a) === uid);
+              return String(typeof t.assignedTo === 'object' ? (t.assignedTo?._id || (t.assignedTo as any)?.id) : t.assignedTo) === uid;
+            });
+            const byTasks = userTasks.filter(t => String(typeof t.assignedBy === 'object' ? (t.assignedBy?._id || (t.assignedBy as any)?.id) : t.assignedBy) === uid);
+            const toCompleted = toTasks.filter(t => t.status === 'Done').length;
+            const byCompleted = byTasks.filter(t => t.status === 'Done').length;
+            statsMap[uid] = {
+              toCount: toTasks.length, toCompleted,
+              toPercentage: toTasks.length > 0 ? Math.round((toCompleted / toTasks.length) * 100) : 0,
+              byCount: byTasks.length, byCompleted,
+              byPercentage: byTasks.length > 0 ? Math.round((byCompleted / byTasks.length) * 100) : 0
+            };
+          } catch {
+            statsMap[uid] = { toCount: 0, toCompleted: 0, toPercentage: 0, byCount: 0, byCompleted: 0, byPercentage: 0 };
+          }
+        }));
+        setUserStats(statsMap);
+      })
+      .catch(err => {
+        adminDataFetchedAt.current = 0;
+        showToast("Error loading admin data: " + (err.response?.data?.message || err.message), "error");
+      });
   }, [nav, user._id, user.role, showToast]);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -2554,7 +2583,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   </div>
                   
                   {(() => {
-                    const stats = getUserCompletionStats(String(pendingUser._id || pendingUser.id));
+                    const stats = userStats[String(pendingUser._id || pendingUser.id)] || { toCount: 0, toCompleted: 0, toPercentage: 0, byCount: 0, byCompleted: 0, byPercentage: 0 };
                     return (
                       <div style={{ marginTop: 12, padding: 12, background: theme === 'dark' ? '#1f2937' : '#f0f9ff', borderRadius: 8, fontSize: 13 }}>
                         <div style={{ marginBottom: 6, color: theme === 'dark' ? '#d1d5db' : '#374151' }}>
