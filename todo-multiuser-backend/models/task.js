@@ -164,35 +164,46 @@ class Task {
   static async findAssignedByUser(userId, company) {
     const userIdInt = parseInt(userId);
 
-    let query = supabase
+    const { data: tasks, error } = await supabase
       .from('tasks')
       .select(`*, task_assignments(user_id, users(id, name, email))`)
       .eq('assigned_by', userIdInt)
       .order('created_at', { ascending: false })
       .limit(1000);
 
-    // Only filter by company if tasks have correct company field
-    // Removed company filter — tasks may have stale company values
-
-    const { data: tasks, error } = await query;
-
     if (error) throw error;
 
-    return (tasks || []).map(task => {
+    // Expand multi-assignee tasks into separate entries per assignee
+    const expanded = [];
+    for (const task of (tasks || [])) {
       const assignees = task.task_assignments?.map(a => a.users).filter(Boolean) || [];
-      return {
-        ...task,
-        _id: task.id.toString(),
-        dueDate: task.due_date,
-        stuckReason: task.stuck_reason,
-        approvalStatus: task.approval_status,
-        approval_status: task.approval_status,
-        approved_at: task.approved_at,
-        assignedTo: assignees.length === 1
-          ? { _id: assignees[0].id.toString(), name: assignees[0].name, email: assignees[0].email }
-          : assignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
-      };
-    });
+      if (assignees.length === 0) {
+        expanded.push({
+          ...task,
+          _id: task.id.toString(),
+          dueDate: task.due_date,
+          stuckReason: task.stuck_reason,
+          approvalStatus: task.approval_status,
+          approval_status: task.approval_status,
+          approved_at: task.approved_at,
+          assignedTo: null
+        });
+      } else {
+        for (const assignee of assignees) {
+          expanded.push({
+            ...task,
+            _id: task.id.toString(),
+            dueDate: task.due_date,
+            stuckReason: task.stuck_reason,
+            approvalStatus: task.approval_status,
+            approval_status: task.approval_status,
+            approved_at: task.approved_at,
+            assignedTo: { _id: assignee.id.toString(), name: assignee.name, email: assignee.email }
+          });
+        }
+      }
+    }
+    return expanded;
   }
 
   static async updateTaskStatus(taskId, status, remark = null) {

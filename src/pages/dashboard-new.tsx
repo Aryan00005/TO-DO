@@ -245,9 +245,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         axios.get(`/notifications/${user._id}`, { headers: { Authorization: `Bearer ${token}` } }),
         axios.get(`/tasks/assignedBy/${user._id}`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
+      const assignedNormalized = assignedRes.data.map((t: any) => ({
+        ...normalizeTask(t),
+        _id: t.assignedTo
+          ? `${t.id || t._id}-${typeof t.assignedTo === 'object' ? (t.assignedTo._id || t.assignedTo.id) : t.assignedTo}`
+          : String(t.id || t._id)
+      }));
       setTasks(tasksRes.data.map(normalizeTask));
       setNotifications(notificationsRes.data);
-      setAssignedTasks(assignedRes.data.map(normalizeTask));
+      setAssignedTasks(assignedNormalized);
       setLastUpdated(new Date());
     } catch (err: any) {
       if (err.response?.status === 401) {
@@ -428,7 +434,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     axios.get(`/tasks/assignedBy/${user._id}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
-      .then(res => setAssignedTasks(res.data.map(normalizeTask)))
+      .then(res => {
+        // Each entry already has a single assignedTo from backend expansion
+        // Add a unique composite key for multi-assignee entries
+        const normalized = res.data.map((t: any) => ({
+          ...normalizeTask(t),
+          _id: t.assignedTo
+            ? `${t.id || t._id}-${typeof t.assignedTo === 'object' ? (t.assignedTo._id || t.assignedTo.id) : t.assignedTo}`
+            : String(t.id || t._id)
+        }));
+        setAssignedTasks(normalized);
+      })
       .catch(() => {});
   }, [user._id]);
 
