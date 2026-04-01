@@ -378,6 +378,10 @@ class Task {
           const list = allAssignees.length > 0
             ? allAssignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
             : (assignedTaskIds.has(task.id) ? [{ _id: String(userIdInt), name: '', email: '' }] : []);
+          // Self-assigned: ensure current user always appears in assignedTo
+          if (isCreator && assignedTaskIds.has(task.id) && !list.some(u => u._id === String(userIdInt))) {
+            list.push({ _id: String(userIdInt), name: '', email: '' });
+          }
           if (list.length === 0) return { _id: String(userIdInt), name: '', email: '' };
           return list.length === 1 ? list[0] : list;
         })()

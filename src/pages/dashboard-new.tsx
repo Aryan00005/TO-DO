@@ -813,23 +813,33 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     return matchesSearch && matchesStatus && matchesPriority && matchesDateRange && matchesAssignedBy && matchesAssignedTo;
   }), [tasks, searchDebounce, filterStatus, filterPriority, filterDateRange, filterAssignedBy, filterAssignedTo]);
 
-  // Tasks Board: tasks assigned TO me by others + self-assigned tasks (creator == assignee)
+  // Tasks Board: tasks assigned TO me (includes self-assigned where I am both creator and assignee)
   const tasksAssignedToMe = React.useMemo(() => filteredTasks.filter(task => {
     if (!task.assignedTo) return false;
     const userId = String(user._id);
 
+    // Check if current user is in assignedTo
     const isAssignedToMe = Array.isArray(task.assignedTo)
       ? task.assignedTo.some(u => String(typeof u === 'object' ? (u._id || u.id) : u) === userId)
       : String(typeof task.assignedTo === 'object' ? (task.assignedTo._id || task.assignedTo.id) : task.assignedTo) === userId;
 
-    if (!isAssignedToMe) return false;
+    if (isAssignedToMe) return true;
 
-    // If assigned to me by someone else OR self-assigned — show on kanban
+    // Self-assigned fallback: if I am the creator AND assignedBy is me,
+    // the backend may have returned assignedTo as my own object with empty name
+    // (fallback path in findVisibleToUser). Catch it here.
     const assignedById = String(typeof task.assignedBy === 'object' ? (task.assignedBy?._id || task.assignedBy?.id) : task.assignedBy);
-    const isSelfAssigned = assignedById === userId;
-    const isAssignedByOther = assignedById !== userId;
+    if (assignedById === userId) {
+      // Only show on kanban if I am also an assignee (self-assigned), not just creator
+      // Check assignedTo contains me even with empty name
+      if (Array.isArray(task.assignedTo)) {
+        return task.assignedTo.some(u => String(typeof u === 'object' ? (u._id || u.id) : u) === userId);
+      }
+      const aId = String(typeof task.assignedTo === 'object' ? (task.assignedTo._id || task.assignedTo.id) : task.assignedTo);
+      return aId === userId;
+    }
 
-    return isSelfAssigned || isAssignedByOther;
+    return false;
   }), [filteredTasks, user._id]);
 
   // Task List: For regular users show only their tasks, for admin show all company tasks
