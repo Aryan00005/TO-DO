@@ -796,19 +796,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     return matchesSearch && matchesStatus && matchesPriority && matchesDateRange && matchesAssignedBy && matchesAssignedTo;
   }), [tasks, searchDebounce, filterStatus, filterPriority, filterDateRange, filterAssignedBy, filterAssignedTo]);
 
-  // Tasks Board: show tasks where user is an assignee OR self-assigned (creator == assignee)
+  // Tasks Board: tasks assigned TO me by others + self-assigned tasks (creator == assignee)
   const tasksAssignedToMe = React.useMemo(() => filteredTasks.filter(task => {
     if (!task.assignedTo) return false;
-    if (Array.isArray(task.assignedTo)) {
-      return task.assignedTo.some(u => {
-        const uId = typeof u === 'object' ? (u._id || u.id) : u;
-        return String(uId) === String(user._id);
-      });
-    }
-    const assignedToId = typeof task.assignedTo === 'object' ? (task.assignedTo._id || task.assignedTo.id) : task.assignedTo;
-    // Also show if user is both creator and the single assignee (self-assigned)
-    const assignedById = typeof task.assignedBy === 'object' ? (task.assignedBy?._id || task.assignedBy?.id) : task.assignedBy;
-    return String(assignedToId) === String(user._id) || String(assignedById) === String(user._id);
+    const userId = String(user._id);
+
+    const isAssignedToMe = Array.isArray(task.assignedTo)
+      ? task.assignedTo.some(u => String(typeof u === 'object' ? (u._id || u.id) : u) === userId)
+      : String(typeof task.assignedTo === 'object' ? (task.assignedTo._id || task.assignedTo.id) : task.assignedTo) === userId;
+
+    if (!isAssignedToMe) return false;
+
+    // If assigned to me by someone else OR self-assigned — show on kanban
+    const assignedById = String(typeof task.assignedBy === 'object' ? (task.assignedBy?._id || task.assignedBy?.id) : task.assignedBy);
+    const isSelfAssigned = assignedById === userId;
+    const isAssignedByOther = assignedById !== userId;
+
+    return isSelfAssigned || isAssignedByOther;
   }), [filteredTasks, user._id]);
 
   // Task List: For regular users show only their tasks, for admin show all company tasks
