@@ -507,6 +507,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     const taskEditing = editingTask;
 
     const hasAdminAssignee = !editingTask && assignedTo.some(id =>
+      id !== String(user._id) && id !== String((user as any).id) &&
       users.find(u => (u._id || u.id) === id)?.role === 'admin'
     );
 
