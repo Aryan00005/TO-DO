@@ -225,25 +225,14 @@ class Task {
 
   // New methods for approval system
   static async approveTask(taskId, adminId) {
-    console.log('Task.approveTask called with:', { taskId, adminId });
-    
     const { data, error } = await supabase
       .from('tasks')
-      .update({ 
-        approval_status: 'approved',
-        status: 'Not Started'
-      })
+      .update({ approval_status: 'approved', status: 'Not Started' })
       .eq('id', taskId)
-      .eq('approval_status', 'pending')
       .select()
       .single();
-    
-    if (error) {
-      console.error('Task approval error:', error);
-      throw error;
-    }
-    
-    console.log('Task approved successfully:', data);
+
+    if (error) throw error;
     return data;
   }
 

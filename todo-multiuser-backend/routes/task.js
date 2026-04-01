@@ -373,9 +373,17 @@ router.patch('/:taskId', auth, async (req, res) => {
         updateData.approval_status = 'approved';
       }
       
-      // When moving to Done: always set pending and clear rejection_reason
+      // When moving to Done: set pending ONLY if task was assigned by someone else (not self-assigned by admin)
       if (status === 'Done') {
-        updateData.approval_status = 'pending';
+        // Fetch creator to check if this is a self-assigned admin task
+        const isCreator = task.assigned_by === currentUser.id;
+        const isAdmin = currentUser.role === 'admin';
+        if (isCreator && isAdmin) {
+          // Admin self-assigned — auto approve, no pending needed
+          updateData.approval_status = 'approved';
+        } else {
+          updateData.approval_status = 'pending';
+        }
         updateData.rejection_reason = null;
       }
       
