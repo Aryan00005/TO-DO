@@ -94,10 +94,15 @@ class Task {
         resolvedIds = [...resolvedIds, ...(namedUsers?.map(u => u.id) || [])];
       }
 
-      const initialStatus = approvalStatus === 'pending' ? 'Pending Approval' : 'Not Started';
-      const assignments = resolvedIds.map(userId => ({ task_id: task.id, user_id: userId, status: initialStatus }));
-      const { error: assignError } = await supabase.from('task_assignments').insert(assignments);
-      if (assignError) throw assignError;
+      // Insert assignments — try with status column, fall back without it if not yet migrated
+      const assignmentsWithStatus = resolvedIds.map(userId => ({ task_id: task.id, user_id: userId, status: initialStatus }));
+      const { error: assignError } = await supabase.from('task_assignments').insert(assignmentsWithStatus);
+      if (assignError) {
+        // status column may not exist yet — retry without it
+        const assignmentsBasic = resolvedIds.map(userId => ({ task_id: task.id, user_id: userId }));
+        const { error: assignError2 } = await supabase.from('task_assignments').insert(assignmentsBasic);
+        if (assignError2) throw assignError2;
+      }
 
       // Batch fetch assignee roles + creator name in parallel
       const Notification = require('./notification');
@@ -358,62 +363,72 @@ class Task {
   static async findVisibleToUser(userId, userRole, userCompany) {
     const userIdInt = parseInt(userId);
 
-    // Fetch this user's assignment rows — select status only if column exists (graceful fallback)
-    const { data: userAssignments, error: uaErr } = await supabase
+    // Step 1: get this user's assigned task IDs — try with extra columns, fall back to task_id only
+    let assignedTaskIds = new Set();
+    let assignmentMap = {};
+
+    const { data: ua, error: uaErr } = await supabase
       .from('task_assignments')
       .select('task_id, status, stuck_reason, rejection_reason')
       .eq('user_id', userIdInt);
 
-    // If query failed (e.g. status column not yet migrated), fall back to task_id only
-    let assignedTaskIds, assignmentMap;
     if (uaErr) {
-      const { data: fallbackAssignments } = await supabase
+      console.warn('[findVisibleToUser] status columns missing, falling back:', uaErr.message);
+      const { data: uaFallback } = await supabase
         .from('task_assignments')
         .select('task_id')
         .eq('user_id', userIdInt);
-      assignedTaskIds = new Set((fallbackAssignments || []).map(a => a.task_id));
-      assignmentMap = {};
+      assignedTaskIds = new Set((uaFallback || []).map(a => a.task_id));
     } else {
-      assignedTaskIds = new Set((userAssignments || []).map(a => a.task_id));
-      assignmentMap = Object.fromEntries((userAssignments || []).map(a => [a.task_id, a]));
+      assignedTaskIds = new Set((ua || []).map(a => a.task_id));
+      assignmentMap = Object.fromEntries((ua || []).map(a => [a.task_id, a]));
     }
 
-    // Try to fetch with per-user status columns; fall back if migration not yet run
-    let allTasks;
-    const { data: tasksWithStatus, error: e1 } = await supabase
+    console.log('[findVisibleToUser] userId:', userIdInt, '| assignedTaskIds:', [...assignedTaskIds]);
+
+    // Step 2: fetch all tasks — try with status join, fall back without
+    let allTasks = [];
+    const { data: t1, error: e1 } = await supabase
       .from('tasks')
-      .select(`*, task_assignments(user_id, status, stuck_reason, rejection_reason, users(id, name, email))`)
+      .select('*, task_assignments(user_id, status, stuck_reason, rejection_reason, users(id, name, email))')
       .order('created_at', { ascending: false })
       .limit(200);
 
     if (e1) {
-      // status column not yet in task_assignments — fall back to basic select
-      const { data: tasksFallback, error: e2 } = await supabase
+      console.warn('[findVisibleToUser] task_assignments status join failed, falling back:', e1.message);
+      const { data: t2, error: e2 } = await supabase
         .from('tasks')
-        .select(`*, task_assignments(user_id, users(id, name, email))`)
+        .select('*, task_assignments(user_id, users(id, name, email))')
         .order('created_at', { ascending: false })
         .limit(200);
       if (e2) throw e2;
-      allTasks = tasksFallback;
+      allTasks = t2 || [];
     } else {
-      allTasks = tasksWithStatus;
+      allTasks = t1 || [];
     }
+
+    console.log('[findVisibleToUser] allTasks count:', allTasks.length);
 
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
-    const visibleTasks = (allTasks || []).filter(task => {
+    const visibleTasks = allTasks.filter(task => {
       const isCreator = task.assigned_by === userIdInt;
       const isAssigned = assignedTaskIds.has(task.id);
+
       if (isCreator && task.company !== userCompany) return false;
-      // Use per-user status for Done+approved hide logic
+
       const myStatus = assignmentMap[task.id]?.status || task.status;
       if (task.approval_status === 'approved' && myStatus === 'Done' && task.updated_at) {
         if (Date.now() - new Date(task.updated_at).getTime() > thirtyDaysAgo) return false;
       }
+
+      // Self-assigned: isCreator AND isAssigned both true — always show
       if (isCreator) return true;
       if (isAssigned) return true;
       return false;
     });
+
+    console.log('[findVisibleToUser] visibleTasks:', visibleTasks.map(t => ({ id: t.id, title: t.title, isCreator: t.assigned_by === userIdInt, isAssigned: assignedTaskIds.has(t.id) })));
 
     const creatorIds = [...new Set(visibleTasks.map(t => t.assigned_by))];
     const { data: creators } = await supabase.from('users').select('id, name, email').in('id', creatorIds);
@@ -425,13 +440,24 @@ class Task {
       const myAssignment = assignmentMap[task.id];
       const allAssignees = task.task_assignments?.map(a => a.users).filter(Boolean) || [];
 
+      // Build assignedTo list — always include current user if they are assigned
+      const list = allAssignees.length > 0
+        ? allAssignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
+        : [];
+
+      // Guarantee current user appears in assignedTo if they are in task_assignments
+      if (assignedTaskIds.has(task.id) && !list.some(u => u._id === String(userIdInt))) {
+        list.push({ _id: String(userIdInt), name: '', email: '' });
+      }
+
+      const assignedTo = list.length === 0
+        ? { _id: String(userIdInt), name: '', email: '' }
+        : list.length === 1 ? list[0] : list;
+
       return {
         ...task,
         _id: task.id.toString(),
-        // Per-user status: assignees see their own, creator sees task-level
-        status: isCreator && !myAssignment
-          ? task.status
-          : (myAssignment?.status || task.status),
+        status: myAssignment?.status || task.status,
         dueDate: task.due_date,
         stuckReason: myAssignment?.stuck_reason || task.stuck_reason,
         rejectionReason: myAssignment?.rejection_reason || task.rejection_reason,
@@ -439,17 +465,7 @@ class Task {
         approval_status: task.approval_status,
         approved_at: task.approved_at,
         assignedBy: creator ? { _id: creator.id.toString(), name: creator.name, email: creator.email } : null,
-        assignedTo: (() => {
-          const list = allAssignees.length > 0
-            ? allAssignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
-            : (assignedTaskIds.has(task.id) ? [{ _id: String(userIdInt), name: '', email: '' }] : []);
-          // Self-assigned: ensure current user always appears in assignedTo
-          if (isCreator && assignedTaskIds.has(task.id) && !list.some(u => u._id === String(userIdInt))) {
-            list.push({ _id: String(userIdInt), name: '', email: '' });
-          }
-          if (list.length === 0) return { _id: String(userIdInt), name: '', email: '' };
-          return list.length === 1 ? list[0] : list;
-        })()
+        assignedTo
       };
     });
   }
