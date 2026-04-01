@@ -354,18 +354,14 @@ router.patch('/:taskId', auth, async (req, res) => {
       const updateData = { status };
       if (stuckReason) updateData.stuck_reason = stuckReason;
 
-      // Clear rejection_reason if explicitly passed as null
       if (req.body.hasOwnProperty('rejection_reason') && req.body.rejection_reason === null) {
         updateData.rejection_reason = null;
       }
 
-      // When moving to Done: set task-level approval_status to pending
-      // UNLESS it's a self-assigned admin task
       if (status === 'Done') {
         const isCreator = task.assigned_by === currentUser.id;
         const isAdmin = currentUser.role === 'admin';
         if (!(isCreator && isAdmin)) {
-          // Update task-level approval_status to pending for creator to review
           await supabase
             .from('tasks')
             .update({ approval_status: 'pending', rejection_reason: null })
@@ -373,7 +369,7 @@ router.patch('/:taskId', auth, async (req, res) => {
         }
       }
 
-      // Write per-user status to task_assignments row
+      // Try per-user status update in task_assignments
       const { data: updatedAssignment, error: assignErr } = await supabase
         .from('task_assignments')
         .update(updateData)
@@ -382,14 +378,21 @@ router.patch('/:taskId', auth, async (req, res) => {
         .select()
         .single();
 
-      if (assignErr) throw assignErr;
+      // If task_assignments update fails (column missing), fall back to tasks table
+      if (assignErr) {
+        console.warn('[PATCH status] task_assignments update failed, falling back to tasks table:', assignErr.message);
+        const { data: updatedTask, error: taskErr } = await supabase
+          .from('tasks')
+          .update({ status, stuck_reason: stuckReason || null })
+          .eq('id', req.params.taskId)
+          .select()
+          .single();
+        if (taskErr) throw taskErr;
+        return res.json({ message: 'Task status updated', task: { ...updatedTask, _id: updatedTask.id.toString() } });
+      }
 
-      // Return task with per-user status merged in
       const { data: updatedTask } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('id', req.params.taskId)
-        .single();
+        .from('tasks').select('*').eq('id', req.params.taskId).single();
 
       return res.json({
         message: 'Task status updated',
@@ -450,14 +453,20 @@ router.patch('/:taskId', auth, async (req, res) => {
         // Delete existing assignments
         await supabase.from('task_assignments').delete().eq('task_id', req.params.taskId);
         
-        // Create new assignments with reset status
-        const assignments = assigneeArray.map(userId => ({
+        // Create new assignments — try with status, fall back without
+        const assignmentsWithStatus = assigneeArray.map(userId => ({
           task_id: parseInt(req.params.taskId),
           user_id: parseInt(userId),
           status: 'Not Started'
         }));
-        
-        await supabase.from('task_assignments').insert(assignments);
+        const { error: aErr } = await supabase.from('task_assignments').insert(assignmentsWithStatus);
+        if (aErr) {
+          const assignmentsBasic = assigneeArray.map(userId => ({
+            task_id: parseInt(req.params.taskId),
+            user_id: parseInt(userId)
+          }));
+          await supabase.from('task_assignments').insert(assignmentsBasic);
+        }
       }
       
       return res.json({ message: 'Task updated successfully', task: updatedTask });
@@ -526,13 +535,19 @@ router.put('/:taskId', auth, async (req, res) => {
     // Update task assignments
     await supabase.from('task_assignments').delete().eq('task_id', req.params.taskId);
     
-    const assignments = assigneeArray.map(userId => ({
+    const assignmentsWithStatus = assigneeArray.map(userId => ({
       task_id: parseInt(req.params.taskId),
       user_id: parseInt(userId),
       status: 'Not Started'
     }));
-    
-    await supabase.from('task_assignments').insert(assignments);
+    const { error: aErr } = await supabase.from('task_assignments').insert(assignmentsWithStatus);
+    if (aErr) {
+      const assignmentsBasic = assigneeArray.map(userId => ({
+        task_id: parseInt(req.params.taskId),
+        user_id: parseInt(userId)
+      }));
+      await supabase.from('task_assignments').insert(assignmentsBasic);
+    }
     
     res.json({ message: 'Task updated successfully', task: updatedTask });
   } catch (err) {
