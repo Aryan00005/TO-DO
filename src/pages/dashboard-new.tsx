@@ -265,31 +265,35 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       return;
     }
 
-    // Capture old status for revert
+    // Capture old task state for revert
     const oldTask = tasks.find(t => t._id === taskId);
     const oldStatus = oldTask?.status;
-    
-    // Update UI immediately — batch filterStatus reset with task update
+    const wasRejected = !!oldTask?.rejectionReason;
+
+    // Update UI immediately — clear rejectionReason if task was rejected and is being moved
     setFilterStatus('all');
     setTasks(prev => prev.map(task =>
-      task._id === taskId ? { ...task, status: newStatus } : task
+      task._id === taskId ? { ...task, status: newStatus, rejectionReason: undefined, approvalStatus: 'approved' as const } : task
     ));
     setAssignedTasks(prev => prev.map(task =>
-      task._id === taskId ? { ...task, status: newStatus } : task
+      task._id === taskId ? { ...task, status: newStatus, rejectionReason: undefined, approvalStatus: 'approved' as const } : task
     ));
-    
+
     showToast(`Task moved to ${newStatus}!`, "success");
-    
+
     try {
       const token = sessionStorage.getItem("jwt-token");
-      await axios.patch(`/tasks/${taskId}`, { status: newStatus }, {
+      const body: any = { status: newStatus };
+      // If task was rejected, clear rejection_reason on backend too
+      if (wasRejected) body.rejection_reason = null;
+      await axios.patch(`/tasks/${taskId}`, body, {
         headers: { Authorization: `Bearer ${token}` }
       });
     } catch (err: any) {
-      // Revert optimistic update to old status
+      // Revert optimistic update
       if (oldStatus) {
-        setTasks(prev => prev.map(task => task._id === taskId ? { ...task, status: oldStatus } : task));
-        setAssignedTasks(prev => prev.map(task => task._id === taskId ? { ...task, status: oldStatus } : task));
+        setTasks(prev => prev.map(task => task._id === taskId ? { ...task, status: oldStatus, rejectionReason: oldTask?.rejectionReason, approvalStatus: oldTask?.approvalStatus } : task));
+        setAssignedTasks(prev => prev.map(task => task._id === taskId ? { ...task, status: oldStatus, rejectionReason: oldTask?.rejectionReason, approvalStatus: oldTask?.approvalStatus } : task));
       }
       showToast("Failed to update task", "error");
     }
@@ -792,7 +796,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     return matchesSearch && matchesStatus && matchesPriority && matchesDateRange && matchesAssignedBy && matchesAssignedTo;
   }), [tasks, searchDebounce, filterStatus, filterPriority, filterDateRange, filterAssignedBy, filterAssignedTo]);
 
-  // Tasks Board: show tasks where user is an assignee (including self-assigned tasks)
+  // Tasks Board: show tasks where user is an assignee OR self-assigned (creator == assignee)
   const tasksAssignedToMe = React.useMemo(() => filteredTasks.filter(task => {
     if (!task.assignedTo) return false;
     if (Array.isArray(task.assignedTo)) {
@@ -802,7 +806,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       });
     }
     const assignedToId = typeof task.assignedTo === 'object' ? (task.assignedTo._id || task.assignedTo.id) : task.assignedTo;
-    return String(assignedToId) === String(user._id);
+    // Also show if user is both creator and the single assignee (self-assigned)
+    const assignedById = typeof task.assignedBy === 'object' ? (task.assignedBy?._id || task.assignedBy?.id) : task.assignedBy;
+    return String(assignedToId) === String(user._id) || String(assignedById) === String(user._id);
   }), [filteredTasks, user._id]);
 
   // Task List: For regular users show only their tasks, for admin show all company tasks

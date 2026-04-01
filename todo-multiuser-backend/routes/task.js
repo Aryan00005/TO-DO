@@ -367,6 +367,11 @@ router.patch('/:taskId', auth, async (req, res) => {
       if (stuckReason) {
         updateData.stuck_reason = stuckReason;
       }
+      // Clear rejection_reason if explicitly passed as null
+      if (req.body.hasOwnProperty('rejection_reason') && req.body.rejection_reason === null) {
+        updateData.rejection_reason = null;
+        updateData.approval_status = 'approved';
+      }
       
       // When moving to Done: always set pending and clear rejection_reason
       if (status === 'Done') {
