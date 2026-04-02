@@ -867,7 +867,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     if (diffHours < 1) return 'Just now';
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 2) return `${diffDays}d ago`;
-    return taskDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return taskDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
   // Calculate completion percentages for users
@@ -1362,7 +1362,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                               {task.dueDate && (
                                 <div style={{ color: "#2563eb", fontSize: 11, marginBottom: 2 }}>
                                   <FaCalendar style={{ marginRight: 4 }} />
-                                  Due: {new Date(task.dueDate).toLocaleDateString()}
+                                  Due: {new Date(task.dueDate).toLocaleDateString('en-GB')}
                                 </div>
                               )}
                               {isOverdue(task) && (
@@ -1516,7 +1516,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               {task.dueDate && (
                 <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
                   <FaCalendar style={{ marginRight: 4 }} />
-                  Due: {new Date(task.dueDate).toLocaleDateString()}
+                  Due: {new Date(task.dueDate).toLocaleDateString('en-GB')}
                 </div>
               )}
               <div style={{
@@ -1672,7 +1672,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 {task.dueDate && (
                   <div style={{ color: "#22c55e", fontSize: 13, marginBottom: 4 }}>
                     <FaCalendar style={{ marginRight: 4 }} />
-                    Completed: {new Date(task.dueDate).toLocaleDateString()}
+                    Completed: {new Date(task.dueDate).toLocaleDateString('en-GB')}
                   </div>
                 )}
                 <div style={{
@@ -1849,7 +1849,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               {task.dueDate && (
                 <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
                   <FaCalendar style={{ marginRight: 4 }} />
-                  Due: {new Date(task.dueDate).toLocaleDateString()}
+                  Due: {new Date(task.dueDate).toLocaleDateString('en-GB')}
                 </div>
               )}
               <div style={{
@@ -2179,7 +2179,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   {task.dueDate && (
                     <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
                       <FaCalendar style={{ marginRight: 4 }} />
-                      Due: {new Date(task.dueDate).toLocaleDateString()}
+                      Due: {new Date(task.dueDate).toLocaleDateString('en-GB')}
                     </div>
                   )}
                   
@@ -2490,7 +2490,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   </div>
                   
                   <div style={{ fontSize: 12, color: "#2563eb", marginBottom: 12 }}>
-                    <b>Due:</b> {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No due date'}
+                    <b>Due:</b> {task.dueDate ? new Date(task.dueDate).toLocaleDateString('en-GB') : 'No due date'}
                   </div>
                   
                   <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
@@ -3480,7 +3480,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', fontWeight: 600 }}>Due Date</div>
                   <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : '#374151' }}>
-                    {new Date(selectedTaskDetails.dueDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                    {new Date(selectedTaskDetails.dueDate).toLocaleDateString('en-GB')}
                   </div>
                 </div>
               )}
@@ -3610,7 +3610,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                         color: theme === 'dark' ? '#9ca3af' : '#6b7280',
                         marginBottom: isApprovalNotification ? 8 : 0
                       }}>
-                        {new Date(notification.createdAt || notification.created_at || '').toLocaleString()}
+                        {new Date(notification.createdAt || notification.created_at || '').toLocaleDateString('en-GB')}
                       </div>
                       
                       {isApprovalNotification && user.role === 'admin' && (
