@@ -9,13 +9,9 @@ class Notification {
   static async create(userId, message) {
     const { data, error } = await supabase
       .from('notifications')
-      .insert({
-        user_id: userId,
-        message
-      })
+      .insert({ user_id: userId, message })
       .select()
       .single();
-    
     if (error) throw error;
     return data;
   }
@@ -25,8 +21,8 @@ class Notification {
       .from('notifications')
       .select('*')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-    
+      .order('created_at', { ascending: false })
+      .range(0, 19);
     if (error) throw error;
     return data;
   }
@@ -38,7 +34,6 @@ class Notification {
       .eq('id', notificationId)
       .select()
       .single();
-    
     if (error) throw error;
     return data;
   }
@@ -50,7 +45,6 @@ class Notification {
       .eq('user_id', userId)
       .eq('is_read', false)
       .select();
-    
     if (error) throw error;
     return data;
   }
@@ -61,7 +55,6 @@ class Notification {
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId)
       .eq('is_read', false);
-    
     if (error) throw error;
     return count || 0;
   }

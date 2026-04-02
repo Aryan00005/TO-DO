@@ -79,21 +79,12 @@ router.get('/debug-all', auth, async (req, res) => {
 // Get all visible tasks for user
 router.get('/visible', auth, async (req, res) => {
   try {
-    console.log('🔍 /tasks/visible called for user:', req.user.id);
-    
     const currentUser = await User.findById(req.user.id);
     if (!currentUser) {
-      console.log('❌ User not found:', req.user.id);
       return res.status(404).json({ message: 'User not found' });
     }
-    
-    console.log('👤 Current user:', { id: currentUser.id, role: currentUser.role, company: currentUser.company });
 
     const tasks = await Task.findVisibleToUser(currentUser.id, currentUser.role, currentUser.company);
-    
-    console.log('📋 Tasks returned:', tasks.length);
-    console.log('📋 Task details:', tasks.map(t => ({ id: t._id, title: t.title, approval_status: t.approval_status, company: t.company })));
-    
     res.json(tasks);
   } catch (err) {
     console.error('❌ Error fetching visible tasks:', err);
@@ -189,7 +180,8 @@ router.get('/assignedToOnly/:userId', auth, async (req, res) => {
 // Get tasks assigned by user (show tasks created by current user)
 router.get('/assignedBy/:userId', auth, async (req, res) => {
   try {
-    const tasks = await Task.findAssignedByUser(req.params.userId);
+    const currentUser = await User.findById(req.user.id);
+    const tasks = await Task.findAssignedByUser(req.params.userId, currentUser?.company);
     res.json(tasks);
   } catch (err) {
     console.error('Error fetching tasks created by user:', err);
@@ -314,91 +306,89 @@ router.patch('/:taskId', auth, async (req, res) => {
       .eq('id', req.params.taskId)
       .single();
     
-    // Handle approval/rejection (creator only)
+    // Handle approval/rejection — canUserUpdateTask already verified access
     if (approval_status || rejection_reason) {
-      if (!task || task.assigned_by !== currentUser.id) {
-        return res.status(403).json({ message: 'Only task creator can approve or reject tasks.' });
+      if (!task) {
+        return res.status(404).json({ message: 'Task not found' });
       }
-      
       const updateData = {};
       if (approval_status === 'approved') {
-        updateData.approval_status = 'approved';
+        // Delete task completely on approval
+        const { error: deleteError } = await supabase
+          .from('tasks')
+          .delete()
+          .eq('id', req.params.taskId);
+        if (deleteError) throw deleteError;
+
+        const Notification = require('../models/notification');
+        const assigneeIds = task.task_assignments?.map(a => a.user_id) || [];
+        for (const assigneeId of assigneeIds) {
+          await Notification.create(assigneeId, `Task "${task.title}" has been approved by creator`);
+        }
+        return res.json({ message: 'Task approved and deleted successfully' });
       } else if (approval_status) {
         updateData.approval_status = approval_status;
       }
       
       if (rejection_reason) {
-        updateData.status = 'Working on it';
-        updateData.approval_status = 'rejected';
-        updateData.rejection_reason = rejection_reason;
+        // Direct update — bypass updateData pattern to ensure all fields are written
+        const { data: rejectedTask, error: rejectError } = await supabase
+          .from('tasks')
+          .update({ status: 'Not Started', approval_status: 'rejected', rejection_reason: rejection_reason })
+          .eq('id', req.params.taskId)
+          .select()
+          .single();
+        if (rejectError) throw rejectError;
+        console.log('Rejection direct update result:', rejectedTask);
+        const Notification = require('../models/notification');
+        const assigneeIds = task.task_assignments?.map(a => a.user_id) || [];
+        for (const assigneeId of assigneeIds) {
+          await Notification.create(assigneeId, `Task "${task.title}" has been rejected: ${rejection_reason}`);
+        }
+        return res.json({ message: 'Task rejected successfully', task: rejectedTask });
       }
-      
-      const { data: updatedTask, error } = await supabase
-        .from('tasks')
-        .update(updateData)
-        .eq('id', req.params.taskId)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      // Send notification to assignees
-      const Notification = require('../models/notification');
-      const assigneeIds = task.task_assignments?.map(a => a.user_id) || [];
-      const message = approval_status === 'approved' 
-        ? `Task "${task.title}" has been approved by creator`
-        : `Task "${task.title}" has been rejected: ${rejection_reason}`;
-      
-      for (const assigneeId of assigneeIds) {
-        await Notification.create(assigneeId, message);
-      }
-      
-      return res.json({ message: 'Task updated successfully', task: updatedTask });
     }
     
-    // If it's a status update, validate progression
+    // If it's a status update, write per-user status to task_assignments
     if (status && !title) {
-      const currentStatus = task.status;
-      
-      // Define status progression rules
-      const statusProgression = {
-        'Not Started': ['Working on it', 'Stuck', 'Done'],
-        'Working on it': ['Stuck', 'Done', 'Not Started'],
-        'Stuck': ['Working on it', 'Done', 'Not Started'],
-        'Done': ['Working on it', 'Stuck', 'Not Started'],
-        'Pending Approval': ['Not Started', 'Working on it', 'Stuck', 'Done'] // Allow any transition from Pending
-      };
-      
-      // Validate status progression
-      if (!statusProgression[currentStatus] || !statusProgression[currentStatus].includes(status)) {
-        return res.status(400).json({ 
-          message: `Invalid status transition. Cannot move from '${currentStatus}' to '${status}'.`,
-          currentStatus,
-          allowedStatuses: statusProgression[currentStatus] || []
-        });
-      }
-      
-      // Update with stuck reason if provided
       const updateData = { status };
-      if (stuckReason) {
-        updateData.stuck_reason = stuckReason;
+      if (stuckReason) updateData.stuck_reason = stuckReason;
+      if (req.body.hasOwnProperty('rejection_reason') && req.body.rejection_reason === null) {
+        updateData.rejection_reason = null;
       }
-      
-      // When moving to Done, set approval_status to pending
+
       if (status === 'Done') {
-        updateData.approval_status = 'pending';
+        const isCreator = task.assigned_by === currentUser.id;
+        const isAdmin = currentUser.role === 'admin';
+        if (!(isCreator && isAdmin)) {
+          await supabase.from('tasks')
+            .update({ approval_status: 'pending', rejection_reason: null })
+            .eq('id', req.params.taskId);
+        }
       }
-      
-      const { data: updatedTask, error } = await supabase
-        .from('tasks')
+
+      const { data: updatedAssignment, error: assignErr } = await supabase
+        .from('task_assignments')
         .update(updateData)
-        .eq('id', req.params.taskId)
+        .eq('task_id', req.params.taskId)
+        .eq('user_id', currentUser.id)
         .select()
         .single();
-      
-      if (error) throw error;
-      
-      return res.json({ message: 'Task status updated', task: updatedTask });
+      if (assignErr) throw assignErr;
+
+      const { data: updatedTask } = await supabase
+        .from('tasks').select('*').eq('id', req.params.taskId).single();
+
+      return res.json({
+        message: 'Task status updated',
+        task: {
+          ...updatedTask,
+          _id: updatedTask.id.toString(),
+          status: updatedAssignment.status,
+          stuckReason: updatedAssignment.stuck_reason,
+          rejectionReason: updatedAssignment.rejection_reason
+        }
+      });
     }
     
     // If it's a full task update (creator or admin can edit)
@@ -448,12 +438,12 @@ router.patch('/:taskId', auth, async (req, res) => {
         // Delete existing assignments
         await supabase.from('task_assignments').delete().eq('task_id', req.params.taskId);
         
-        // Create new assignments
+        // Create new assignments with per-user status
         const assignments = assigneeArray.map(userId => ({
           task_id: parseInt(req.params.taskId),
-          user_id: parseInt(userId)
+          user_id: parseInt(userId),
+          status: 'Not Started'
         }));
-        
         await supabase.from('task_assignments').insert(assignments);
       }
       
@@ -525,9 +515,9 @@ router.put('/:taskId', auth, async (req, res) => {
     
     const assignments = assigneeArray.map(userId => ({
       task_id: parseInt(req.params.taskId),
-      user_id: parseInt(userId)
+      user_id: parseInt(userId),
+      status: 'Not Started'
     }));
-    
     await supabase.from('task_assignments').insert(assignments);
     
     res.json({ message: 'Task updated successfully', task: updatedTask });

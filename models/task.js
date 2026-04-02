@@ -94,7 +94,9 @@ class Task {
         resolvedIds = [...resolvedIds, ...(namedUsers?.map(u => u.id) || [])];
       }
 
-      const assignments = resolvedIds.map(userId => ({ task_id: task.id, user_id: userId }));
+      // Insert assignments with per-user status
+      const initialStatus = approvalStatus === 'pending' ? 'Pending Approval' : 'Not Started';
+      const assignments = resolvedIds.map(userId => ({ task_id: task.id, user_id: userId, status: initialStatus }));
       const { error: assignError } = await supabase.from('task_assignments').insert(assignments);
       if (assignError) throw assignError;
 
@@ -109,7 +111,10 @@ class Task {
       const assigneeRoleMap = Object.fromEntries((assigneeUsers || []).map(u => [u.id, u.role]));
 
       await Promise.all(resolvedIds.map(userId => {
-        const msg = assigneeRoleMap[userId] === 'admin' && hasAdminAssignee
+        // Only send approval notification if task is actually pending (user assigned to admin, not self-assigned)
+        const isAdminAssignee = assigneeRoleMap[userId] === 'admin';
+        const isSelfAssign = parseInt(userId) === parseInt(assignedBy);
+        const msg = isAdminAssignee && hasAdminAssignee && !isSelfAssign
           ? `Task approval required: "${title}" assigned by ${creatorName}`
           : `New task assigned: "${title}" by ${creatorName}`;
         return Notification.create(userId, msg).catch(e => console.error('Notification failed:', e));
@@ -122,30 +127,39 @@ class Task {
   static async findAssignedToUser(userId) {
     const userIdInt = parseInt(userId);
 
+    const { data: assignments, error: aErr } = await supabase
+      .from('task_assignments')
+      .select('task_id, status, stuck_reason, rejection_reason')
+      .eq('user_id', userIdInt);
+    if (aErr) throw aErr;
+    if (!assignments || assignments.length === 0) return [];
+
+    const taskIds = assignments.map(a => a.task_id);
+    const assignmentMap = Object.fromEntries(assignments.map(a => [a.task_id, a]));
+
     const { data: tasks, error } = await supabase
       .from('tasks')
-      .select(`*, task_assignments!inner(user_id, users(id, name, email))`)
-      .eq('task_assignments.user_id', userIdInt)
-      .in('approval_status', ['approved', 'rejected'])
+      .select('*, task_assignments(user_id, status, users(id, name, email))')
+      .in('id', taskIds)
+      .in('approval_status', ['approved', 'rejected', 'pending'])
       .order('created_at', { ascending: false });
-
     if (error) throw error;
 
-    const uniqueTasks = (tasks || []).filter((t, i, self) => i === self.findIndex(x => x.id === t.id));
-
-    // Batch fetch all creators in one query
-    const creatorIds = [...new Set(uniqueTasks.map(t => t.assigned_by))];
+    const creatorIds = [...new Set((tasks || []).map(t => t.assigned_by))];
     const { data: creators } = await supabase.from('users').select('id, name, email').in('id', creatorIds);
     const creatorMap = Object.fromEntries((creators || []).map(u => [u.id, u]));
 
-    return uniqueTasks.map(task => {
+    return (tasks || []).map(task => {
       const creator = creatorMap[task.assigned_by];
+      const myAssignment = assignmentMap[task.id];
       const assignees = task.task_assignments?.map(a => a.users).filter(Boolean) || [];
       return {
         ...task,
         _id: task.id.toString(),
+        status: myAssignment?.status || task.status,
         dueDate: task.due_date,
-        stuckReason: task.stuck_reason,
+        stuckReason: myAssignment?.stuck_reason || task.stuck_reason,
+        rejectionReason: myAssignment?.rejection_reason || task.rejection_reason,
         approvalStatus: task.approval_status,
         approval_status: task.approval_status,
         approved_at: task.approved_at,
@@ -157,32 +171,42 @@ class Task {
     });
   }
 
-  static async findAssignedByUser(userId) {
+  static async findAssignedByUser(userId, company) {
     const userIdInt = parseInt(userId);
 
     const { data: tasks, error } = await supabase
       .from('tasks')
-      .select(`*, task_assignments(user_id, users(id, name, email))`)
+      .select('*, task_assignments(user_id, status, stuck_reason, rejection_reason, users(id, name, email))')
       .eq('assigned_by', userIdInt)
-      .order('created_at', { ascending: false });
-
+      .order('created_at', { ascending: false })
+      .limit(1000);
     if (error) throw error;
 
-    return (tasks || []).map(task => {
-      const assignees = task.task_assignments?.map(a => a.users).filter(Boolean) || [];
-      return {
-        ...task,
-        _id: task.id.toString(),
-        dueDate: task.due_date,
-        stuckReason: task.stuck_reason,
-        approvalStatus: task.approval_status,
-        approval_status: task.approval_status,
-        approved_at: task.approved_at,
-        assignedTo: assignees.length === 1
-          ? { _id: assignees[0].id.toString(), name: assignees[0].name, email: assignees[0].email }
-          : assignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
-      };
-    });
+    const expanded = [];
+    for (const task of (tasks || [])) {
+      const assignments = task.task_assignments || [];
+      if (assignments.length === 0) {
+        expanded.push({ ...task, _id: task.id.toString(), dueDate: task.due_date, stuckReason: task.stuck_reason, approvalStatus: task.approval_status, approval_status: task.approval_status, approved_at: task.approved_at, assignedTo: null });
+      } else {
+        for (const assignment of assignments) {
+          const assignee = assignment.users;
+          if (!assignee) continue;
+          expanded.push({
+            ...task,
+            _id: task.id.toString(),
+            status: assignment.status || task.status,
+            dueDate: task.due_date,
+            stuckReason: assignment.stuck_reason || task.stuck_reason,
+            rejectionReason: assignment.rejection_reason || task.rejection_reason,
+            approvalStatus: task.approval_status,
+            approval_status: task.approval_status,
+            approved_at: task.approved_at,
+            assignedTo: { _id: assignee.id.toString(), name: assignee.name, email: assignee.email }
+          });
+        }
+      }
+    }
+    return expanded;
   }
 
   static async updateTaskStatus(taskId, status, remark = null) {
@@ -218,25 +242,14 @@ class Task {
 
   // New methods for approval system
   static async approveTask(taskId, adminId) {
-    console.log('Task.approveTask called with:', { taskId, adminId });
-    
     const { data, error } = await supabase
       .from('tasks')
-      .update({ 
-        approval_status: 'approved',
-        status: 'Not Started'
-      })
+      .update({ approval_status: 'approved', status: 'Not Started' })
       .eq('id', taskId)
-      .eq('approval_status', 'pending')
       .select()
       .single();
-    
-    if (error) {
-      console.error('Task approval error:', error);
-      throw error;
-    }
-    
-    console.log('Task approved successfully:', data);
+
+    if (error) throw error;
     return data;
   }
 
@@ -293,53 +306,79 @@ class Task {
   static async findVisibleToUser(userId, userRole, userCompany) {
     const userIdInt = parseInt(userId);
 
+    // Fetch this user's assignment rows with per-user status
+    const { data: ua, error: uaErr } = await supabase
+      .from('task_assignments')
+      .select('task_id, status, stuck_reason, rejection_reason')
+      .eq('user_id', userIdInt);
+    if (uaErr) throw uaErr;
+
+    const assignedTaskIds = new Set((ua || []).map(a => a.task_id));
+    const assignmentMap = Object.fromEntries((ua || []).map(a => [a.task_id, a]));
+
+    console.log('[findVisibleToUser] userId:', userIdInt, '| assignedTaskIds:', [...assignedTaskIds]);
+
     const { data: allTasks, error } = await supabase
       .from('tasks')
-      .select(`*, task_assignments(user_id, users(id, name, email))`)
-      .order('created_at', { ascending: false });
-
+      .select('*, task_assignments(user_id, status, stuck_reason, rejection_reason, users(id, name, email))')
+      .order('created_at', { ascending: false })
+      .limit(200);
     if (error) throw error;
 
-    const visibleTasks = (allTasks || []).filter(task => {
+    console.log('[findVisibleToUser] allTasks count:', allTasks.length);
+
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+
+    const visibleTasks = allTasks.filter(task => {
       const isCreator = task.assigned_by === userIdInt;
-      const isAssigned = task.task_assignments?.some(a => a.user_id === userIdInt);
-      const isApproved = task.approval_status === 'approved';
-
-      if (isApproved && task.approved_at) {
-        const hoursSinceApproval = (Date.now() - new Date(task.approved_at).getTime()) / (1000 * 60 * 60);
-        if (hoursSinceApproval >= 24) return false;
+      const isAssigned = assignedTaskIds.has(task.id);
+      // Only filter by company for creator tasks — but never hide self-assigned tasks
+      if (isCreator && !isAssigned && task.company !== userCompany) return false;
+      const myStatus = assignmentMap[task.id]?.status || task.status;
+      if (task.approval_status === 'approved' && myStatus === 'Done' && task.updated_at) {
+        if (Date.now() - new Date(task.updated_at).getTime() > thirtyDaysAgo) return false;
       }
-
       if (isCreator) return true;
-      if (isAssigned && (isApproved || task.approval_status === 'rejected')) return true;
+      if (isAssigned) return true;
       return false;
     });
 
-    // Batch fetch all unique creators in one query
+    console.log('[findVisibleToUser] visibleTasks:', visibleTasks.map(t => ({ id: t.id, title: t.title, isCreator: t.assigned_by === userIdInt, isAssigned: assignedTaskIds.has(t.id) })));
+
     const creatorIds = [...new Set(visibleTasks.map(t => t.assigned_by))];
     const { data: creators } = await supabase.from('users').select('id, name, email').in('id', creatorIds);
     const creatorMap = Object.fromEntries((creators || []).map(u => [u.id, u]));
 
     return visibleTasks.map(task => {
       const creator = creatorMap[task.assigned_by];
-      const isCreator = task.assigned_by === userIdInt;
+      const myAssignment = assignmentMap[task.id];
       const allAssignees = task.task_assignments?.map(a => a.users).filter(Boolean) || [];
-      const displayAssignees = isCreator
-        ? allAssignees
-        : allAssignees.filter(a => parseInt(a.id) === userIdInt);
+
+      const list = allAssignees.length > 0
+        ? allAssignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
+        : [];
+
+      // Guarantee current user appears in assignedTo if they are in task_assignments
+      if (assignedTaskIds.has(task.id) && !list.some(u => u._id === String(userIdInt))) {
+        list.push({ _id: String(userIdInt), name: '', email: '' });
+      }
+
+      const assignedTo = list.length === 0
+        ? { _id: String(userIdInt), name: '', email: '' }
+        : list.length === 1 ? list[0] : list;
 
       return {
         ...task,
         _id: task.id.toString(),
+        status: myAssignment?.status || task.status,
         dueDate: task.due_date,
-        stuckReason: task.stuck_reason,
+        stuckReason: myAssignment?.stuck_reason || task.stuck_reason,
+        rejectionReason: myAssignment?.rejection_reason || task.rejection_reason,
         approvalStatus: task.approval_status,
         approval_status: task.approval_status,
         approved_at: task.approved_at,
         assignedBy: creator ? { _id: creator.id.toString(), name: creator.name, email: creator.email } : null,
-        assignedTo: displayAssignees.length === 1
-          ? { _id: displayAssignees[0].id.toString(), name: displayAssignees[0].name, email: displayAssignees[0].email }
-          : displayAssignees.map(u => ({ _id: u.id.toString(), name: u.name, email: u.email }))
+        assignedTo
       };
     });
   }
