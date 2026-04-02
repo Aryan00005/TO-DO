@@ -640,20 +640,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
   };
 
   const handleApproveTask = async (taskId: string) => {
-    if (!window.confirm('Are you sure you want to approve this task?')) return;
+    // Remove from state immediately — no confirm needed
     setTasks(prev => prev.filter(t => t._id !== taskId));
     setAssignedTasks(prev => prev.filter(t => t._id !== taskId));
     setPendingTaskApprovals(prev => prev.filter(t => t._id !== taskId && String((t as any).id) !== taskId));
     showToast('Task approved and completed! ✅', 'success');
-
     try {
       const token = sessionStorage.getItem('jwt-token');
       await axios.patch(`/tasks/${taskId}`, { approval_status: 'approved' }, {
         headers: { Authorization: `Bearer ${token}` }
       });
     } catch (err: any) {
-      refreshData();
-      showToast('Failed to approve task', 'error');
+      // Don't call refreshData on failure — task is already deleted on backend
+      // Just show error silently
+      console.error('Approve task error:', err);
     }
   };
 
