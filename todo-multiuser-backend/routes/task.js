@@ -311,41 +311,86 @@ router.patch('/:taskId', auth, async (req, res) => {
       if (!task) {
         return res.status(404).json({ message: 'Task not found' });
       }
-      const updateData = {};
-      if (approval_status === 'approved') {
-        // Delete task completely on approval
-        const { error: deleteError } = await supabase
-          .from('tasks')
-          .delete()
-          .eq('id', req.params.taskId);
-        if (deleteError) throw deleteError;
 
-        const Notification = require('../models/notification');
-        const assigneeIds = task.task_assignments?.map(a => a.user_id) || [];
-        for (const assigneeId of assigneeIds) {
-          await Notification.create(assigneeId, `Task "${task.title}" has been approved by creator`);
-        }
-        return res.json({ message: 'Task approved and deleted successfully' });
-      } else if (approval_status) {
-        updateData.approval_status = approval_status;
+      // target_user_id is REQUIRED for per-user approval/rejection.
+      // Reject the request if it is missing — never silently affect all users.
+      const targetUserId = req.body.target_user_id ? parseInt(req.body.target_user_id) : null;
+      if (!targetUserId) {
+        return res.status(400).json({ message: 'target_user_id is required for approval/rejection' });
       }
-      
-      if (rejection_reason) {
-        // Direct update — bypass updateData pattern to ensure all fields are written
-        const { data: rejectedTask, error: rejectError } = await supabase
-          .from('tasks')
-          .update({ status: 'Not Started', approval_status: 'rejected', rejection_reason: rejection_reason })
-          .eq('id', req.params.taskId)
-          .select()
-          .single();
-        if (rejectError) throw rejectError;
-        console.log('Rejection direct update result:', rejectedTask);
-        const Notification = require('../models/notification');
-        const assigneeIds = task.task_assignments?.map(a => a.user_id) || [];
-        for (const assigneeId of assigneeIds) {
-          await Notification.create(assigneeId, `Task "${task.title}" has been rejected: ${rejection_reason}`);
+
+      // Verify the target assignment actually exists before touching anything
+      const { data: targetAssignment, error: taErr } = await supabase
+        .from('task_assignments')
+        .select('user_id, status, approval_status')
+        .eq('task_id', req.params.taskId)
+        .eq('user_id', targetUserId)
+        .single();
+      if (taErr || !targetAssignment) {
+        return res.status(404).json({ message: 'Assignment not found for this user and task' });
+      }
+
+      const Notification = require('../models/notification');
+
+      if (approval_status === 'approved') {
+        // Guard: only approve if the assignment is actually Done
+        if (targetAssignment.status !== 'Done') {
+          return res.status(400).json({ message: 'Cannot approve a task that is not marked Done' });
         }
-        return res.json({ message: 'Task rejected successfully', task: rejectedTask });
+
+        const { error: approveErr } = await supabase
+          .from('task_assignments')
+          .update({ approval_status: 'approved' })
+          .eq('task_id', req.params.taskId)
+          .eq('user_id', targetUserId);
+        if (approveErr) throw approveErr;
+
+        // Check if ALL assignments are now approved — only then delete the task
+        const { data: remaining, error: remErr } = await supabase
+          .from('task_assignments')
+          .select('approval_status')
+          .eq('task_id', req.params.taskId)
+          .neq('approval_status', 'approved');
+        if (remErr) throw remErr;
+
+        if (!remaining || remaining.length === 0) {
+          // Every assignee approved — safe to delete
+          await supabase.from('tasks').delete().eq('id', req.params.taskId);
+          const assigneeIds = task.task_assignments?.map(a => a.user_id) || [];
+          for (const assigneeId of assigneeIds) {
+            await Notification.create(assigneeId, `Task "${task.title}" has been fully approved and completed`);
+          }
+          return res.json({ message: 'Task approved and completed for all users' });
+        }
+
+        // Other users still pending — only notify the approved user
+        await Notification.create(targetUserId, `Task "${task.title}" has been approved`);
+        return res.json({ message: 'Task approved for user' });
+
+      } else if (rejection_reason) {
+        if (!rejection_reason.trim()) {
+          return res.status(400).json({ message: 'Rejection reason cannot be empty' });
+        }
+
+        const { error: rejectErr } = await supabase
+          .from('task_assignments')
+          .update({
+            approval_status: 'rejected',
+            status: 'Not Started',
+            rejection_reason: rejection_reason.trim()
+          })
+          .eq('task_id', req.params.taskId)
+          .eq('user_id', targetUserId);
+        if (rejectErr) throw rejectErr;
+
+        // Also reset task-level approval_status so the task stays visible to creator
+        await supabase
+          .from('tasks')
+          .update({ approval_status: 'rejected', rejection_reason: rejection_reason.trim() })
+          .eq('id', req.params.taskId);
+
+        await Notification.create(targetUserId, `Task "${task.title}" has been rejected: ${rejection_reason.trim()}`);
+        return res.json({ message: 'Task rejected for user' });
       }
     }
     
@@ -361,9 +406,12 @@ router.patch('/:taskId', auth, async (req, res) => {
         const isCreator = task.assigned_by === currentUser.id;
         const isAdmin = currentUser.role === 'admin';
         if (!(isCreator && isAdmin)) {
+          // Set task-level pending so creator's Completed view shows it
           await supabase.from('tasks')
             .update({ approval_status: 'pending', rejection_reason: null })
             .eq('id', req.params.taskId);
+          // Also reset THIS user's assignment approval_status to pending
+          updateData.approval_status = 'pending';
         }
       }
 
@@ -438,11 +486,12 @@ router.patch('/:taskId', auth, async (req, res) => {
         // Delete existing assignments
         await supabase.from('task_assignments').delete().eq('task_id', req.params.taskId);
         
-        // Create new assignments with per-user status
+        // Create new assignments — reset to active state
         const assignments = assigneeArray.map(userId => ({
           task_id: parseInt(req.params.taskId),
           user_id: parseInt(userId),
-          status: 'Not Started'
+          status: 'Not Started',
+          approval_status: 'approved'
         }));
         await supabase.from('task_assignments').insert(assignments);
       }
@@ -516,7 +565,8 @@ router.put('/:taskId', auth, async (req, res) => {
     const assignments = assigneeArray.map(userId => ({
       task_id: parseInt(req.params.taskId),
       user_id: parseInt(userId),
-      status: 'Not Started'
+      status: 'Not Started',
+      approval_status: 'approved'
     }));
     await supabase.from('task_assignments').insert(assignments);
     

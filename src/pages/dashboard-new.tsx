@@ -292,7 +292,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       const body: any = { status: newStatus };
       // If task was rejected, clear rejection_reason on backend too
       if (wasRejected) body.rejection_reason = null;
-      await axios.patch(`/tasks/${taskId}`, body, {
+      await axios.patch(`/tasks/${getRealTaskId(taskId)}`, body, {
         headers: { Authorization: `Bearer ${token}` }
       });
     } catch (err: any) {
@@ -327,7 +327,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       setStuckTaskId('');
       showToast('Task marked as Stuck', 'success');
 
-      await axios.patch(`/tasks/${taskId}`, {
+      await axios.patch(`/tasks/${getRealTaskId(taskId)}`, {
         status: 'Stuck',
         stuckReason: reason
       }, {
@@ -348,7 +348,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
     try {
       const token = sessionStorage.getItem("jwt-token");
-      await axios.delete(`/tasks/${taskId}`, {
+      await axios.delete(`/tasks/${getRealTaskId(taskId)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
     } catch (err) {
@@ -584,7 +584,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     // API call in background using captured values
     try {
       if (taskEditing) {
-        const patchRes = await axios.patch(`/tasks/${taskEditing._id}`, {
+        const patchRes = await axios.patch(`/tasks/${getRealTaskId(taskEditing._id)}`, {
           title: taskTitle, description: taskDescription, assignedTo: taskAssignedTo, priority: taskPriority, dueDate: taskDueDate, company: taskCompany
         }, {
           headers: { Authorization: `Bearer ${token}` }
@@ -615,45 +615,59 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     }
   };
   
+  // Extract real integer taskId from composite "taskId-userId" or plain "taskId"
+  const getRealTaskId = (id: string) => id.includes('-') ? id.split('-')[0] : id;
+
+  // Extract userId from composite "taskId-userId", returns null if plain ID
+  const getTargetUserId = (id: string) => id.includes('-') ? id.split('-')[1] : null;
+
   const matchId = (t: Task, taskId: string) =>
     String(t._id) === String(taskId) || String((t as any).id) === String(taskId);
 
   const handleRejectTask = async (taskId: string, reason: string) => {
+    const realTaskId = getRealTaskId(taskId);
+    const targetUserId = getTargetUserId(taskId);
     const update = { status: 'Not Started', rejectionReason: reason, approvalStatus: 'rejected' as const };
     setFilterStatus('all');
-    setTasks(prev => prev.map(t => matchId(t, taskId) ? { ...t, ...update } : t));
-    setAssignedTasks(prev => prev.map(t => matchId(t, taskId) ? { ...t, ...update } : t));
-    showToast("Task rejected and moved to Working on it! ❌", "success");
+    // Match by realTaskId so both plain '1061' and composite '1061-72' entries are updated
+    setTasks(prev => prev.map(t => getRealTaskId(t._id) === realTaskId ? { ...t, ...update } : t));
+    setAssignedTasks(prev => prev.map(t => getRealTaskId(t._id) === realTaskId ? { ...t, ...update } : t));
+    showToast('Task rejected ❌', 'success');
     try {
-      const token = sessionStorage.getItem("jwt-token");
-      await axios.patch(`/tasks/${taskId}`, { 
-        rejection_reason: reason
-      }, {
+      const token = sessionStorage.getItem('jwt-token');
+      const body: any = { rejection_reason: reason };
+      if (targetUserId) body.target_user_id = targetUserId;
+      await axios.patch(`/tasks/${realTaskId}`, body, {
         headers: { Authorization: `Bearer ${token}` }
       });
     } catch (err: any) {
-      // Revert optimistic update on failure
-      setTasks(prev => prev.map(t => matchId(t, taskId) ? { ...t, rejectionReason: undefined, approvalStatus: 'approved' as const } : t));
-      setAssignedTasks(prev => prev.map(t => matchId(t, taskId) ? { ...t, rejectionReason: undefined, approvalStatus: 'approved' as const } : t));
-      showToast("Error rejecting task: " + (err.response?.data?.message || err.message), "error");
+      setTasks(prev => prev.map(t => getRealTaskId(t._id) === realTaskId ? { ...t, rejectionReason: undefined, approvalStatus: 'approved' as const } : t));
+      setAssignedTasks(prev => prev.map(t => getRealTaskId(t._id) === realTaskId ? { ...t, rejectionReason: undefined, approvalStatus: 'approved' as const } : t));
+      showToast('Error rejecting task: ' + (err.response?.data?.message || err.message), 'error');
     }
   };
 
   const handleApproveTask = async (taskId: string) => {
-    // Remove from state immediately — no confirm needed
-    setTasks(prev => prev.filter(t => t._id !== taskId));
-    setAssignedTasks(prev => prev.filter(t => t._id !== taskId));
-    setPendingTaskApprovals(prev => prev.filter(t => t._id !== taskId && String((t as any).id) !== taskId));
-    showToast('Task approved and completed! ✅', 'success');
+    if (!window.confirm('Are you sure you want to approve this task?')) return;
+    const realTaskId = getRealTaskId(taskId);
+    const targetUserId = getTargetUserId(taskId);
+
+    // Remove from UI: filter by both plain taskId AND composite taskId-userId
+    setTasks(prev => prev.filter(t => getRealTaskId(t._id) !== realTaskId));
+    setAssignedTasks(prev => prev.filter(t => getRealTaskId(t._id) !== realTaskId));
+    setPendingTaskApprovals(prev => prev.filter(t => getRealTaskId(t._id) !== realTaskId && getRealTaskId(String((t as any).id)) !== realTaskId));
+    showToast('Task approved! ✅', 'success');
+
     try {
       const token = sessionStorage.getItem('jwt-token');
-      await axios.patch(`/tasks/${taskId}`, { approval_status: 'approved' }, {
+      const body: any = { approval_status: 'approved' };
+      if (targetUserId) body.target_user_id = targetUserId;
+      await axios.patch(`/tasks/${realTaskId}`, body, {
         headers: { Authorization: `Bearer ${token}` }
       });
     } catch (err: any) {
-      // Don't call refreshData on failure — task is already deleted on backend
-      // Just show error silently
-      console.error('Approve task error:', err);
+      refreshData();
+      showToast('Failed to approve task', 'error');
     }
   };
 
@@ -661,7 +675,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     try {
       const token = sessionStorage.getItem('jwt-token');
       if (action === 'approve') {
-        await axios.post(`/tasks/${taskId}/approve`, {}, { headers: { Authorization: `Bearer ${token}` } });
+        await axios.post(`/tasks/${getRealTaskId(taskId)}/approve`, {}, { headers: { Authorization: `Bearer ${token}` } });
         setPendingTaskApprovals(prev => prev.filter(t => t._id !== taskId));
         showToast('Task approved! ✅', 'success');
       } else {
@@ -795,7 +809,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
       const assignedById = typeof task.assignedBy === 'object' ? task.assignedBy?._id : task.assignedBy;
       matchesAssignedBy = String(assignedById) === filterAssignedBy;
     }
-    
     // Assigned To filter
     let matchesAssignedTo = true;
     if (filterAssignedTo !== 'all') {
@@ -867,7 +880,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     if (diffHours < 1) return 'Just now';
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 2) return `${diffDays}d ago`;
-    return taskDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return taskDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   // Calculate completion percentages for users
@@ -1362,7 +1375,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                               {task.dueDate && (
                                 <div style={{ color: "#2563eb", fontSize: 11, marginBottom: 2 }}>
                                   <FaCalendar style={{ marginRight: 4 }} />
-                                  Due: {new Date(task.dueDate).toLocaleDateString('en-GB')}
+                                  Due: {new Date(task.dueDate).toLocaleDateString()}
                                 </div>
                               )}
                               {isOverdue(task) && (
@@ -1516,7 +1529,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               {task.dueDate && (
                 <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
                   <FaCalendar style={{ marginRight: 4 }} />
-                  Due: {new Date(task.dueDate).toLocaleDateString('en-GB')}
+                  Due: {new Date(task.dueDate).toLocaleDateString()}
                 </div>
               )}
               <div style={{
@@ -1672,7 +1685,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 {task.dueDate && (
                   <div style={{ color: "#22c55e", fontSize: 13, marginBottom: 4 }}>
                     <FaCalendar style={{ marginRight: 4 }} />
-                    Completed: {new Date(task.dueDate).toLocaleDateString('en-GB')}
+                    Completed: {new Date(task.dueDate).toLocaleDateString()}
                   </div>
                 )}
                 <div style={{
@@ -1690,7 +1703,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 {isCreator && !isApproved && (
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     <button
-                      onClick={() => handleApproveTask(task._id)}
+                      onClick={() => {
+                        // Build composite id so handleApproveTask can extract target_user_id
+                        const assigneeId = Array.isArray(task.assignedTo)
+                          ? (typeof task.assignedTo[0] === 'object' ? task.assignedTo[0]._id : task.assignedTo[0])
+                          : (typeof task.assignedTo === 'object' ? task.assignedTo._id : task.assignedTo);
+                        handleApproveTask(assigneeId ? `${getRealTaskId(task._id)}-${assigneeId}` : task._id);
+                      }}
                       style={{
                         flex: 1,
                         background: '#10b981',
@@ -1709,7 +1728,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                       onClick={() => {
                         const reason = prompt('Enter rejection reason:');
                         if (reason && reason.trim()) {
-                          handleRejectTask(task._id, reason.trim());
+                          const assigneeId = Array.isArray(task.assignedTo)
+                            ? (typeof task.assignedTo[0] === 'object' ? task.assignedTo[0]._id : task.assignedTo[0])
+                            : (typeof task.assignedTo === 'object' ? task.assignedTo._id : task.assignedTo);
+                          handleRejectTask(assigneeId ? `${getRealTaskId(task._id)}-${assigneeId}` : task._id, reason.trim());
                         }
                       }}
                       style={{
@@ -1849,7 +1871,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
               {task.dueDate && (
                 <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
                   <FaCalendar style={{ marginRight: 4 }} />
-                  Due: {new Date(task.dueDate).toLocaleDateString('en-GB')}
+                  Due: {new Date(task.dueDate).toLocaleDateString()}
                 </div>
               )}
               <div style={{
@@ -2179,7 +2201,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   {task.dueDate && (
                     <div style={{ color: "#2563eb", fontSize: 13, marginBottom: 4 }}>
                       <FaCalendar style={{ marginRight: 4 }} />
-                      Due: {new Date(task.dueDate).toLocaleDateString('en-GB')}
+                      Due: {new Date(task.dueDate).toLocaleDateString()}
                     </div>
                   )}
                   
@@ -2490,7 +2512,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   </div>
                   
                   <div style={{ fontSize: 12, color: "#2563eb", marginBottom: 12 }}>
-                    <b>Due:</b> {task.dueDate ? new Date(task.dueDate).toLocaleDateString('en-GB') : 'No due date'}
+                    <b>Due:</b> {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No due date'}
                   </div>
                   
                   <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
@@ -3480,7 +3502,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', fontWeight: 600 }}>Due Date</div>
                   <div style={{ fontSize: 14, color: theme === 'dark' ? '#d1d5db' : '#374151' }}>
-                    {new Date(selectedTaskDetails.dueDate).toLocaleDateString('en-GB')}
+                    {new Date(selectedTaskDetails.dueDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                   </div>
                 </div>
               )}
@@ -3610,7 +3632,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                         color: theme === 'dark' ? '#9ca3af' : '#6b7280',
                         marginBottom: isApprovalNotification ? 8 : 0
                       }}>
-                        {new Date(notification.createdAt || notification.created_at || '').toLocaleDateString('en-GB')}
+                        {new Date(notification.createdAt || notification.created_at || '').toLocaleString()}
                       </div>
                       
                       {isApprovalNotification && user.role === 'admin' && (
