@@ -336,12 +336,33 @@ class Task {
 
     console.log('[findVisibleToUser] userId:', userIdInt, '| active assignedTaskIds:', [...assignedTaskIds]);
 
-    const { data: allTasks, error } = await supabase
+    // Fetch only tasks relevant to this user — their own assignments + tasks they created
+    // This avoids the limit(200) problem where old tasks get cut off
+    const allAssignedTaskIds = [...new Set((ua || []).map(a => a.task_id))];
+
+    // Fetch tasks assigned to this user
+    const assignedTasksQuery = allAssignedTaskIds.length > 0
+      ? supabase
+          .from('tasks')
+          .select('*, task_assignments(user_id, status, stuck_reason, rejection_reason, approval_status, users(id, name, email))')
+          .in('id', allAssignedTaskIds)
+      : Promise.resolve({ data: [], error: null });
+
+    // Fetch tasks created by this user
+    const createdTasksQuery = supabase
       .from('tasks')
       .select('*, task_assignments(user_id, status, stuck_reason, rejection_reason, approval_status, users(id, name, email))')
-      .order('created_at', { ascending: false })
-      .limit(200);
-    if (error) throw error;
+      .eq('assigned_by', userIdInt)
+      .order('created_at', { ascending: false });
+
+    const [assignedResult, createdResult] = await Promise.all([assignedTasksQuery, createdTasksQuery]);
+    if (assignedResult.error) throw assignedResult.error;
+    if (createdResult.error) throw createdResult.error;
+
+    // Merge and deduplicate
+    const taskMap = new Map();
+    [...(assignedResult.data || []), ...(createdResult.data || [])].forEach(t => taskMap.set(t.id, t));
+    const allTasks = [...taskMap.values()];
 
     console.log('[findVisibleToUser] allTasks count:', allTasks.length);
 
