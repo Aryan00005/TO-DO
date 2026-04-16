@@ -350,9 +350,14 @@ class Task {
       const isAssigned = assignedTaskIds.has(task.id);
       const isSelfAssigned = isCreator && isAssigned;
 
-      // Hide tasks where this user's assignment is approved AND it's not self-assigned
-      // (self-assigned tasks stay visible permanently until explicitly deleted)
-      if (isAssigned && !isSelfAssigned && approvedTaskIds.has(task.id)) return false;
+    // Hide tasks where this user's assignment is approved AND it's not self-assigned
+      // AND the task is actually Done (approved = completed for this user)
+      // Active tasks (Not Started, Working on it, Stuck) with approval_status='approved' must still show
+      if (isAssigned && !isSelfAssigned && approvedTaskIds.has(task.id)) {
+        const myAssign = assignmentMap[task.id];
+        const myStatus = myAssign?.status || task.status;
+        if (myStatus === 'Done') return false;
+      }
 
       // Only filter by company for creator-only tasks
       if (isCreator && !isAssigned && task.company !== userCompany) return false;
