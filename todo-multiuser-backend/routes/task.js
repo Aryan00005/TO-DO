@@ -404,8 +404,9 @@ router.patch('/:taskId', auth, async (req, res) => {
 
       if (status === 'Done') {
         const isCreator = task.assigned_by === currentUser.id;
-        const isAdmin = currentUser.role === 'admin';
-        if (!(isCreator && isAdmin)) {
+        const isSelfAssigned = isCreator && task.task_assignments?.some(a => a.user_id === currentUser.id);
+        // Skip approval for self-assigned tasks — they complete directly
+        if (!isSelfAssigned) {
           // Set task-level pending so creator's Completed view shows it
           await supabase.from('tasks')
             .update({ approval_status: 'pending', rejection_reason: null })

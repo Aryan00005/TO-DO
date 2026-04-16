@@ -325,9 +325,12 @@ class Task {
       .eq('user_id', userIdInt);
     if (uaErr) throw uaErr;
 
-    // Exclude tasks where THIS user's assignment is already approved (task is done for them)
-    const activeAssignments = (ua || []).filter(a => a.approval_status !== 'approved');
-    const assignedTaskIds = new Set(activeAssignments.map(a => a.task_id));
+    // Include ALL assignment rows in the set (approved or not)
+    // Self-assigned tasks (assigned_by === userIdInt) must always stay visible.
+    // Non-self-assigned approved tasks are excluded in the visibleTasks filter below.
+    const assignedTaskIds = new Set((ua || []).map(a => a.task_id));
+    // Set of task_ids where this user's assignment is approved (used to hide non-self-assigned done tasks)
+    const approvedTaskIds = new Set((ua || []).filter(a => a.approval_status === 'approved').map(a => a.task_id));
     // Keep full map (including approved) so creator view still works
     const assignmentMap = Object.fromEntries((ua || []).map(a => [a.task_id, a]));
 
@@ -345,6 +348,12 @@ class Task {
     const visibleTasks = allTasks.filter(task => {
       const isCreator = task.assigned_by === userIdInt;
       const isAssigned = assignedTaskIds.has(task.id);
+      const isSelfAssigned = isCreator && isAssigned;
+
+      // Hide tasks where this user's assignment is approved AND it's not self-assigned
+      // (self-assigned tasks stay visible permanently until explicitly deleted)
+      if (isAssigned && !isSelfAssigned && approvedTaskIds.has(task.id)) return false;
+
       // Only filter by company for creator-only tasks
       if (isCreator && !isAssigned && task.company !== userCompany) return false;
       if (isCreator) return true;

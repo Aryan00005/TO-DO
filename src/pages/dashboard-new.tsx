@@ -1637,7 +1637,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
           {filteredCompletedTasks.map(task => {
             const taskAssignedBy = typeof task.assignedBy === 'object' ? task.assignedBy?._id : task.assignedBy;
+            const taskAssignedToId = typeof task.assignedTo === 'object' ? (task.assignedTo as any)?._id : task.assignedTo;
             const isCreator = taskAssignedBy === user._id || taskAssignedBy === user.id;
+            const isSelfAssigned = String(taskAssignedBy) === String(taskAssignedToId);
             // Check both camelCase and snake_case for approval status
             const isApproved = (task as any).approvalStatus === 'approved' || (task as any).approval_status === 'approved';
             
@@ -1700,7 +1702,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                   Done
                 </div>
                 
-                {isCreator && !isApproved && (
+                {isCreator && !isApproved && !isSelfAssigned && (
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     <button
                       onClick={() => {
@@ -2107,7 +2109,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
                 const taskKey = task._id || (task as any).id;
                 const approvalStatus = (task as any).approvalStatus || (task as any).approval_status;
                 const isDone = task.status === 'Done';
-                const needsApproval = isDone && (!approvalStatus || approvalStatus === 'pending');
+                const isSelfAssigned = (() => {
+                  const assignedById = typeof task.assignedBy === 'object' ? task.assignedBy?._id : task.assignedBy;
+                  const assignedToId = typeof task.assignedTo === 'object' ? (task.assignedTo as any)?._id : task.assignedTo;
+                  return String(assignedById) === String(assignedToId);
+                })();
+                const needsApproval = isDone && !isSelfAssigned && (!approvalStatus || approvalStatus === 'pending');
                 const isApproved = isDone && approvalStatus === 'approved';
                 
                 return (
