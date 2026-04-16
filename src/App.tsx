@@ -14,7 +14,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 
 // User type (optional, for TypeScript)
 interface User {
-    _id: string;  
+    _id: string;
   name: string;
   email: string;
   role?: string;
