@@ -94,9 +94,15 @@ class Task {
         resolvedIds = [...resolvedIds, ...(namedUsers?.map(u => u.id) || [])];
       }
 
-      // Insert assignments with per-user status
+      // Insert assignments with per-user status and approval_status
       const initialStatus = approvalStatus === 'pending' ? 'Pending Approval' : 'Not Started';
-      const assignments = resolvedIds.map(userId => ({ task_id: task.id, user_id: userId, status: initialStatus }));
+      const initialApproval = approvalStatus === 'pending' ? 'pending' : 'approved';
+      const assignments = resolvedIds.map(userId => ({
+        task_id: task.id,
+        user_id: userId,
+        status: initialStatus,
+        approval_status: initialApproval
+      }));
       const { error: assignError } = await supabase.from('task_assignments').insert(assignments);
       if (assignError) throw assignError;
 
@@ -129,19 +135,22 @@ class Task {
 
     const { data: assignments, error: aErr } = await supabase
       .from('task_assignments')
-      .select('task_id, status, stuck_reason, rejection_reason')
+      .select('task_id, status, stuck_reason, rejection_reason, approval_status')
       .eq('user_id', userIdInt);
     if (aErr) throw aErr;
     if (!assignments || assignments.length === 0) return [];
 
-    const taskIds = assignments.map(a => a.task_id);
-    const assignmentMap = Object.fromEntries(assignments.map(a => [a.task_id, a]));
+    // Exclude tasks where THIS user's assignment is already approved (task done for them)
+    const activeAssignments = assignments.filter(a => a.approval_status !== 'approved');
+    if (activeAssignments.length === 0) return [];
+
+    const taskIds = activeAssignments.map(a => a.task_id);
+    const assignmentMap = Object.fromEntries(activeAssignments.map(a => [a.task_id, a]));
 
     const { data: tasks, error } = await supabase
       .from('tasks')
       .select('*, task_assignments(user_id, status, users(id, name, email))')
       .in('id', taskIds)
-      .in('approval_status', ['approved', 'rejected', 'pending'])
       .order('created_at', { ascending: false });
     if (error) throw error;
 
@@ -160,8 +169,9 @@ class Task {
         dueDate: task.due_date,
         stuckReason: myAssignment?.stuck_reason || task.stuck_reason,
         rejectionReason: myAssignment?.rejection_reason || task.rejection_reason,
-        approvalStatus: task.approval_status,
-        approval_status: task.approval_status,
+        // Per-user approval status from task_assignments
+        approvalStatus: myAssignment?.approval_status || 'pending',
+        approval_status: myAssignment?.approval_status || 'pending',
         approved_at: task.approved_at,
         assignedBy: creator ? { _id: creator.id.toString(), name: creator.name, email: creator.email } : null,
         assignedTo: assignees.length === 1
@@ -176,7 +186,7 @@ class Task {
 
     const { data: tasks, error } = await supabase
       .from('tasks')
-      .select('*, task_assignments(user_id, status, stuck_reason, rejection_reason, users(id, name, email))')
+      .select('*, task_assignments(user_id, status, stuck_reason, rejection_reason, approval_status, users(id, name, email))')
       .eq('assigned_by', userIdInt)
       .order('created_at', { ascending: false })
       .limit(1000);
@@ -191,6 +201,8 @@ class Task {
         for (const assignment of assignments) {
           const assignee = assignment.users;
           if (!assignee) continue;
+          // Per-user approval_status: fall back to task-level for old data
+          const perUserApproval = assignment.approval_status || task.approval_status;
           expanded.push({
             ...task,
             _id: task.id.toString(),
@@ -198,8 +210,8 @@ class Task {
             dueDate: task.due_date,
             stuckReason: assignment.stuck_reason || task.stuck_reason,
             rejectionReason: assignment.rejection_reason || task.rejection_reason,
-            approvalStatus: task.approval_status,
-            approval_status: task.approval_status,
+            approvalStatus: perUserApproval,
+            approval_status: perUserApproval,
             approved_at: task.approved_at,
             assignedTo: { _id: assignee.id.toString(), name: assignee.name, email: assignee.email }
           });
@@ -306,38 +318,44 @@ class Task {
   static async findVisibleToUser(userId, userRole, userCompany) {
     const userIdInt = parseInt(userId);
 
-    // Fetch this user's assignment rows with per-user status
+    // Fetch this user's assignment rows with per-user status AND per-user approval_status
     const { data: ua, error: uaErr } = await supabase
       .from('task_assignments')
-      .select('task_id, status, stuck_reason, rejection_reason')
+      .select('task_id, status, stuck_reason, rejection_reason, approval_status')
       .eq('user_id', userIdInt);
     if (uaErr) throw uaErr;
 
+    // Include ALL assignment rows in the set (approved or not)
+    // Self-assigned tasks (assigned_by === userIdInt) must always stay visible.
+    // Non-self-assigned approved tasks are excluded in the visibleTasks filter below.
     const assignedTaskIds = new Set((ua || []).map(a => a.task_id));
+    // Set of task_ids where this user's assignment is approved (used to hide non-self-assigned done tasks)
+    const approvedTaskIds = new Set((ua || []).filter(a => a.approval_status === 'approved').map(a => a.task_id));
+    // Keep full map (including approved) so creator view still works
     const assignmentMap = Object.fromEntries((ua || []).map(a => [a.task_id, a]));
 
-    console.log('[findVisibleToUser] userId:', userIdInt, '| assignedTaskIds:', [...assignedTaskIds]);
+    console.log('[findVisibleToUser] userId:', userIdInt, '| active assignedTaskIds:', [...assignedTaskIds]);
 
     const { data: allTasks, error } = await supabase
       .from('tasks')
-      .select('*, task_assignments(user_id, status, stuck_reason, rejection_reason, users(id, name, email))')
+      .select('*, task_assignments(user_id, status, stuck_reason, rejection_reason, approval_status, users(id, name, email))')
       .order('created_at', { ascending: false })
       .limit(200);
     if (error) throw error;
 
     console.log('[findVisibleToUser] allTasks count:', allTasks.length);
 
-    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-
     const visibleTasks = allTasks.filter(task => {
       const isCreator = task.assigned_by === userIdInt;
       const isAssigned = assignedTaskIds.has(task.id);
-      // Only filter by company for creator tasks — but never hide self-assigned tasks
+      const isSelfAssigned = isCreator && isAssigned;
+
+      // Hide tasks where this user's assignment is approved AND it's not self-assigned
+      // (self-assigned tasks stay visible permanently until explicitly deleted)
+      if (isAssigned && !isSelfAssigned && approvedTaskIds.has(task.id)) return false;
+
+      // Only filter by company for creator-only tasks
       if (isCreator && !isAssigned && task.company !== userCompany) return false;
-      const myStatus = assignmentMap[task.id]?.status || task.status;
-      if (task.approval_status === 'approved' && myStatus === 'Done' && task.updated_at) {
-        if (Date.now() - new Date(task.updated_at).getTime() > thirtyDaysAgo) return false;
-      }
       if (isCreator) return true;
       if (isAssigned) return true;
       return false;
@@ -359,13 +377,16 @@ class Task {
         : [];
 
       // Guarantee current user appears in assignedTo if they are in task_assignments
-      if (assignedTaskIds.has(task.id) && !list.some(u => u._id === String(userIdInt))) {
+      if ((ua || []).some(a => a.task_id === task.id) && !list.some(u => u._id === String(userIdInt))) {
         list.push({ _id: String(userIdInt), name: '', email: '' });
       }
 
       const assignedTo = list.length === 0
         ? { _id: String(userIdInt), name: '', email: '' }
         : list.length === 1 ? list[0] : list;
+
+      // Per-user approval_status: fall back to task-level for old data without the column
+      const myApprovalStatus = myAssignment?.approval_status || task.approval_status;
 
       return {
         ...task,
@@ -374,8 +395,8 @@ class Task {
         dueDate: task.due_date,
         stuckReason: myAssignment?.stuck_reason || task.stuck_reason,
         rejectionReason: myAssignment?.rejection_reason || task.rejection_reason,
-        approvalStatus: task.approval_status,
-        approval_status: task.approval_status,
+        approvalStatus: myApprovalStatus,
+        approval_status: myApprovalStatus,
         approved_at: task.approved_at,
         assignedBy: creator ? { _id: creator.id.toString(), name: creator.name, email: creator.email } : null,
         assignedTo
